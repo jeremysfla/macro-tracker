@@ -873,6 +873,20 @@
 
       <!-- NUTRITION REPORT -->
       <div id="historyTab-nutr" style="display:none">
+        <!-- Retroactive enrichment card -->
+        <div class="card" style="margin-bottom:14px;border-color:#7c3aed22">
+          <div class="card-label" style="color:#a78bfa">🔄 Enrich Historical Data</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Add micronutrient data to all your past food entries using USDA database + AI estimation. This runs once and can take a minute for large logs.</div>
+          <div id="enrichStatus" style="display:none;font-size:12px;margin-bottom:10px"></div>
+          <div id="enrichProgress" style="display:none;margin-bottom:10px">
+            <div style="background:var(--surface2);border-radius:6px;height:8px;overflow:hidden">
+              <div id="enrichProgressBar" style="height:100%;background:#7c3aed;border-radius:6px;transition:width 0.3s;width:0%"></div>
+            </div>
+            <div id="enrichProgressText" style="font-size:11px;color:var(--text3);margin-top:4px;text-align:center"></div>
+          </div>
+          <button id="enrichBtn" onclick="startRetroEnrichment()" style="width:100%;background:#0f172a;border:1.5px solid #7c3aed;border-radius:12px;padding:12px;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Enrich All Past Meals with Micronutrients</button>
+        </div>
+
         <div class="card" style="margin-bottom:14px">
           <div class="card-label" style="color:#22c55e">🥗 Micronutrient Report</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Average daily intake vs recommended values — based on logged foods with full nutrient data.</div>
@@ -2669,7 +2683,7 @@ function setFoodEntries(entries, dateKey) {
 function addFoodEntry(food) {
   const entries = getFoodEntries();
   const servings = food.servings || 1;
-  entries.push({
+  const entry = {
     id:           Date.now(),
     name:         food.name || 'Food',
     calories:     food.calories || 0,
@@ -2686,7 +2700,15 @@ function addFoodEntry(food) {
       carbs:    Math.round((food.carbs    || 0) / servings * 10) / 10,
       fat:      Math.round((food.fat      || 0) / servings * 10) / 10,
     },
-  });
+  };
+  // Persist micros if provided
+  if (food.micros && Object.keys(food.micros).length > 0) {
+    entry.micros = food.micros;
+    entry.baseMicros = Object.fromEntries(
+      Object.entries(food.micros).map(([k, v]) => [k, Math.round(v / servings * 1000) / 1000])
+    );
+  }
+  entries.push(entry);
   setFoodEntries(entries);
   logInteraction('food_logged', food.name);
   scheduleRender(renderRings);
@@ -7426,6 +7448,193 @@ handleStravaCallback();
     }
   }
 })();
+
+// ═══════════════════════════════════════════════════════
+// ── RETROACTIVE MICRO ENRICHMENT ───────────────────────
+// ═══════════════════════════════════════════════════════
+
+async function startRetroEnrichment() {
+  const btn = document.getElementById('enrichBtn');
+  const statusEl = document.getElementById('enrichStatus');
+  const progressEl = document.getElementById('enrichProgress');
+  const bar = document.getElementById('enrichProgressBar');
+  const progressText = document.getElementById('enrichProgressText');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning food history…';
+  statusEl.style.display = 'block';
+  progressEl.style.display = 'block';
+
+  // 1. Collect ALL food entries across all dates
+  const foodEntries = getStorage('foodEntries', {});
+  const allDates = Object.keys(foodEntries);
+
+  if (!allDates.length) {
+    statusEl.textContent = '⚠️ No food history found.';
+    btn.disabled = false;
+    btn.textContent = '🔄 Enrich All Past Meals with Micronutrients';
+    return;
+  }
+
+  // 2. Build unique food name list (skip already-enriched entries)
+  const uniqueFoods = new Map(); // name.toLowerCase() → { name, dates: [{date, idx}] }
+  let totalEntries = 0, alreadyHave = 0;
+
+  allDates.forEach(date => {
+    (foodEntries[date] || []).forEach((entry, idx) => {
+      totalEntries++;
+      if (entry.micros && Object.keys(entry.micros).length > 0) { alreadyHave++; return; }
+      const key = (entry.name || '').toLowerCase().trim();
+      if (!key) return;
+      if (!uniqueFoods.has(key)) uniqueFoods.set(key, { name: entry.name, refs: [] });
+      uniqueFoods.get(key).refs.push({ date, idx });
+    });
+  });
+
+  const needsEnrich = [...uniqueFoods.values()];
+  statusEl.textContent = `Found ${totalEntries} entries · ${alreadyHave} already have micros · ${needsEnrich.length} unique foods to look up`;
+
+  if (!needsEnrich.length) {
+    statusEl.innerHTML = '✅ All entries already have micronutrient data!';
+    progressEl.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = '✅ Already Complete';
+    renderNutritionReport(7);
+    return;
+  }
+
+  // 3. Look up each unique food — USDA first, AI fallback
+  // Process in small batches to avoid rate limiting
+  const BATCH_SIZE = 3;
+  let processed = 0, usdaHits = 0, aiHits = 0, missed = 0;
+  const microCache = new Map(); // food key → micros object (normalized per 100 cal proxy)
+
+  const setProgress = (pct, msg) => {
+    bar.style.width = pct + '%';
+    progressText.textContent = msg;
+  };
+
+  for (let i = 0; i < needsEnrich.length; i += BATCH_SIZE) {
+    const batch = needsEnrich.slice(i, i + BATCH_SIZE);
+    setProgress(Math.round(i / needsEnrich.length * 80), `Looking up ${i+1}–${Math.min(i+BATCH_SIZE, needsEnrich.length)} of ${needsEnrich.length} foods…`);
+
+    // Parallel USDA lookups for the batch
+    await Promise.all(batch.map(async food => {
+      const key = food.name.toLowerCase().trim();
+      try {
+        // Try Foundation + SR Legacy first
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(food.name)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=3&api_key=${USDA_API_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const f = (data.foods || [])[0];
+        if (!f) return;
+
+        // Scale to 100g for storage (entries will scale by their own calories)
+        // Actually: store absolute micros for a standard reference serving
+        // We'll scale to match the entry's calorie count later
+        let servingG = parseFloat(f.servingSize) || 100;
+        const sUnit = (f.servingSizeUnit || 'g').toLowerCase();
+        if (sUnit === 'oz') servingG *= 28.3495;
+        const scale100 = 100 / (servingG || 100);
+        const micros100 = parseMicronutrients(f.foodNutrients, scale100); // normalized to 100g
+
+        const cal100 = (() => {
+          const n = (f.foodNutrients || []).find(x => x.nutrientId === 1008 || x.nutrientId === 208);
+          return (n?.value || 0);
+        })();
+
+        microCache.set(key, { micros100, cal100: cal100 || 200, source: 'usda', fdcName: f.description });
+        usdaHits++;
+      } catch(e) { /* will fall through to AI */ }
+    }));
+
+    processed += batch.length;
+  }
+
+  // 4. AI fallback for any still missing — batch them together
+  const needsAI = needsEnrich.filter(f => !microCache.has(f.name.toLowerCase().trim()));
+  if (needsAI.length > 0) {
+    setProgress(82, `AI estimating ${needsAI.length} foods not found in USDA…`);
+
+    // Send in groups of 10 to AI
+    for (let i = 0; i < needsAI.length; i += 10) {
+      const group = needsAI.slice(i, i + 10);
+      const prompt = 'Estimate micronutrients per 100g for these foods. Return ONLY JSON: ' +
+        '{"foods":[{"name":"string","cal100":0,"micros":{"vitA":0,"vitC":0,"vitD":0,"vitE":0,"vitK":0,' +
+        '"vitB1":0,"vitB2":0,"vitB3":0,"vitB6":0,"vitB12":0,"folate":0,' +
+        '"calcium":0,"magnesium":0,"iron":0,"potassium":0,"zinc":0,"selenium":0,' +
+        '"fiber":0,"sodium":0,"omega3":0,"cholesterol":0,"saturatedFat":0}}]}. ' +
+        'Foods: ' + group.map(f => f.name).join(', ');
+      try {
+        const data = await callClaudeAPI({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
+          messages: [{ role: 'user', content: prompt }]
+        });
+        const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || '{}');
+        (parsed.foods || []).forEach((f, idx) => {
+          if (group[idx]) {
+            const key = group[idx].name.toLowerCase().trim();
+            microCache.set(key, {
+              micros100: f.micros || {},
+              cal100: f.cal100 || 200,
+              source: 'ai'
+            });
+            aiHits++;
+          }
+        });
+      } catch(e) { console.warn('AI batch failed:', e); }
+    }
+  }
+
+  // 5. Write micros back to all matching entries
+  setProgress(90, 'Writing micronutrients back to food history…');
+
+  let enriched = 0;
+  allDates.forEach(date => {
+    let changed = false;
+    (foodEntries[date] || []).forEach(entry => {
+      if (entry.micros && Object.keys(entry.micros).length > 0) return; // skip already done
+      const key = (entry.name || '').toLowerCase().trim();
+      const cached = microCache.get(key);
+      if (!cached) { missed++; return; }
+
+      // Scale micros from per-100g to this entry's calorie equivalent
+      // Use calorie ratio as proxy for serving size
+      const entryCals = entry.calories || 200;
+      const scaleFactor = cached.cal100 > 0 ? entryCals / cached.cal100 : 1;
+      const scaledMicros = {};
+      Object.entries(cached.micros100 || {}).forEach(([k, v]) => {
+        scaledMicros[k] = Math.round(v * scaleFactor * 1000) / 1000;
+      });
+
+      if (Object.keys(scaledMicros).length > 0) {
+        entry.micros = scaledMicros;
+        entry.microSource = cached.source;
+        enriched++;
+        changed = true;
+      }
+    });
+    if (changed) setStorage('foodEntries_' + date, foodEntries[date]);
+  });
+
+  // Also save back to main foodEntries object
+  setStorage('foodEntries', foodEntries);
+
+  setProgress(100, 'Done!');
+  missed = needsEnrich.length - usdaHits - aiHits;
+  statusEl.innerHTML = `✅ Enriched <strong>${enriched}</strong> entries — ` +
+    `<span style="color:#22c55e">${usdaHits} USDA</span> · ` +
+    `<span style="color:#a78bfa">${aiHits} AI estimated</span>` +
+    (missed > 0 ? ` · <span style="color:#ef4444">${missed} not found</span>` : '');
+
+  btn.disabled = false;
+  btn.textContent = '✅ Enrichment Complete — Run Again?';
+
+  // Refresh the nutrition report
+  setTimeout(() => renderNutritionReport(30), 500);
+}
 
 // ═══════════════════════════════════════════════════════
 // ── MEAL ANALYZER ──────────────────────────────────────
