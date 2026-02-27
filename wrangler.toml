@@ -2,7 +2,3 @@ name = "macro"
 compatibility_date = "2026-02-27"
 workers_dev = true
 main = "worker.js"
-
-[assets]
-directory = "./public"
-binding = "ASSETS"
