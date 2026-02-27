@@ -894,13 +894,19 @@
       </div>
 
       <!-- LIFT HISTORY -->
-      <div id="historyTab-lift">
+      <div id="historyTab-lift" style="display:none">
         <div id="historyList"></div>
       </div>
 
       <!-- BLOOD WORK -->
-      <div id="historyTab-blood" style="display:none">
-        <div class="card" style="margin-bottom:14px">
+      <div id="historyTab-blood">
+        <div id="bloodResultsList"></div>
+        <div id="bloodAIInsights" style="display:none" class="card">
+          <div class="card-label" style="color:#a78bfa">🤖 AI Health Insights</div>
+          <div id="bloodAIInsightsText" style="font-size:13px;color:var(--text2);line-height:1.7"></div>
+          <button onclick="analyzeBloodWithNutrition()" style="margin-top:14px;width:100%;background:#0f172a;border:1px solid #7c3aed;border-radius:12px;padding:12px;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔗 Correlate with My Nutrition</button>
+        </div>
+        <div class="card" style="margin-top:14px">
           <div class="card-label" style="color:#ef4444">🩸 Upload Lab Results</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Take a photo or scan of your lab report. AI will read all values automatically.</div>
           <div id="bloodUploadDrop" style="border:2px dashed #2a3040;border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('bloodFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#ef4444'" ondragleave="this.style.borderColor='#2a3040'" ondrop="event.preventDefault();handleBloodDrop(event)">
@@ -919,12 +925,6 @@
             <textarea id="bloodPasteText" placeholder="Paste the full text of your lab report here..." style="width:100%;height:120px;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
             <button onclick="analyzeBloodPasteText()" style="width:100%;margin-top:8px;background:#7c3aed;border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze Pasted Text</button>
           </div>
-        </div>
-        <div id="bloodResultsList"></div>
-        <div id="bloodAIInsights" style="display:none" class="card">
-          <div class="card-label" style="color:#a78bfa">🤖 AI Health Insights</div>
-          <div id="bloodAIInsightsText" style="font-size:13px;color:var(--text2);line-height:1.7"></div>
-          <button onclick="analyzeBloodWithNutrition()" style="margin-top:14px;width:100%;background:#0f172a;border:1px solid #7c3aed;border-radius:12px;padding:12px;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔗 Correlate with My Nutrition</button>
         </div>
       </div>
 
@@ -2709,7 +2709,7 @@ function switchTab(name, btn) {
   if (name === 'lift') renderWorkoutPage();
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
-  if (name === 'history') renderHistoryPage();
+  if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
   if (name === 'trends') renderTrendChart();
   if (name === 'shoes')  renderShoePage();
 }
@@ -7402,7 +7402,8 @@ function renderBloodPanels(idx) {
       return ap.localeCompare(bp);
     });
 
-    const dateHeaders = results.map(r =>
+    const sortedResults = [...results].sort((a,b) => b.date.localeCompare(a.date));
+    const dateHeaders = sortedResults.map(r =>
       `<th style="text-align:right;min-width:70px">${r.date.slice(5)}<br><span style="font-size:9px;font-weight:400">${r.date.slice(0,4)}</span></th>`
     ).join('');
 
@@ -7415,7 +7416,7 @@ function renderBloodPanels(idx) {
       const rowClass = latestStatus === 'bad' ? 'row-bad' : latestStatus === 'warn' ? 'row-warn' : '';
       const dotCol = {ok:'#22c55e',warn:'#f59e0b',bad:'#ef4444'}[latestStatus] || '#475569';
 
-      const cells = results.map(r => {
+      const cells = sortedResults.map(r => {
         const m = r.markers.find(x => x.key === key);
         if (!m) return '<td style="text-align:right;color:var(--text3)">—</td>';
         const s = bloodStatus(key, m.value);
