@@ -1339,6 +1339,37 @@ export default {
   </div>
 </div>
 
+
+    <!-- CLAUDE AI PAGE -->
+    <div id="page-claude" class="page">
+      <div style="display:flex;flex-direction:column;height:calc(100vh - 120px)">
+        <!-- Header -->
+        <div style="padding:16px 16px 8px;border-bottom:1px solid #1e293b;flex-shrink:0">
+          <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:2px">🤖 AI Assistant</div>
+          <div style="font-size:11px;color:#64748b">Powered by Claude · Knows your fitness data</div>
+        </div>
+
+        <!-- Quick prompts -->
+        <div style="padding:10px 16px;display:flex;gap:8px;overflow-x:auto;flex-shrink:0;scrollbar-width:none">
+          <button onclick="claudeQuickPrompt('What should I eat to hit my remaining macros today?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🥗 Meal suggestion</button>
+          <button onclick="claudeQuickPrompt('Analyze my nutrition this week and give me insights.')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📊 Weekly analysis</button>
+          <button onclick="claudeQuickPrompt('Should I run today based on my workout schedule and recovery?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🏃 Run today?</button>
+          <button onclick="claudeQuickPrompt('How am I tracking toward my weight loss goal?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⚖️ Weight progress</button>
+        </div>
+
+        <!-- Chat messages -->
+        <div id="claudeChatMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="text-align:center;color:#334155;font-size:13px;margin-top:20px">Ask me anything about your fitness, nutrition, or training.</div>
+        </div>
+
+        <!-- Input -->
+        <div style="padding:12px 16px;border-top:1px solid #1e293b;flex-shrink:0;display:flex;gap:10px;align-items:flex-end">
+          <textarea id="claudeInput" placeholder="Ask Claude..." rows="1" style="flex:1;background:#0f172a;border:1.5px solid #1e3a5f;border-radius:14px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px;overflow-y:auto;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <button onclick="sendClaudeMessage()" id="claudeSendBtn" style="background:#3b82f6;border:none;border-radius:12px;width:44px;height:44px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
+        </div>
+      </div>
+    </div>
+
 <!-- 🚀 Hidden Deploy Modal — tap header 5x to open -->
 <div id="deployModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center">
   <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:32px;width:90%;max-width:420px">
@@ -1369,6 +1400,7 @@ export default {
   <button class="tab-btn" onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" onclick="switchTab('program',this)"><span class="tab-icon">📋</span>Program</button>
   <button class="tab-btn" onclick="switchTab('history',this)"><span class="tab-icon">🗓️</span>History</button>
+  <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
 <script>
@@ -6584,6 +6616,142 @@ function showDeployStatus(msg, color) {
   el.style.display = 'block';
   el.style.color = color;
   el.textContent = msg;
+}
+
+
+// ── Claude AI Chat ──
+const CLAUDE_API_KEY = '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';
+let claudeHistory = [];
+
+function getAppContext() {
+  // Pull live data from the app
+  const todayK = todayKey();
+  const entries = getStorage('entries_' + todayK, []);
+  const totals = entries.reduce((a, e) => ({
+    calories: a.calories + (e.calories||0),
+    protein: a.protein + (e.protein||0),
+    carbs: a.carbs + (e.carbs||0),
+    fat: a.fat + (e.fat||0)
+  }), {calories:0, protein:0, carbs:0, fat:0});
+
+  const weights = getStorage('weightLog', []);
+  const latestWeight = weights.length ? weights[weights.length-1] : null;
+
+  const shoeRuns = getStorage('shoeRuns', []);
+  const recentRuns = shoeRuns.slice(-5);
+
+  const workouts = getStorage('workoutHistory', []);
+  const recentWorkouts = workouts.slice(-5);
+
+  const userMacros = getStorage('userMacros', MACROS);
+  const tdee = getStorage('userTDEE', TDEE);
+
+  return \`You are a personal fitness and nutrition AI assistant built into Jeremy's Tracker AI app. You know Jeremy's data:
+
+GOALS: Lose weight from 170 to 163 lbs in 30 days. Age: 52.
+DAILY TARGETS: \${userMacros.calories} calories, \${userMacros.protein}g protein, \${userMacros.carbs}g carbs, \${userMacros.fat}g fat. TDEE: \${tdee} cal.
+
+TODAY'S INTAKE SO FAR (\${todayK}):
+- Calories: \${Math.round(totals.calories)} / \${userMacros.calories} (\${Math.round(userMacros.calories - totals.calories)} remaining)
+- Protein: \${Math.round(totals.protein)}g / \${userMacros.protein}g
+- Carbs: \${Math.round(totals.carbs)}g / \${userMacros.carbs}g
+- Fat: \${Math.round(totals.fat)}g / \${userMacros.fat}g
+- Foods logged today: \${entries.map(e => e.name).join(', ') || 'none yet'}
+
+LATEST WEIGHT: \${latestWeight ? latestWeight.weight + ' lbs on ' + latestWeight.date : 'not logged'}
+
+RECENT RUNS: \${recentRuns.length ? recentRuns.map(r => r.date + ': ' + r.miles + ' mi').join(', ') : 'none'}
+
+RECENT WORKOUTS: \${recentWorkouts.length ? recentWorkouts.map(w => w.date + ': ' + (w.name||'workout')).join(', ') : 'none'}
+
+Be concise, practical, and supportive. Use Jeremy's actual data when answering.\`;
+}
+
+function claudeQuickPrompt(text) {
+  document.getElementById('claudeInput').value = text;
+  sendClaudeMessage();
+}
+
+async function sendClaudeMessage() {
+  const input = document.getElementById('claudeInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Add user message
+  appendClaudeMessage('user', msg);
+  claudeHistory.push({ role: 'user', content: msg });
+
+  // Show typing indicator
+  const typingId = 'typing_' + Date.now();
+  appendClaudeMessage('typing', '...', typingId);
+
+  document.getElementById('claudeSendBtn').disabled = true;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-20250514',
+        max_tokens: 1024,
+        system: getAppContext(),
+        messages: claudeHistory
+      })
+    });
+
+    const data = await resp.json();
+    const reply = data.content?.[0]?.text || 'Sorry, I had trouble responding.';
+
+    // Remove typing indicator
+    document.getElementById(typingId)?.remove();
+
+    claudeHistory.push({ role: 'assistant', content: reply });
+    appendClaudeMessage('assistant', reply);
+
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    appendClaudeMessage('assistant', '❌ Error: ' + e.message);
+  }
+
+  document.getElementById('claudeSendBtn').disabled = false;
+  document.getElementById('claudeInput').focus();
+}
+
+function appendClaudeMessage(role, text, id) {
+  const container = document.getElementById('claudeChatMessages');
+  const div = document.createElement('div');
+  if (id) div.id = id;
+
+  const isUser = role === 'user';
+  const isTyping = role === 'typing';
+
+  div.style.cssText = \`display:flex;justify-content:\${isUser ? 'flex-end' : 'flex-start'};\`;
+
+  const bubble = document.createElement('div');
+  bubble.style.cssText = \`
+    max-width:85%;
+    padding:12px 16px;
+    border-radius:\${isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};
+    background:\${isUser ? '#2563eb' : '#1e293b'};
+    color:#fff;
+    font-size:14px;
+    line-height:1.5;
+    white-space:pre-wrap;
+    \${isTyping ? 'color:#64748b;font-style:italic;' : ''}
+  \`;
+  bubble.textContent = text;
+
+  div.appendChild(bubble);
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
 }
 
 </script>
