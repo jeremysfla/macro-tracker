@@ -51,10 +51,10 @@
 
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
-  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 7px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
   .tab-btn.active { color: var(--green); }
   .tab-btn.active .tab-icon { transform: scale(1.1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18)); }
-  .tab-icon { font-size: 15px; transition: transform 0.2s, filter 0.2s; display: block; }
+  .tab-icon { font-size: 22px; transition: transform 0.2s, filter 0.2s; display: block; }
 
   /* Inputs */
   input[type=number], input[type=text] { background: var(--surface2); border: 1.5px solid var(--border); color: var(--text); padding: 11px 14px; border-radius: 14px; font-family: inherit; font-size: 14px; font-weight: 500; width: 100%; outline: none; -moz-appearance: textfield; transition: border-color 0.2s, box-shadow 0.2s; }
@@ -831,9 +831,10 @@
     <div id="page-history" class="page">
       <!-- Sub-tab bar -->
       <div style="display:flex;gap:6px;padding:0 0 14px 0;border-bottom:1px solid var(--border);margin-bottom:16px">
-        <button id="htab-lift"  class="htab-btn htab-active" onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
-        <button id="htab-blood" class="htab-btn"             onclick="switchHistoryTab('blood')">🩸 Blood Work</button>
-        <button id="htab-nutr"  class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
+        <button id="htab-lift"    class="htab-btn htab-active" onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
+        <button id="htab-blood"   class="htab-btn"             onclick="switchHistoryTab('blood')">🩸 Blood</button>
+        <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
+        <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
       </div>
 
       <!-- LIFT HISTORY -->
@@ -899,6 +900,23 @@
         </div>
         <div id="nutritionReportDetails"></div>
       </div>
+
+      <!-- TRENDS TAB -->
+      <div id="historyTab-trends" style="display:none">
+        <div class="card">
+          <div class="section-title" style="margin-bottom:6px">📈 Monthly Trends</div>
+          <div class="chart-tab-row" id="trendChartTabs">
+            <button class="chart-tab active" data-metric="calories" onclick="setTrendMetric('calories',this)">Calories</button>
+            <button class="chart-tab" data-metric="protein" onclick="setTrendMetric('protein',this)">Protein</button>
+            <button class="chart-tab" data-metric="carbs" onclick="setTrendMetric('carbs',this)">Carbs</button>
+            <button class="chart-tab" data-metric="fat" onclick="setTrendMetric('fat',this)">Fat</button>
+            <button class="chart-tab" data-metric="weight" onclick="setTrendMetric('weight',this)">Weight</button>
+          </div>
+          <div class="chart-container" id="monthChartContainer"></div>
+          <div id="trendSummaryRow" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- RECIPES PAGE -->
@@ -930,21 +948,7 @@
       </div>
     </div>
 
-    <!-- TRENDS PAGE -->
-    <div id="page-trends" class="page">
-      <div class="card">
-        <div class="section-title" style="margin-bottom:6px">📈 Monthly Trends</div>
-        <div class="chart-tab-row" id="trendChartTabs">
-          <button class="chart-tab active" data-metric="calories" onclick="setTrendMetric('calories',this)">Calories</button>
-          <button class="chart-tab" data-metric="protein" onclick="setTrendMetric('protein',this)">Protein</button>
-          <button class="chart-tab" data-metric="carbs" onclick="setTrendMetric('carbs',this)">Carbs</button>
-          <button class="chart-tab" data-metric="fat" onclick="setTrendMetric('fat',this)">Fat</button>
-          <button class="chart-tab" data-metric="weight" onclick="setTrendMetric('weight',this)">Weight</button>
-        </div>
-        <div class="chart-container" id="monthChartContainer"></div>
-        <div id="trendSummaryRow" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>
-      </div>
-    </div>
+
 
     <!-- SHOES PAGE -->
     <div id="page-shoes" class="page">
@@ -1574,7 +1578,6 @@
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
   <button class="tab-btn" onclick="switchTab('recipes',this)"><span class="tab-icon">🍽️</span>Recipes</button>
-  <button class="tab-btn" onclick="switchTab('trends',this)"><span class="tab-icon">📊</span>Trends</button>
   <button class="tab-btn" onclick="switchTab('shoes',this)"><span class="tab-icon">👟</span>Shoes</button>
   <button class="tab-btn" onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" onclick="switchTab('program',this)"><span class="tab-icon">📋</span>Program</button>
@@ -6630,15 +6633,16 @@ function onStravaRunSynced(runData) {
 // ═══════════════════════════════════════════════════════
 
 function switchHistoryTab(tab) {
-  ['lift','blood','nutr'].forEach(t => {
+  ['lift','blood','nutr','trends'].forEach(t => {
     const el = document.getElementById('historyTab-'+t);
     const btn = document.getElementById('htab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
     if (btn) btn.classList.toggle('htab-active', t === tab);
   });
-  if (tab === 'lift')  renderHistoryPage();
-  if (tab === 'blood') renderBloodWorkPage();
-  if (tab === 'nutr')  renderNutritionReport(7);
+  if (tab === 'lift')   renderHistoryPage();
+  if (tab === 'blood')  renderBloodWorkPage();
+  if (tab === 'nutr')   renderNutritionReport(7);
+  if (tab === 'trends') { renderMonthChart(); renderTrendSummary(); }
 }
 
 // ═══════════════════════════════════════════════════════
