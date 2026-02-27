@@ -469,7 +469,7 @@ export default {
   <div class="header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
-        <div class="header-sub">✅ Auto-Deploy Test</div>
+        <div class="header-sub">170 → 163 lbs · 30 days</div>
         <div class="header-title" id="appHeaderTitle" onclick="handleDeployTap()">Jeremy's Tracker AI</div>
         <div id="headerDateLabel" style="font-size:12px;color:var(--text2);font-weight:600;margin-top:4px;letter-spacing:0.2px"></div>
       </div>
@@ -6540,7 +6540,7 @@ async function runDeploy() {
   showDeployStatus('⏳ Pushing to GitHub...', '#3b82f6');
 
   const REPO = 'jeremysfla/macro-tracker';
-  const FILE = 'public/index.html';
+  const FILE = 'worker.js';
   const headers = {
     'Authorization': \`token \${token}\`,
     'Accept': 'application/vnd.github.v3+json',
@@ -6548,13 +6548,17 @@ async function runDeploy() {
   };
 
   try {
-    // Get current SHA
+    // Wrap HTML in worker.js
+    const escaped = _deployFileContent.replace(/\\\\/g, '\\\\\\\\').replace(/\`/g, '\\\\\`').replace(/\\$\\{/g, '\\\\\${');
+    const workerContent = \`export default {\\n  async fetch(request) {\\n    return new Response(\\\`\${escaped}\\\`, {\\n      headers: { 'Content-Type': 'text/html; charset=utf-8' }\\n    });\\n  }\\n}\\n\`;
+
+    // Get current SHA of worker.js
     let sha = '';
     const getResp = await fetch(\`https://api.github.com/repos/\${REPO}/contents/\${FILE}\`, { headers });
     if (getResp.ok) { const d = await getResp.json(); sha = d.sha; }
 
-    // Push
-    const encoded = btoa(unescape(encodeURIComponent(_deployFileContent)));
+    // Push worker.js
+    const encoded = btoa(unescape(encodeURIComponent(workerContent)));
     const body = { message: 'Deploy from macro app', content: encoded };
     if (sha) body.sha = sha;
 
