@@ -1,8 +1,8 @@
 name = "macro"
 compatibility_date = "2026-02-27"
 workers_dev = true
+main = "worker.js"
 
 [assets]
 directory = "./public"
-html_handling = "force-trailing-slash"
-not_found_handling = "single-page-application"
+binding = "ASSETS"
