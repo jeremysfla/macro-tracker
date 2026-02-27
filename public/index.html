@@ -4240,7 +4240,7 @@ Be realistic. A chicken breast is ~30g protein. A cup of rice is ~45g carbs. Err
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-6',
       max_tokens: 1024,
       messages: [{
         role: 'user',
@@ -6918,12 +6918,19 @@ async function analyzeBloodPasteText() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
+      model: 'claude-opus-4-6',
+      max_tokens: 4000,
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
     });
-    const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(raw);
+    if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
+    const rawText = data.content?.[0]?.text || '';
+    const raw = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+      else throw new Error('Could not parse response: ' + rawText.slice(0, 200));
+    }
     const newEntry = await saveBloodEntry(parsed);
     status.textContent = '✅ Imported ' + newEntry.markers.length + ' markers from ' + newEntry.date;
     document.getElementById('bloodPasteArea').style.display = 'none';
@@ -6942,27 +6949,25 @@ async function analyzeBloodReport() {
   const btn    = document.getElementById('bloodAnalyzeBtn');
   const status = document.getElementById('bloodUploadStatus');
   btn.disabled = true;
-  btn.textContent = '⏳ Reading your lab report…';
   status.style.display = 'block';
   status.style.color = 'var(--text2)';
-  status.textContent = 'AI is extracting all values from your lab report image…';
 
   try {
     let msgContent;
     if (_bloodFileData.extractedText) {
-      // PDF with client-side extracted text — small payload, no size limit issues
-      status.textContent = 'AI is parsing your lab values…';
+      status.textContent = '⏳ Sending extracted text to Claude…';
+      btn.textContent = '⏳ Analyzing…';
       msgContent = buildBloodParsePrompt() + `\n\nLAB REPORT TEXT:\n` + _bloodFileData.extractedText;
     } else if (_bloodFileData.base64 && _bloodFileData.mediaType === 'application/pdf') {
-      // PDF fallback — base64 document
-      status.textContent = 'AI is reading your PDF…';
+      status.textContent = '⏳ Sending PDF to Claude…';
+      btn.textContent = '⏳ Analyzing…';
       msgContent = [
         { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: _bloodFileData.base64 } },
         { type: 'text', text: buildBloodParsePrompt() }
       ];
     } else {
-      // Image — base64 image
-      status.textContent = 'AI is extracting values from your lab image…';
+      status.textContent = '⏳ Sending image to Claude…';
+      btn.textContent = '⏳ Analyzing…';
       msgContent = [
         { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 } },
         { type: 'text', text: buildBloodParsePrompt() }
@@ -6970,29 +6975,51 @@ async function analyzeBloodReport() {
     }
 
     const data = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
+      model: 'claude-opus-4-6',
+      max_tokens: 4000,
       messages: [{ role: 'user', content: msgContent }]
     });
 
-    const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(raw);
-    const newEntry = await saveBloodEntry(parsed);
+    // Surface API-level errors
+    if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
 
+    const rawText = data.content?.[0]?.text || '';
+    if (!rawText) throw new Error('Empty response from Claude. Full response: ' + JSON.stringify(data));
+
+    // Strip markdown fences robustly
+    const raw = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch(jsonErr) {
+      // Try to extract JSON object from response if Claude added extra text
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('JSON parse failed. Claude said: ' + rawText.slice(0, 200));
+      }
+    }
+
+    if (!parsed.markers || !parsed.markers.length) throw new Error('No markers found in response');
+
+    const newEntry = await saveBloodEntry(parsed);
     btn.style.display = 'none';
     document.getElementById('bloodUploadName').textContent = '';
     _bloodFileData = null;
     document.getElementById('bloodFileInput').value = '';
     status.textContent = '✅ Imported ' + newEntry.markers.length + ' markers from ' + newEntry.date;
-
+    status.style.color = '#22c55e';
     renderBloodWorkPage();
     generateBloodAIInsights(newEntry);
 
   } catch(e) {
     console.error('Blood parse error:', e);
     btn.disabled = false;
-    btn.textContent = '🤖 Analyze Image with AI';
-    status.textContent = '❌ Could not parse image. Try the "paste text" option below instead.';
+    btn.textContent = '🤖 Analyze with AI';
+    status.style.color = '#ef4444';
+    status.textContent = '❌ ' + (e.message || 'Unknown error');
     status.style.color = '#ef4444';
   }
 }
@@ -7460,7 +7487,7 @@ async function generateBloodAIInsights(entry) {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-opus-4-6',
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -7496,7 +7523,7 @@ async function analyzeBloodWithNutrition() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-opus-4-6',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -8060,8 +8087,8 @@ async function analyzeMealDescription() {
 
   try {
     const decompData = await callClaudeAPI({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 800,
       messages: [{ role: 'user', content: decompPrompt }]
     });
 
@@ -8112,7 +8139,7 @@ async function analyzeMealDescription() {
         'Ingredients: ' + notFound.map(r => r.ing.name + ' ' + r.ing.grams + 'g').join(', ');
       try {
         const estData = await callClaudeAPI({
-          model: 'claude-haiku-4-5-20251001', max_tokens: 600,
+          model: 'claude-sonnet-4-6', max_tokens: 800,
           messages: [{ role: 'user', content: estimatePrompt }]
         });
         const estRaw = (estData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
@@ -8937,7 +8964,7 @@ async function sendClaudeMessage() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-20250514',
+        model: 'claude-opus-4-6',
         max_tokens: 1024,
         system: getAppContext(),
         messages: claudeHistory
