@@ -6643,12 +6643,12 @@ function getAppContext() {
     fat: a.fat + (e.fat||0)
   }), {calories:0, protein:0, carbs:0, fat:0});
 
-  // Full food history - last 30 days
+  // Full food history - last 30 days (use EST to match app's storage keys)
   const foodHistory = [];
   for (let i = 1; i <= 30; i++) {
-    const d = new Date();
+    const d = nowEST();
     d.setDate(d.getDate() - i);
-    const dk = d.toISOString().split('T')[0];
+    const dk = dateToKey(d);
     const dayEntries = getStorage('entries_' + dk, []);
     if (dayEntries.length > 0) {
       const dt = dayEntries.reduce((a, e) => ({
