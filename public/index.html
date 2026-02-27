@@ -6,6 +6,7 @@
 <title>Jeremymacro</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -6713,16 +6714,65 @@ function handleBloodDrop(e) {
 
 function handleBloodFile(file) {
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
-    const mediaType = file.type || 'image/jpeg';
-    _bloodFileData = { base64: dataUrl.split(',')[1], mediaType, name: file.name };
-    document.getElementById('bloodUploadName').textContent = '📎 ' + file.name;
-    document.getElementById('bloodAnalyzeBtn').style.display = 'block';
-    document.getElementById('bloodUploadStatus').style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  const nameEl   = document.getElementById('bloodUploadName');
+  const statusEl = document.getElementById('bloodUploadStatus');
+  const btnEl    = document.getElementById('bloodAnalyzeBtn');
+  nameEl.textContent = '📎 ' + file.name;
+  statusEl.style.display = 'block';
+  statusEl.style.color   = 'var(--text2)';
+  statusEl.textContent   = '⏳ Reading file…';
+  btnEl.style.display    = 'none';
+
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    // Extract text from PDF using PDF.js — avoids sending huge base64 through the proxy
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        if (typeof pdfjsLib === 'undefined') {
+          // PDF.js not loaded yet — fallback to base64 document method
+          const base64 = e.target.result.split(',')[1];
+          _bloodFileData = { base64, mediaType: 'application/pdf', name: file.name, extractedText: null };
+          statusEl.textContent = '';
+          btnEl.style.display = 'block';
+          btnEl.textContent   = '🤖 Analyze PDF with AI';
+          return;
+        }
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const arrayBuffer = e.target.result;
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const tc   = await page.getTextContent();
+          fullText  += tc.items.map(s => s.str).join(' ') + '\n';
+        }
+        _bloodFileData = { extractedText: fullText, mediaType: 'text/plain', name: file.name, base64: null };
+        statusEl.textContent = '✅ ' + pdf.numPages + ' pages extracted — ready to analyze';
+        btnEl.style.display = 'block';
+        btnEl.textContent   = '🤖 Analyze PDF with AI';
+      } catch(err) {
+        console.error('PDF extract error:', err);
+        statusEl.textContent = '❌ Could not read PDF. Try the paste text option below.';
+        statusEl.style.color = '#ef4444';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    // Image file — use base64 as before
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      const mediaType = file.type || 'image/jpeg';
+      _bloodFileData = { base64: dataUrl.split(',')[1], mediaType, name: file.name, extractedText: null };
+      statusEl.textContent = '';
+      btnEl.style.display  = 'block';
+      btnEl.textContent    = '🤖 Analyze Image with AI';
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
 function getBloodResults() { return getStorage('bloodResults', []); }
@@ -6897,23 +6947,27 @@ async function analyzeBloodReport() {
   status.style.color = 'var(--text2)';
   status.textContent = 'AI is extracting all values from your lab report image…';
 
-  const isPdf = _bloodFileData.mediaType === 'application/pdf';
-
   try {
     let msgContent;
-    if (isPdf) {
-      // PDFs: send as base64 document type (Claude API document format)
+    if (_bloodFileData.extractedText) {
+      // PDF with client-side extracted text — small payload, no size limit issues
+      status.textContent = 'AI is parsing your lab values…';
+      msgContent = buildBloodParsePrompt() + '
+
+LAB REPORT TEXT:
+' + _bloodFileData.extractedText;
+    } else if (_bloodFileData.base64 && _bloodFileData.mediaType === 'application/pdf') {
+      // PDF fallback — base64 document
+      status.textContent = 'AI is reading your PDF…';
       msgContent = [
-        {
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: _bloodFileData.base64 }
-        },
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: _bloodFileData.base64 } },
         { type: 'text', text: buildBloodParsePrompt() }
       ];
     } else {
-      // Images: send as base64 image
+      // Image — base64 image
+      status.textContent = 'AI is extracting values from your lab image…';
       msgContent = [
-        { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 }},
+        { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 } },
         { type: 'text', text: buildBloodParsePrompt() }
       ];
     }
