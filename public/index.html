@@ -6635,24 +6635,27 @@ function getAppContext() {
   const userMacros = getStorage('userMacros', MACROS);
   const tdee = getStorage('userTDEE', TDEE);
 
-  // Today's food
-  const entries = getStorage('entries_' + todayK, []);
-  const totals = entries.reduce((a, e) => ({
+  // Today's food - use foodEntries (correct storage key)
+  const allFoodEntries = getStorage('foodEntries', {});
+  const macroLog = getStorage('macroLog', {});
+  const entries = allFoodEntries[todayK] || [];
+  const todayMacros = macroLog[todayK] || {};
+  const totals = Object.keys(todayMacros).length ? todayMacros : entries.reduce((a, e) => ({
     calories: a.calories + (e.calories||0),
     protein: a.protein + (e.protein||0),
     carbs: a.carbs + (e.carbs||0),
     fat: a.fat + (e.fat||0)
   }), {calories:0, protein:0, carbs:0, fat:0});
 
-  // Full food history - last 30 days (use EST to match app's storage keys)
+  // Full food history - last 30 days using correct storage key
   const foodHistory = [];
   for (let i = 1; i <= 30; i++) {
     const d = nowEST();
     d.setDate(d.getDate() - i);
     const dk = dateToKey(d);
-    const dayEntries = getStorage('entries_' + dk, []);
-    if (dayEntries.length > 0) {
-      const dt = dayEntries.reduce((a, e) => ({
+    const dayEntries = allFoodEntries[dk];
+    if (dayEntries && dayEntries.length > 0) {
+      const dt = macroLog[dk] || dayEntries.reduce((a, e) => ({
         calories: a.calories + (e.calories||0),
         protein: a.protein + (e.protein||0),
         carbs: a.carbs + (e.carbs||0),
@@ -6678,7 +6681,7 @@ function getAppContext() {
 
   // Lift PRs
   const prs = getStorage('liftPRs', {});
-  const prList = Object.entries(prs).map(([k,v]) => `${k}: ${v}lbs`);
+  const prList = Object.entries(prs).map(([k,v]) => `${k}: ${v.weight||v}lbs x${v.reps||1} (1RM: ${v.est1rm||v.weight||v}lbs)`);
 
   // Shoes
   const shoes = getStorage('shoeGarage', []);
