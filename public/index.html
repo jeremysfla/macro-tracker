@@ -140,7 +140,26 @@
   .hist-wt { color: var(--text); font-weight: 600; }
 
   /* History sub-tabs */
-  .htab-btn { flex:1; padding:9px 6px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
+  /* Food search mode tabs */
+  .fstab-btn { flex:1; padding:8px 4px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
+  .fstab-active { background:#22c55e; border-color:#22c55e; color:#fff; }
+  #fstab-meal.fstab-active  { background:#7c3aed; border-color:#7c3aed; }
+  #fstab-supp.fstab-active  { background:#3b82f6; border-color:#3b82f6; }
+
+  /* Supplement presets */
+  .supp-preset-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); }
+  .supp-preset-row:last-child { border-bottom:none; }
+  .supp-preset-info { flex:1 }
+  .supp-preset-name { font-size:13px; font-weight:600; color:var(--text); }
+  .supp-preset-detail { font-size:11px; color:var(--text3); margin-top:2px; }
+  .supp-log-btn { padding:6px 14px; border-radius:10px; border:1.5px solid #3b82f6; background:transparent; color:#3b82f6; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap; }
+
+  /* Meal analysis */
+  .meal-ingredient-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; }
+  .meal-ingredient-row:last-child { border-bottom:none; }
+  .meal-ingredient-status { font-size:14px; flex-shrink:0; }
+
+    .htab-btn { flex:1; padding:9px 6px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
   .htab-active { background:#ef4444; border-color:#ef4444; color:#fff; }
   #htab-blood.htab-active { background:#ef4444; border-color:#ef4444; }
   #htab-lift.htab-active  { background:#22c55e; border-color:#22c55e; }
@@ -957,28 +976,57 @@
 <div class="modal-overlay" id="aiSearchModal">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-title">🔍 Food Search</div>
-    <div class="modal-sub">Search 900,000+ foods from the USDA database — brand names, generics, restaurants</div>
+    <div class="modal-title">🔍 Food & Supplement Logger</div>
 
-    <div style="position:relative;margin-bottom:10px">
-      <input type="text" id="aiSearchInput"
-        placeholder="e.g. Brown eggs from Whole Foods, large"
-        style="padding-right:48px"
-        onkeydown="if(event.key==='Enter')runAISearch()" />
-      <button onclick="runAISearch()" id="aiSearchBtn"
-        style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:10px;background:var(--green);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">
-        ➤
-      </button>
+    <!-- Mode tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button id="fstab-search" class="fstab-btn fstab-active" onclick="switchFoodSearchTab('search')">🔍 Search</button>
+      <button id="fstab-meal"   class="fstab-btn"              onclick="switchFoodSearchTab('meal')">🍽️ Meal</button>
+      <button id="fstab-supp"   class="fstab-btn"              onclick="switchFoodSearchTab('supp')">💊 Supplements</button>
     </div>
 
-    <!-- Example chips -->
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px" id="aiSearchExamples">
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🥚 Whole Foods brown eggs</button>
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🍗 Rotisserie chicken breast</button>
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🥣 Chobani plain greek yogurt</button>
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🍚 White rice cooked 1 cup</button>
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🫐 Blueberries 1/2 cup</button>
-      <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🧀 Cottage cheese 2%</button>
+    <!-- SEARCH TAB -->
+    <div id="fstab-search-content">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">USDA database — brands, whole foods, restaurants. Whole foods auto-include full micronutrient data.</div>
+      <div style="position:relative;margin-bottom:10px">
+        <input type="text" id="aiSearchInput"
+          placeholder="e.g. banana, grilled chicken breast, Chipotle bowl"
+          style="padding-right:48px"
+          onkeydown="if(event.key==='Enter')runAISearch()" />
+        <button onclick="runAISearch()" id="aiSearchBtn"
+          style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:10px;background:var(--green);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">
+          ➤
+        </button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px" id="aiSearchExamples">
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🍗 Chicken breast cooked</button>
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🥚 Eggs scrambled</button>
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🍚 White rice cooked 1 cup</button>
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🫐 Blueberries 1/2 cup</button>
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🥦 Broccoli steamed</button>
+        <button class="ts-btn" onclick="setSearchExample(this)" style="font-size:11px">🐟 Salmon Atlantic</button>
+      </div>
+    </div>
+
+    <!-- MEAL TAB -->
+    <div id="fstab-meal-content" style="display:none">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6">Describe a home-cooked meal or restaurant dish. AI decomposes it into ingredients, looks each up in USDA, and logs complete micronutrient data.</div>
+      <textarea id="mealDescInput" placeholder="e.g. Grilled salmon 6oz with roasted broccoli 1 cup and brown rice 1/2 cup&#10;&#10;Or: Chipotle chicken burrito bowl with rice, black beans, fajita veggies, salsa" style="width:100%;height:90px;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px;color:var(--text);font-size:13px;font-family:inherit;resize:none;box-sizing:border-box;margin-bottom:10px"></textarea>
+      <div id="mealAnalysisResult" style="display:none"></div>
+      <button onclick="analyzeMealDescription()" id="mealAnalyzeBtn" style="width:100%;background:#7c3aed;border:none;border-radius:12px;padding:13px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze Meal + Get Micros</button>
+    </div>
+
+    <!-- SUPPLEMENTS TAB -->
+    <div id="fstab-supp-content" style="display:none">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Log supplements with accurate micronutrient data. These count toward your daily nutrition totals.</div>
+      <div id="suppPresetList" style="margin-bottom:14px"></div>
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Custom Supplement</div>
+        <input type="text" id="suppCustomName" placeholder="Supplement name (e.g. Zinc 15mg)" style="margin-bottom:8px">
+        <div id="suppCustomNutrients" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px"></div>
+        <button onclick="addCustomSuppNutrient()" style="width:100%;padding:9px;background:var(--surface2);border:1.5px dashed var(--border);border-radius:10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px">+ Add Nutrient</button>
+        <button onclick="logCustomSupplement()" style="width:100%;padding:12px;background:#0f172a;border:1.5px solid #7c3aed;border-radius:12px;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Log Custom Supplement</button>
+      </div>
     </div>
 
     <!-- Loading state -->
@@ -3780,6 +3828,79 @@ function backToAISearch() {
   document.getElementById('aiSearchExamples').style.display = 'none';
 }
 
+// ── Food search tab switching ──
+function switchFoodSearchTab(tab) {
+  ['search','meal','supp'].forEach(t => {
+    const btn = document.getElementById('fstab-'+t);
+    const panel = document.getElementById('fstab-'+t+'-content');
+    if (btn) btn.classList.toggle('fstab-active', t === tab);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'supp') renderSuppPresets();
+}
+
+// Parse a USDA food item into a standardized product object
+function usdaFoodToProduct(f) {
+  const nutr = n => (f.foodNutrients || []).find(x =>
+    x.nutrientId === n || x.nutrientNumber === String(n) ||
+    x.nutrientId === String(n)
+  );
+  let servingG = parseFloat(f.servingSize) || 0;
+  const sUnit = (f.servingSizeUnit || 'g').toLowerCase();
+  if (sUnit === 'oz') servingG *= 28.3495;
+  else if (sUnit === 'lb') servingG *= 453.592;
+  const scale = servingG > 0 ? servingG / 100 : 1;
+  return {
+    name:     f.description,
+    brand:    f.brandOwner || f.brandName || f.dataType || '',
+    serving:  f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g',
+    calories: Math.round((nutr(1008)?.value || nutr(208)?.value || 0) * scale),
+    protein:  Math.round((nutr(1003)?.value || nutr(203)?.value || 0) * scale * 10) / 10,
+    carbs:    Math.round((nutr(1005)?.value || nutr(205)?.value || 0) * scale * 10) / 10,
+    fat:      Math.round((nutr(1004)?.value || nutr(204)?.value || 0) * scale * 10) / 10,
+    micros:   parseMicronutrients(f.foodNutrients, scale),
+    fdcId:    f.fdcId,
+    dataType: f.dataType,
+    source:   'usda',
+    confidence: 'high',
+  };
+}
+
+// Search USDA — Foundation + SR Legacy first (best micros), then Branded
+async function searchUSDAFull(query) {
+  // First: whole foods (Foundation Foods + SR Legacy) — most complete micronutrient data
+  const wholeFoodsUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${USDA_API_KEY}`;
+  const [wfRes, brandedRes] = await Promise.all([
+    fetch(wholeFoodsUrl),
+    fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=6&api_key=${USDA_API_KEY}`)
+  ]);
+
+  let results = [];
+
+  if (wfRes.ok) {
+    const wfData = await wfRes.json();
+    const wf = (wfData.foods || []).map(f => ({ ...usdaFoodToProduct(f), microQuality: 'full' }))
+      .filter(f => f.calories > 0);
+    results.push(...wf);
+  }
+
+  if (brandedRes.ok) {
+    const bData = await brandedRes.json();
+    const branded = (bData.foods || []).map(f => ({ ...usdaFoodToProduct(f), microQuality: 'partial' }))
+      .filter(f => f.calories > 0);
+    results.push(...branded);
+  }
+
+  // Dedupe by name similarity, prefer Foundation/SR Legacy
+  const seen = new Set();
+  return results.filter(f => {
+    const key = f.name.toLowerCase().slice(0, 30);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
 async function runAISearch() {
   const query = document.getElementById('aiSearchInput').value.trim();
   if (!query) { showToast('⚠️ Describe a food first'); return; }
@@ -3791,81 +3912,42 @@ async function runAISearch() {
   document.getElementById('aiSearchLoadingText').textContent = 'Searching USDA database…';
 
   try {
-    // ── Primary: USDA FoodData Central (free, no API key limits) ──
-    const usdaUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=10&api_key=${USDA_API_KEY}`;
-    const usdaRes = await fetch(usdaUrl);
+    const foods = await searchUSDAFull(query);
 
-    if (usdaRes.ok) {
-      const usdaData = await usdaRes.json();
-      const foods = (usdaData.foods || []).map(f => {
-        const nutr = n => (f.foodNutrients || []).find(x => x.nutrientId === n || x.nutrientNumber === String(n));
-        let servingG = parseFloat(f.servingSize) || 0;
-        const sUnit = (f.servingSizeUnit || 'g').toLowerCase();
-        if (sUnit === 'oz') servingG *= 28.3495;
-        else if (sUnit === 'lb') servingG *= 453.592;
-        const scale = servingG > 0 ? servingG / 100 : 1;
-        return {
-          name:     f.description,
-          brand:    f.brandOwner || f.brandName || f.dataType || '',
-          serving:  f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g',
-          calories: Math.round(nutr(1008)?.value || nutr('208')?.value || 0),
-          protein:  Math.round((nutr(1003)?.value || nutr('203')?.value || 0) * 10) / 10,
-          carbs:    Math.round((nutr(1005)?.value || nutr('205')?.value || 0) * 10) / 10,
-          fat:      Math.round((nutr(1004)?.value || nutr('204')?.value || 0) * 10) / 10,
-          micros:   parseMicronutrients(f.foodNutrients, scale),
-          confidence: 'high',
-          source: 'usda',
-        };
-      }).filter(f => f.calories > 0).slice(0, 8);
-
+    if (foods.length > 0) {
       document.getElementById('aiSearchLoading').style.display = 'none';
-
-      if (foods.length > 0) {
-        renderAISearchResults(foods);
-        return;
-      }
-    }
-
-    // ── Fallback: Claude AI (only if USDA returns nothing) ──
-    document.getElementById('aiSearchLoadingText').textContent = 'No DB results — asking Claude AI…';
-
-    const prompt = `You are a precise nutrition database. The user is searching for: "${query}"
-Return EXACTLY 3 food options that best match. Respond ONLY with valid JSON (no markdown):
-{"results":[{"name":"Full food name","brand":"Brand or Generic","serving":"serving description","calories":0,"protein":0,"carbs":0,"fat":0,"confidence":"high"}]}
-Rules: All macros per serving. Use real nutritional data. confidence: high/medium/low.`;
-
-    const resp = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    document.getElementById('aiSearchLoading').style.display = 'none';
-
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      const msg = errData?.error?.message || `API error ${resp.status}`;
-      showToast(`⚠️ ${resp.status === 529 ? 'API overloaded — try again in a moment' : msg}`);
-      document.getElementById('aiSearchLoading').style.display = 'none';
-      document.getElementById('aiSearchExamples').style.display = 'flex';
+      renderAISearchResults(foods);
       return;
     }
 
-    const data = await resp.json();
-    const text = data.content[0].text.trim();
+    // ── Fallback: Claude AI with full micro estimation ──
+    document.getElementById('aiSearchLoadingText').textContent = 'Estimating with AI…';
+
+    const prompt = 'You are a precise nutrition database. The user searched for: "' + query + '".' +
+      ' Return 3 matching foods as JSON only, no markdown:' +
+      ' {"results":[{"name":"Full food name","brand":"Brand or Generic","serving":"1 serving description",' +
+      '"calories":0,"protein":0,"carbs":0,"fat":0,' +
+      '"micros":{"vitC":0,"vitD":0,"vitB12":0,"calcium":0,"magnesium":0,"iron":0,"potassium":0,"zinc":0,"fiber":0,"sodium":0,"omega3":0},' +
+      '"confidence":"high","microQuality":"estimated"}]}.' +
+      ' Use real nutritional data. Fill in micros with best available estimates in mg or standard units.';
+
+    const data = await callClaudeAPI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    document.getElementById('aiSearchLoading').style.display = 'none';
+    const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in response');
+    if (!jsonMatch) throw new Error('No JSON');
     const parsed = JSON.parse(jsonMatch[0]);
     renderAISearchResults((parsed.results || []).map(r => ({ ...r, source: 'ai' })));
 
   } catch (err) {
     document.getElementById('aiSearchLoading').style.display = 'none';
     document.getElementById('aiSearchExamples').style.display = 'flex';
-    showToast('⚠️ Search failed — check your connection and try again');
+    showToast('⚠️ Search failed — try again');
     console.error(err);
   }
 }
@@ -3879,8 +3961,16 @@ function renderAISearchResults(results) {
 
   const confIcon = { high: '✅', medium: '🟡', low: '⚪' };
 
-  document.getElementById('aiSearchResultsList').innerHTML = results.map((r, i) => `
-    <div class="search-result-item" onclick="selectAISearchResult(${i})">
+  document.getElementById('aiSearchResultsList').innerHTML = results.map((r, i) => {
+    const microCount = Object.keys(r.micros || {}).length;
+    const microLabel = r.microQuality === 'full'     ? '🟢 Full micros' :
+                       r.microQuality === 'partial'   ? '🟡 Partial micros' :
+                       r.microQuality === 'estimated' ? '🔵 AI estimated' :
+                       microCount > 5                 ? '🟢 Full micros' :
+                       microCount > 0                 ? '🟡 Partial micros' : '⚪ Macros only';
+    const srcBg = r.source === 'usda' ? '#0d1e3d' : '#1a1030';
+    const srcCol = r.source === 'usda' ? '#60a5fa' : '#a78bfa';
+    return `<div class="search-result-item" onclick="selectAISearchResult(${i})">
       <div style="flex:1">
         <div class="search-result-name">${r.name}</div>
         <div class="search-result-macros">${r.brand ? r.brand + ' · ' : ''}${r.serving}</div>
@@ -3889,11 +3979,13 @@ function renderAISearchResults(results) {
           <span style="color:#22c55e">P ${r.protein}g</span> ·
           <span style="color:#3b82f6">C ${r.carbs}g</span> ·
           <span style="color:#ef4444">F ${r.fat}g</span>
-          <span style="margin-left:6px;font-size:9px;background:${r.source==='usda'?'#0d1e3d':'#1a1030'};color:${r.source==='usda'?'#60a5fa':'#a78bfa'};padding:2px 6px;border-radius:8px;font-weight:700">${r.source==='usda'?'USDA':'AI'}</span>
+          <span style="margin-left:6px;font-size:9px;background:${srcBg};color:${srcCol};padding:2px 6px;border-radius:8px;font-weight:700">${r.source === 'usda' ? 'USDA' : 'AI'}</span>
+          <span style="margin-left:4px;font-size:9px;color:var(--text3)">${microLabel}</span>
         </div>
       </div>
       <div class="search-result-arrow">›</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   window._aiSearchResults = results;
   document.getElementById('aiSearchResults').style.display = 'block';
@@ -7334,6 +7426,271 @@ handleStravaCallback();
     }
   }
 })();
+
+// ═══════════════════════════════════════════════════════
+// ── MEAL ANALYZER ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+let _mealAnalysisData = null;
+
+async function analyzeMealDescription() {
+  const desc = (document.getElementById('mealDescInput')?.value || '').trim();
+  if (!desc) { showToast('Describe your meal first'); return; }
+
+  const btn = document.getElementById('mealAnalyzeBtn');
+  const resultEl = document.getElementById('mealAnalysisResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ Breaking down meal…';
+  resultEl.style.display = 'none';
+
+  // Step 1: Ask Claude to decompose into USDA-searchable ingredients
+  const decompPrompt = 'Decompose this meal into individual ingredients for USDA database lookup. ' +
+    'Return ONLY JSON: {"meal_name":"string","total_calories_estimate":0,' +
+    '"ingredients":[{"name":"USDA-searchable name e.g. chicken breast cooked","grams":0,"serving_desc":"e.g. 6 oz"}]}. ' +
+    'Use standard USDA food names. Be specific (cooked vs raw, method). Meal: ' + desc;
+
+  try {
+    const decompData = await callClaudeAPI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: decompPrompt }]
+    });
+
+    const decompRaw = (decompData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const decomp = JSON.parse(decompRaw.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    const ingredients = decomp.ingredients || [];
+
+    if (!ingredients.length) throw new Error('No ingredients parsed');
+
+    btn.textContent = `⏳ Looking up ${ingredients.length} ingredients in USDA…`;
+
+    // Step 2: Search USDA for each ingredient
+    const lookupResults = await Promise.all(
+      ingredients.map(async ing => {
+        try {
+          // SR Legacy first for best micros
+          const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(ing.name)}&dataType=Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`;
+          const res = await fetch(url);
+          if (!res.ok) return { ing, product: null, found: false };
+          const data = await res.json();
+          const f = (data.foods || [])[0];
+          if (!f) return { ing, product: null, found: false };
+          // Scale to the ingredient's gram weight
+          const scaleG = ing.grams > 0 ? ing.grams / 100 : 1;
+          const p = usdaFoodToProduct(f);
+          // Rescale everything to actual gram weight
+          const resScaled = {
+            ...p,
+            calories: Math.round(p.calories * scaleG),
+            protein:  Math.round(p.protein  * scaleG * 10) / 10,
+            carbs:    Math.round(p.carbs    * scaleG * 10) / 10,
+            fat:      Math.round(p.fat      * scaleG * 10) / 10,
+            micros:   Object.fromEntries(Object.entries(p.micros || {}).map(([k,v]) => [k, Math.round(v * scaleG * 1000)/1000])),
+          };
+          return { ing, product: resScaled, found: true };
+        } catch(e) {
+          return { ing, product: null, found: false };
+        }
+      })
+    );
+
+    // Step 3: For not-found ingredients, use AI estimation
+    const notFound = lookupResults.filter(r => !r.found);
+    if (notFound.length > 0) {
+      const estimatePrompt = 'Estimate nutrition for these ingredients (per specified gram amounts). ' +
+        'Return ONLY JSON: {"estimates":[{"name":"string","calories":0,"protein":0,"carbs":0,"fat":0,' +
+        '"micros":{"vitC":0,"vitD":0,"calcium":0,"magnesium":0,"iron":0,"potassium":0,"zinc":0,"fiber":0}}]}. ' +
+        'Ingredients: ' + notFound.map(r => r.ing.name + ' ' + r.ing.grams + 'g').join(', ');
+      try {
+        const estData = await callClaudeAPI({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 600,
+          messages: [{ role: 'user', content: estimatePrompt }]
+        });
+        const estRaw = (estData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+        const estimates = JSON.parse(estRaw.match(/\{[\s\S]*\}/)?.[0] || '{}').estimates || [];
+        estimates.forEach((est, i) => {
+          if (notFound[i]) {
+            notFound[i].product = { ...est, source: 'ai', microQuality: 'estimated' };
+            notFound[i].found = true;
+          }
+        });
+      } catch(e) { /* best effort */ }
+    }
+
+    // Step 4: Sum everything up
+    const totals = { calories: 0, protein: 0, carbs: 0, fat: 0, micros: {} };
+    lookupResults.forEach(r => {
+      if (!r.product) return;
+      totals.calories += r.product.calories || 0;
+      totals.protein  += r.product.protein  || 0;
+      totals.carbs    += r.product.carbs    || 0;
+      totals.fat      += r.product.fat      || 0;
+      Object.entries(r.product.micros || {}).forEach(([k, v]) => {
+        totals.micros[k] = (totals.micros[k] || 0) + v;
+      });
+    });
+
+    _mealAnalysisData = {
+      name: decomp.meal_name || desc.slice(0, 40),
+      ingredients: lookupResults,
+      totals,
+      icon: '🍽️'
+    };
+
+    // Render the breakdown
+    const foundCount = lookupResults.filter(r => r.found).length;
+    const microCount = Object.keys(totals.micros).length;
+    resultEl.innerHTML = `
+      <div style="background:var(--surface2);border-radius:14px;padding:14px;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">${_mealAnalysisData.name}</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#f59e0b">${Math.round(totals.calories)}</div><div style="font-size:10px;color:var(--text3)">kcal</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${totals.protein.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">protein</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#3b82f6">${totals.carbs.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">carbs</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${totals.fat.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">fat</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${foundCount}/${ingredients.length} ingredients found · ${microCount} micronutrients captured</div>
+        ${lookupResults.map(r => `
+          <div class="meal-ingredient-row">
+            <span class="meal-ingredient-status">${r.found ? (r.product?.source === 'ai' ? '🔵' : '✅') : '❌'}</span>
+            <div style="flex:1">
+              <div style="font-weight:600;color:var(--text)">${r.ing.serving_desc || r.ing.name}</div>
+              <div style="color:var(--text3);font-size:11px">${r.found ? (r.product?.name || r.ing.name) + ' · ' + (r.product?.calories || 0) + ' kcal' : 'Not found — excluded'}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      <button onclick="logMealToday()" style="width:100%;background:#22c55e;border:none;border-radius:12px;padding:13px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">✓ Log This Meal</button>
+    `;
+    resultEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🔄 Re-analyze';
+
+  } catch(e) {
+    console.error('Meal analysis error:', e);
+    btn.disabled = false;
+    btn.textContent = '🤖 Analyze Meal + Get Micros';
+    showToast('❌ Could not analyze meal. Be more specific about ingredients and amounts.');
+  }
+}
+
+function logMealToday() {
+  if (!_mealAnalysisData) return;
+  const { name, totals, icon } = _mealAnalysisData;
+  addFoodEntry({
+    name,
+    calories: Math.round(totals.calories),
+    protein:  Math.round(totals.protein  * 10) / 10,
+    carbs:    Math.round(totals.carbs    * 10) / 10,
+    fat:      Math.round(totals.fat      * 10) / 10,
+    micros:   Object.keys(totals.micros).length ? totals.micros : undefined,
+    icon: icon || '🍽️',
+  });
+  closeAISearch();
+  showToast('✅ Meal logged with ' + Object.keys(totals.micros || {}).length + ' micronutrients!');
+  _mealAnalysisData = null;
+}
+
+// ═══════════════════════════════════════════════════════
+// ── SUPPLEMENT LOGGER ──────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+const SUPPLEMENT_PRESETS = [
+  { name: 'Vitamin D3 2000 IU',  icon: '☀️', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitD: 50 } },
+  { name: 'Vitamin D3 5000 IU',  icon: '☀️', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitD: 125 } },
+  { name: 'Magnesium 400mg',      icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { magnesium: 400 } },
+  { name: 'Magnesium Glycinate 200mg', icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { magnesium: 200 } },
+  { name: 'Zinc 15mg',            icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { zinc: 15 } },
+  { name: 'Zinc 30mg',            icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { zinc: 30 } },
+  { name: 'Fish Oil 1g (1000mg)', icon: '🐟', calories: 9, protein: 0, carbs: 0, fat: 1, micros: { omega3: 0.3, epa: 0.18, dha: 0.12 } },
+  { name: 'Fish Oil 2g (2000mg)', icon: '🐟', calories: 18, protein: 0, carbs: 0, fat: 2, micros: { omega3: 0.6, epa: 0.36, dha: 0.24 } },
+  { name: 'Omega-3 Triple Strength', icon: '🐟', calories: 25, protein: 0, carbs: 0, fat: 3, micros: { omega3: 2.4, epa: 1.0, dha: 0.8 } },
+  { name: 'Vitamin C 500mg',      icon: '🍊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitC: 500 } },
+  { name: 'Vitamin C 1000mg',     icon: '🍊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitC: 1000 } },
+  { name: 'Vitamin K2 100mcg',    icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitK: 100 } },
+  { name: 'Vitamin B12 1000mcg',  icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { vitB12: 1000 } },
+  { name: 'Folate 400mcg',        icon: '💊', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { folate: 400 } },
+  { name: 'Iron 18mg',            icon: '🔴', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { iron: 18 } },
+  { name: 'Calcium 500mg',        icon: '🦴', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { calcium: 500 } },
+  { name: 'Potassium 99mg',       icon: '🍌', calories: 0, protein: 0, carbs: 0, fat: 0, micros: { potassium: 99 } },
+  { name: "Multivitamin (Men's)", icon: '💊', calories: 10, protein: 0, carbs: 2, fat: 0,
+    micros: { vitA: 900, vitC: 90, vitD: 25, vitE: 15, vitK: 75, vitB1: 1.5, vitB2: 1.7, vitB3: 20, vitB6: 2, vitB12: 6, folate: 400, calcium: 200, magnesium: 100, zinc: 11, iron: 18, selenium: 55 } },
+  { name: 'NMN 500mg',            icon: '⚡', calories: 0, protein: 0, carbs: 0, fat: 0, micros: {} },
+  { name: 'Creatine 5g',          icon: '💪', calories: 0, protein: 0, carbs: 0, fat: 0, micros: {} },
+  { name: 'Collagen Peptides 10g', icon: '💪', calories: 38, protein: 9, carbs: 0, fat: 0, micros: {} },
+];
+
+let _customSuppNutrients = [];
+
+function renderSuppPresets() {
+  const el = document.getElementById('suppPresetList');
+  if (!el) return;
+  el.innerHTML = SUPPLEMENT_PRESETS.map((s, i) => {
+    const microSummary = Object.entries(s.micros || {}).slice(0, 3)
+      .map(([k, v]) => (MICRO_RDV[k]?.[2] || k) + ' ' + v + (MICRO_RDV[k]?.[1] || ''))
+      .join(' · ') || 'Tracked for compliance';
+    return `<div class="supp-preset-row">
+      <div class="supp-preset-info">
+        <div class="supp-preset-name">${s.icon} ${s.name}</div>
+        <div class="supp-preset-detail">${microSummary}</div>
+      </div>
+      <button class="supp-log-btn" onclick="logPresetSupplement(${i})">Log</button>
+    </div>`;
+  }).join('');
+
+  // Custom supplement nutrient fields
+  _customSuppNutrients = [];
+  renderCustomSuppNutrients();
+}
+
+function renderCustomSuppNutrients() {
+  const el = document.getElementById('suppCustomNutrients');
+  if (!el) return;
+  const commonNutrients = Object.entries(MICRO_RDV).map(([k, [,unit,name]]) => `<option value="${k}">${name} (${unit})</option>`).join('');
+  el.innerHTML = _customSuppNutrients.map((n, i) => `
+    <div style="display:flex;gap:4px;align-items:center">
+      <select onchange="_customSuppNutrients[${i}].key=this.value" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:11px;font-family:inherit">
+        ${commonNutrients}
+      </select>
+      <input type="number" placeholder="mg" style="width:60px;padding:6px;font-size:11px" value="${n.value||''}" onchange="_customSuppNutrients[${i}].value=parseFloat(this.value)||0">
+      <button onclick="_customSuppNutrients.splice(${i},1);renderCustomSuppNutrients()" style="background:none;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:0 4px">×</button>
+    </div>
+  `).join('');
+}
+
+function addCustomSuppNutrient() {
+  _customSuppNutrients.push({ key: 'vitD', value: 0 });
+  renderCustomSuppNutrients();
+}
+
+function logPresetSupplement(idx) {
+  const s = SUPPLEMENT_PRESETS[idx];
+  addFoodEntry({
+    name: s.name,
+    calories: s.calories || 0,
+    protein:  s.protein  || 0,
+    carbs:    s.carbs    || 0,
+    fat:      s.fat      || 0,
+    micros:   Object.keys(s.micros || {}).length ? s.micros : undefined,
+    icon: s.icon || '💊',
+  });
+  showToast('✅ ' + s.name + ' logged!');
+}
+
+function logCustomSupplement() {
+  const name = (document.getElementById('suppCustomName')?.value || '').trim();
+  if (!name) { showToast('Enter a supplement name'); return; }
+  const micros = {};
+  _customSuppNutrients.forEach(n => { if (n.key && n.value > 0) micros[n.key] = n.value; });
+  addFoodEntry({
+    name, calories: 0, protein: 0, carbs: 0, fat: 0,
+    micros: Object.keys(micros).length ? micros : undefined,
+    icon: '💊',
+  });
+  document.getElementById('suppCustomName').value = '';
+  _customSuppNutrients = [];
+  renderCustomSuppNutrients();
+  showToast('✅ ' + name + ' logged!');
+}
 
 // ── One-time seed: Labcorp Oct 2024 results ──
 (function seedLabcorpOct2024() {
