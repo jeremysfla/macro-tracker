@@ -6464,7 +6464,7 @@ renderEventCountdowns();
 if (!getEvents().length) {
   saveEvents([
     { id: Date.now(), name: "Grandma's Marathon", date: "2026-06-20", type: "race" },
-    { id: Date.now() + 1, name: "Weight Goal", date: "2026-03-29", type: "weight", weightTarget: 163 }
+    { id: Date.now() + 1, name: "Weight Goal", date: "2026-03-23", type: "weight", weightTarget: 163 }
   ]);
   renderEventList();
   renderEventCountdowns();
@@ -6852,42 +6852,48 @@ function renderEventCountdowns() {
   const container = document.getElementById('eventCountdowns');
   if (!container) return;
   const events = getEvents().filter(e => daysUntil(e.date) >= 0);
-  const weights = getStorage('weightLog', []);
-  const currentWeight = Array.isArray(weights) && weights.length ? weights[weights.length-1].weight : null;
+  const weightsRaw = getStorage('weightLog', []);
+  const weights = Array.isArray(weightsRaw) ? weightsRaw : Object.values(weightsRaw);
+  const currentWeight = weights.length ? weights[weights.length-1].weight : null;
 
   if (!events.length) { container.innerHTML = ''; return; }
 
-  container.innerHTML = events.map(e => {
+  // Build items for each event
+  const items = events.map(e => {
     const days = daysUntil(e.date);
     const urgent = days <= 7;
     const soon = days <= 30;
     const isWeight = e.type === 'weight';
     const color = isWeight ? '#22c55e' : urgent ? '#ef4444' : soon ? '#f59e0b' : '#3b82f6';
     const emoji = isWeight ? '⚖️' : urgent ? '🚨' : soon ? '⚡' : '🏁';
-    const dateStr = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    const dateStr = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 
-    let rightSide = '';
-    if (isWeight && e.weightTarget && currentWeight) {
-      const diff = (currentWeight - e.weightTarget).toFixed(1);
-      const pct = Math.max(0, Math.min(100, Math.round(100 - (diff / (currentWeight - e.weightTarget + 0.001)) * 100)));
-      rightSide = `<div style="text-align:right;min-width:90px">
-        <div style="font-size:11px;color:${color};font-weight:700;margin-bottom:2px">TARGET</div>
-        <div style="font-size:22px;font-weight:900;color:${color}">${e.weightTarget}<span style="font-size:12px">lbs</span></div>
-        <div style="font-size:11px;color:var(--text3)">${diff > 0 ? diff + ' to go' : '✅ Done!'}</div>
+    if (isWeight && e.weightTarget) {
+      const diff = currentWeight ? (currentWeight - e.weightTarget).toFixed(1) : null;
+      const byDate = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+      return `<div style="flex:1;text-align:center;padding:0 8px">
+        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:26px;font-weight:900;color:${color};letter-spacing:-1px">${e.weightTarget}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">by ${byDate}</div>
+        <div style="font-size:11px;color:${color};font-weight:700;margin-top:2px">${diff !== null ? (diff > 0 ? diff + ' to lose' : '✅ Achieved!') : days + ' days'}</div>
+      </div>`;
+    } else {
+      return `<div style="flex:1;text-align:center;padding:0 8px">
+        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-1px">${days}<span style="font-size:12px;font-weight:600;color:var(--text2)"> days</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">to go</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px">${dateStr}</div>
       </div>`;
     }
+  });
 
-    return `<div class="card" style="padding:14px 18px;margin-bottom:14px;border-left:4px solid ${color}">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div style="flex:1">
-          <div style="font-size:11px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${emoji} ${e.name}</div>
-          <div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-1px">${days} <span style="font-size:14px;font-weight:600;color:var(--text2)">days to go</span></div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${dateStr}</div>
-        </div>
-        ${rightSide}
-      </div>
-    </div>`;
-  }).join('');
+  // Render all in one card with dividers
+  const divider = `<div style="width:1px;background:var(--border);margin:4px 0"></div>`;
+  container.innerHTML = `<div class="card" style="padding:14px 18px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-around">
+      ${items.join(divider)}
+    </div>
+  </div>`;
 }
 
 function renderEventList() {
