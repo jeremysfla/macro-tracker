@@ -139,6 +139,36 @@
   .hist-ex { color: var(--text2); font-weight: 500; }
   .hist-wt { color: var(--text); font-weight: 600; }
 
+  /* History sub-tabs */
+  .htab-btn { flex:1; padding:9px 6px; border:1.5px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
+  .htab-active { background:#ef4444; border-color:#ef4444; color:#fff; }
+  #htab-blood.htab-active { background:#ef4444; border-color:#ef4444; }
+  #htab-lift.htab-active  { background:#22c55e; border-color:#22c55e; }
+  #htab-nutr.htab-active  { background:#3b82f6; border-color:#3b82f6; }
+
+  /* Blood work cards */
+  .blood-panel-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
+  .blood-panel-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+  .blood-marker-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); }
+  .blood-marker-row:last-child { border-bottom:none; }
+  .blood-marker-name { font-size:13px; color:var(--text2); font-weight:500; flex:1; }
+  .blood-marker-val  { font-size:14px; font-weight:700; min-width:70px; text-align:right; }
+  .blood-marker-ref  { font-size:10px; color:var(--text3); min-width:90px; text-align:right; }
+  .blood-status-ok   { color:#22c55e; }
+  .blood-status-warn { color:#f59e0b; }
+  .blood-status-bad  { color:#ef4444; }
+  .blood-trend-up   { font-size:10px; margin-left:4px; color:#ef4444; }
+  .blood-trend-down { font-size:10px; margin-left:4px; color:#22c55e; }
+  .blood-date-badge { font-size:10px; background:#1e293b; color:#64748b; padding:3px 10px; border-radius:20px; font-weight:600; }
+
+  /* Nutrition report */
+  .nr-btn { padding:7px 14px; border:1.5px solid var(--border); border-radius:20px; background:transparent; color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
+  .nr-btn-active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
+  .nutr-bar-wrap { margin-bottom:10px; }
+  .nutr-bar-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .nutr-bar-track { background:var(--surface3); border-radius:6px; height:8px; overflow:hidden; }
+  .nutr-bar-fill  { height:100%; border-radius:6px; transition:width 0.4s; }
+
   /* Tip box */
   .tip-box { margin-top: 14px; padding: 14px; background: #0d2d1a; border-radius: 14px; border: 1.5px solid #166534; font-size: 12px; color: #4ade80; line-height: 1.7; font-weight: 500; }
 
@@ -780,8 +810,54 @@
 
     <!-- HISTORY PAGE -->
     <div id="page-history" class="page">
-      <div class="section-title">LIFT HISTORY</div>
-      <div id="historyList"></div>
+      <!-- Sub-tab bar -->
+      <div style="display:flex;gap:6px;padding:0 0 14px 0;border-bottom:1px solid var(--border);margin-bottom:16px">
+        <button id="htab-lift"  class="htab-btn htab-active" onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
+        <button id="htab-blood" class="htab-btn"             onclick="switchHistoryTab('blood')">🩸 Blood Work</button>
+        <button id="htab-nutr"  class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
+      </div>
+
+      <!-- LIFT HISTORY -->
+      <div id="historyTab-lift">
+        <div id="historyList"></div>
+      </div>
+
+      <!-- BLOOD WORK -->
+      <div id="historyTab-blood" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-label" style="color:#ef4444">🩸 Upload Lab Results</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Take a photo or scan of your lab report. AI will read all values automatically.</div>
+          <div id="bloodUploadDrop" style="border:2px dashed #2a3040;border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('bloodFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#ef4444'" ondragleave="this.style.borderColor='#2a3040'" ondrop="event.preventDefault();handleBloodDrop(event)">
+            <div style="font-size:32px;margin-bottom:6px">🩸</div>
+            <div style="font-size:13px;color:var(--text2)">Tap to upload lab report photo or PDF</div>
+            <div id="bloodUploadName" style="font-size:12px;color:#22c55e;margin-top:6px;font-weight:600"></div>
+          </div>
+          <input type="file" id="bloodFileInput" accept="image/*,.pdf" style="display:none" onchange="handleBloodFile(this.files[0])">
+          <div id="bloodUploadStatus" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--text2);display:none"></div>
+          <button id="bloodAnalyzeBtn" onclick="analyzeBloodReport()" style="display:none;width:100%;margin-top:12px;background:#ef4444;border:none;border-radius:12px;padding:13px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze with AI</button>
+        </div>
+        <div id="bloodResultsList"></div>
+        <div id="bloodAIInsights" style="display:none" class="card">
+          <div class="card-label" style="color:#a78bfa">🤖 AI Health Insights</div>
+          <div id="bloodAIInsightsText" style="font-size:13px;color:var(--text2);line-height:1.7"></div>
+          <button onclick="analyzeBloodWithNutrition()" style="margin-top:14px;width:100%;background:#0f172a;border:1px solid #7c3aed;border-radius:12px;padding:12px;color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔗 Correlate with My Nutrition</button>
+        </div>
+      </div>
+
+      <!-- NUTRITION REPORT -->
+      <div id="historyTab-nutr" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-label" style="color:#22c55e">🥗 Micronutrient Report</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Average daily intake vs recommended values — based on logged foods with full nutrient data.</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button onclick="renderNutritionReport(7)"  id="nrBtn7"  class="nr-btn nr-btn-active">7 days</button>
+            <button onclick="renderNutritionReport(30)" id="nrBtn30" class="nr-btn">30 days</button>
+            <button onclick="renderNutritionReport(90)" id="nrBtn90" class="nr-btn">90 days</button>
+          </div>
+          <div id="nutritionReportGrid"></div>
+        </div>
+        <div id="nutritionReportDetails"></div>
+      </div>
     </div>
 
     <!-- RECIPES PAGE -->
@@ -2420,11 +2496,12 @@ function renderHistoryPage() {
   if (!el) return;
 
   if (keys.length === 0) {
-    el.innerHTML = `<div class="empty-state">No workouts logged yet.<br>Complete a session to see history here.</div>`;
+    el.innerHTML = '<div class="section-title">LIFT HISTORY</div><div class="empty-state">No workouts logged yet.<br>Complete a session to see history here.</div>';
     return;
   }
 
-  el.innerHTML = keys.map(k => {
+  const sectionTitle = '<div class="section-title" style="margin-bottom:14px">LIFT HISTORY</div>';
+  el.innerHTML = sectionTitle + keys.map(k => {
     const log    = liftLog[k];
     const sess   = PROGRAM[log.session];
     const date   = log.date || k.slice(0,10);
@@ -3452,6 +3529,9 @@ async function lookupBarcode(barcode) {
       ? `${f.servingSize}${f.servingSizeUnit || 'g'}`
       : '100g';
 
+    // Extract full micronutrient profile
+    const micros = parseMicronutrients(f.foodNutrients, scale);
+
     return {
       name:        f.description || '',
       brand:       f.brandOwner || f.brandName || '',
@@ -3461,6 +3541,7 @@ async function lookupBarcode(barcode) {
       fat:         Math.round(fat100   * scale * 10) / 10,
       servingSize: servingLabel,
       source:      'USDA',
+      micros,
     };
   }
 
@@ -3621,6 +3702,13 @@ function adjustServings(delta) {
 function logScannedFood() {
   if (!scannedProduct) return;
   const p = scannedProduct;
+  // Scale micros by servings
+  const scaledMicros = {};
+  if (p.micros) {
+    Object.entries(p.micros).forEach(([k, v]) => {
+      scaledMicros[k] = Math.round(v * servings * 1000) / 1000;
+    });
+  }
   addFoodEntry({
     name:     p.name,
     calories: Math.round(p.calories * servings),
@@ -3628,6 +3716,7 @@ function logScannedFood() {
     carbs:    Math.round(p.carbs    * servings * 10) / 10,
     fat:      Math.round(p.fat      * servings * 10) / 10,
     icon: '🏷️',
+    micros: Object.keys(scaledMicros).length ? scaledMicros : undefined,
   });
   if (selectedTimeSlot) {
     saveFoodToSlot({ name: p.name, calories: Math.round(p.calories * servings), protein: Math.round(p.protein * servings * 10)/10, carbs: Math.round(p.carbs * servings * 10)/10, fat: Math.round(p.fat * servings * 10)/10 }, selectedTimeSlot);
@@ -3702,6 +3791,11 @@ async function runAISearch() {
       const usdaData = await usdaRes.json();
       const foods = (usdaData.foods || []).map(f => {
         const nutr = n => (f.foodNutrients || []).find(x => x.nutrientId === n || x.nutrientNumber === String(n));
+        let servingG = parseFloat(f.servingSize) || 0;
+        const sUnit = (f.servingSizeUnit || 'g').toLowerCase();
+        if (sUnit === 'oz') servingG *= 28.3495;
+        else if (sUnit === 'lb') servingG *= 453.592;
+        const scale = servingG > 0 ? servingG / 100 : 1;
         return {
           name:     f.description,
           brand:    f.brandOwner || f.brandName || f.dataType || '',
@@ -3710,6 +3804,7 @@ async function runAISearch() {
           protein:  Math.round((nutr(1003)?.value || nutr('203')?.value || 0) * 10) / 10,
           carbs:    Math.round((nutr(1005)?.value || nutr('205')?.value || 0) * 10) / 10,
           fat:      Math.round((nutr(1004)?.value || nutr('204')?.value || 0) * 10) / 10,
+          micros:   parseMicronutrients(f.foodNutrients, scale),
           confidence: 'high',
           source: 'usda',
         };
@@ -3844,6 +3939,12 @@ function logAISearchFood() {
   if (!aiSearchProduct) return;
   const p = aiSearchProduct;
   const s = aiSearchServings;
+  const scaledMicros = {};
+  if (p.micros) {
+    Object.entries(p.micros).forEach(([k, v]) => {
+      scaledMicros[k] = Math.round(v * s * 1000) / 1000;
+    });
+  }
   addFoodEntry({
     name:     `${p.name}${s !== 1 ? ' ×'+s : ''}`,
     calories: Math.round(p.calories * s),
@@ -3851,6 +3952,7 @@ function logAISearchFood() {
     carbs:    Math.round(p.carbs    * s * 10) / 10,
     fat:      Math.round(p.fat      * s * 10) / 10,
     icon: '🔍',
+    micros: Object.keys(scaledMicros).length ? scaledMicros : undefined,
   });
   closeAISearch();
   showToast(`✅ ${p.name} logged!`);
@@ -6399,6 +6501,665 @@ function onStravaRunSynced(runData) {
   const existing = getShoeRuns().find(r=>r.activityId && r.activityId===runData.activityId);
   if (existing) return;
   promptShoeAssignment(runData);
+}
+
+// ═══════════════════════════════════════════════════════
+// ── HISTORY SUB-TABS ──────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+function switchHistoryTab(tab) {
+  ['lift','blood','nutr'].forEach(t => {
+    const el = document.getElementById('historyTab-'+t);
+    const btn = document.getElementById('htab-'+t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+    if (btn) btn.classList.toggle('htab-active', t === tab);
+  });
+  if (tab === 'lift')  renderHistoryPage();
+  if (tab === 'blood') renderBloodWorkPage();
+  if (tab === 'nutr')  renderNutritionReport(7);
+}
+
+// ═══════════════════════════════════════════════════════
+// ── BLOOD WORK ─────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+let _bloodFileData = null; // { base64, mediaType, name }
+
+function handleBloodDrop(e) {
+  const file = e.dataTransfer.files[0];
+  if (file) handleBloodFile(file);
+}
+
+function handleBloodFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    const mediaType = file.type || 'image/jpeg';
+    _bloodFileData = { base64: dataUrl.split(',')[1], mediaType, name: file.name };
+    document.getElementById('bloodUploadName').textContent = '📎 ' + file.name;
+    document.getElementById('bloodAnalyzeBtn').style.display = 'block';
+    document.getElementById('bloodUploadStatus').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function getBloodResults() { return getStorage('bloodResults', []); }
+function saveBloodResults(r) { setStorage('bloodResults', r); }
+
+// Known reference ranges [low, high, unit, display name]
+const BLOOD_REFS = {
+  'glucose':           [70, 99, 'mg/dL', 'Glucose', 'metabolic'],
+  'hba1c':             [0, 5.6, '%', 'HbA1c', 'metabolic'],
+  'bun':               [7, 20, 'mg/dL', 'BUN', 'metabolic'],
+  'creatinine':        [0.7, 1.3, 'mg/dL', 'Creatinine', 'metabolic'],
+  'egfr':              [60, 999, 'mL/min', 'eGFR', 'metabolic'],
+  'sodium':            [136, 145, 'mEq/L', 'Sodium', 'metabolic'],
+  'potassium':         [3.5, 5.1, 'mEq/L', 'Potassium', 'metabolic'],
+  'calcium':           [8.5, 10.2, 'mg/dL', 'Calcium', 'metabolic'],
+  'total_cholesterol': [0, 200, 'mg/dL', 'Total Cholesterol', 'lipids'],
+  'ldl':               [0, 100, 'mg/dL', 'LDL Cholesterol', 'lipids'],
+  'hdl':               [40, 999, 'mg/dL', 'HDL Cholesterol', 'lipids'],
+  'triglycerides':     [0, 150, 'mg/dL', 'Triglycerides', 'lipids'],
+  'non_hdl':           [0, 130, 'mg/dL', 'Non-HDL Cholesterol', 'lipids'],
+  'testosterone_total':[300, 1000, 'ng/dL', 'Testosterone (Total)', 'hormones'],
+  'testosterone_free': [9, 30, 'ng/dL', 'Testosterone (Free)', 'hormones'],
+  'cortisol':          [6, 23, 'mcg/dL', 'Cortisol', 'hormones'],
+  'tsh':               [0.4, 4.0, 'mIU/L', 'TSH', 'hormones'],
+  't4_free':           [0.8, 1.8, 'ng/dL', 'Free T4', 'hormones'],
+  'insulin':           [2, 19, 'mcU/mL', 'Insulin', 'hormones'],
+  'dhea_s':            [100, 500, 'mcg/dL', 'DHEA-S', 'hormones'],
+  'wbc':               [4.5, 11.0, 'K/uL', 'WBC', 'cbc'],
+  'rbc':               [4.5, 5.9, 'M/uL', 'RBC', 'cbc'],
+  'hemoglobin':        [13.5, 17.5, 'g/dL', 'Hemoglobin', 'cbc'],
+  'hematocrit':        [41, 53, '%', 'Hematocrit', 'cbc'],
+  'platelets':         [150, 400, 'K/uL', 'Platelets', 'cbc'],
+  'vitamin_d':         [30, 100, 'ng/mL', 'Vitamin D (25-OH)', 'vitamins'],
+  'vitamin_b12':       [200, 900, 'pg/mL', 'Vitamin B12', 'vitamins'],
+  'folate':            [3, 20, 'ng/mL', 'Folate', 'vitamins'],
+  'ferritin':          [20, 300, 'ng/mL', 'Ferritin', 'inflammation'],
+  'iron':              [60, 170, 'mcg/dL', 'Iron', 'inflammation'],
+  'crp':               [0, 1.0, 'mg/L', 'CRP (hs)', 'inflammation'],
+  'alt':               [7, 40, 'U/L', 'ALT', 'liver'],
+  'ast':               [10, 40, 'U/L', 'AST', 'liver'],
+  'alkaline_phosphatase': [44, 147, 'U/L', 'Alkaline Phosphatase', 'liver'],
+  'ggt':               [8, 61, 'U/L', 'GGT', 'liver'],
+  'uric_acid':         [3.4, 7.0, 'mg/dL', 'Uric Acid', 'metabolic'],
+};
+
+const PANEL_LABELS = {
+  metabolic:    '🔬 Metabolic Panel',
+  lipids:       '❤️ Lipid Panel',
+  hormones:     '⚡ Hormones',
+  cbc:          '🩺 Complete Blood Count',
+  vitamins:     '💊 Vitamins',
+  inflammation: '🔥 Inflammation & Iron',
+  liver:        '🫀 Liver Function',
+};
+
+function bloodStatus(key, value) {
+  const ref = BLOOD_REFS[key];
+  if (!ref) return 'ok';
+  const [lo, hi] = ref;
+  if (value < lo * 0.85 || value > hi * 1.15) return 'bad';
+  if (value < lo || value > hi) return 'warn';
+  return 'ok';
+}
+
+async function analyzeBloodReport() {
+  if (!_bloodFileData) return;
+  const btn    = document.getElementById('bloodAnalyzeBtn');
+  const status = document.getElementById('bloodUploadStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Reading your lab report…';
+  status.style.display = 'block';
+  status.textContent = 'AI is extracting all values from your lab report…';
+
+  const isPdf = _bloodFileData.mediaType === 'application/pdf';
+
+  const prompt = `You are a medical lab results parser. Extract ALL test results from this lab report image.
+
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "test_date": "YYYY-MM-DD or null",
+  "lab_name": "string or null",
+  "markers": [
+    {
+      "name": "exact name from report",
+      "key": "snake_case key matching one of: ${Object.keys(BLOOD_REFS).join(', ')}, or a descriptive snake_case if not listed",
+      "value": number,
+      "unit": "unit string",
+      "ref_low": number or null,
+      "ref_high": number or null,
+      "flag": "H" or "L" or "HH" or "LL" or null
+    }
+  ]
+}
+
+Extract EVERY marker visible. Use the closest matching key from the list provided. If a marker doesn't match any key, create a descriptive snake_case key.`;
+
+  try {
+    const msgContent = isPdf
+      ? [{ type: 'text', text: 'Lab report PDF — ' + prompt }]
+      : [
+          { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 }},
+          { type: 'text', text: prompt }
+        ];
+
+    const data = await callClaudeAPI({
+      model: 'claude-opus-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: msgContent }]
+    });
+
+    const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+
+    const testDate = parsed.test_date || new Date().toISOString().slice(0,10);
+    const results = getBloodResults();
+    const newEntry = {
+      id: Date.now(),
+      date: testDate,
+      lab: parsed.lab_name || 'Lab Results',
+      markers: parsed.markers || [],
+      uploadedAt: new Date().toISOString(),
+    };
+    results.unshift(newEntry);
+    saveBloodResults(results);
+
+    btn.style.display = 'none';
+    document.getElementById('bloodUploadName').textContent = '';
+    _bloodFileData = null;
+    document.getElementById('bloodFileInput').value = '';
+    status.textContent = `✅ Imported ${newEntry.markers.length} markers from ${testDate}`;
+
+    renderBloodWorkPage();
+    generateBloodAIInsights(newEntry);
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '🤖 Analyze with AI';
+    status.textContent = '❌ Could not parse report. Try a clearer photo.';
+    status.style.color = '#ef4444';
+  }
+}
+
+function renderBloodWorkPage() {
+  const results = getBloodResults();
+  const container = document.getElementById('bloodResultsList');
+  if (!container) return;
+
+  if (results.length === 0) {
+    container.innerHTML = '<div class="empty-state">No blood work uploaded yet.<br>Upload your first lab report above.</div>';
+    return;
+  }
+
+  // Build a map of marker key → all historical values for trend arrows
+  const history = {};
+  results.forEach((r, idx) => {
+    r.markers.forEach(m => {
+      if (!history[m.key]) history[m.key] = [];
+      history[m.key].push({ date: r.date, value: m.value, idx });
+    });
+  });
+
+  // Date selector
+  const dateOptions = results.map((r,i) =>
+    `<option value="${i}" ${i===0?'selected':''}>${r.date} — ${r.lab} (${r.markers.length} markers)</option>`
+  ).join('');
+
+  container.innerHTML = `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-label" style="color:#ef4444;margin-bottom:10px">📅 Select Result Date</div>
+      <select id="bloodDateSelect" onchange="renderBloodPanels(parseInt(this.value))"
+        style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit">
+        ${dateOptions}
+      </select>
+    </div>
+    <div id="bloodPanelsContainer"></div>
+    <div id="bloodTrendContainer" style="margin-top:16px"></div>
+  `;
+
+  renderBloodPanels(0);
+}
+
+function renderBloodPanels(idx) {
+  const results = getBloodResults();
+  const entry = results[idx];
+  if (!entry) return;
+
+  const container = document.getElementById('bloodPanelsContainer');
+  const trendContainer = document.getElementById('bloodTrendContainer');
+
+  // Group markers by panel
+  const panels = {};
+  entry.markers.forEach(m => {
+    const ref = BLOOD_REFS[m.key];
+    const panel = ref ? ref[4] : 'other';
+    if (!panels[panel]) panels[panel] = [];
+    panels[panel].push(m);
+  });
+
+  // Build all historical data for trend lines
+  const allResults = getBloodResults();
+  const history = {};
+  allResults.forEach(r => {
+    r.markers.forEach(m => {
+      if (!history[m.key]) history[m.key] = [];
+      history[m.key].push({ date: r.date, value: m.value });
+    });
+  });
+
+  // Render panels
+  const panelOrder = ['metabolic','lipids','hormones','cbc','vitamins','inflammation','liver','other'];
+  container.innerHTML = panelOrder.filter(p => panels[p]).map(panel => {
+    const markers = panels[panel];
+    const rows = markers.map(m => {
+      const ref = BLOOD_REFS[m.key];
+      const status = ref ? bloodStatus(m.key, m.value) : 'ok';
+      const refText = ref ? `${ref[0]}–${ref[1]} ${ref[1] > 500 ? '' : ref[2]}` : (m.unit || '');
+      const hist = history[m.key] || [];
+      let trendHtml = '';
+      if (hist.length >= 2) {
+        const sorted = [...hist].sort((a,b) => a.date.localeCompare(b.date));
+        const prev = sorted[sorted.length - 2].value;
+        const curr = m.value;
+        const pct = ((curr - prev) / prev * 100).toFixed(1);
+        // For markers where lower is better (LDL, glucose, triglycerides, crp...)
+        const lowerBetter = ['ldl','triglycerides','total_cholesterol','glucose','crp','uric_acid','hba1c','cortisol','insulin'].includes(m.key);
+        if (Math.abs(parseFloat(pct)) > 1) {
+          const up = curr > prev;
+          const good = lowerBetter ? !up : up;
+          trendHtml = `<span style="font-size:10px;color:${good?'#22c55e':'#ef4444'};margin-left:4px">${up?'↑':'↓'}${Math.abs(pct)}%</span>`;
+        }
+      }
+      const statusColors = { ok: '#22c55e', warn: '#f59e0b', bad: '#ef4444' };
+      const flagDot = m.flag ? `<span style="font-size:9px;font-weight:800;color:${m.flag.includes('H')?'#ef4444':'#3b82f6'};margin-left:4px">${m.flag}</span>` : '';
+      return `<div class="blood-marker-row">
+        <div class="blood-marker-name">${ref?.[3] || m.name}</div>
+        <div style="text-align:right">
+          <div class="blood-marker-val" style="color:${statusColors[status]}">${m.value} ${m.unit||''}${flagDot}${trendHtml}</div>
+          <div class="blood-marker-ref">${refText}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const badCount = markers.filter(m => bloodStatus(m.key, m.value) === 'bad').length;
+    const warnCount = markers.filter(m => bloodStatus(m.key, m.value) === 'warn').length;
+    const badgeHtml = badCount > 0
+      ? `<span style="font-size:10px;background:#450a0a;color:#ef4444;padding:3px 8px;border-radius:20px;font-weight:700">${badCount} out of range</span>`
+      : warnCount > 0
+      ? `<span style="font-size:10px;background:#422006;color:#f59e0b;padding:3px 8px;border-radius:20px;font-weight:700">${warnCount} borderline</span>`
+      : `<span style="font-size:10px;background:#0d2d1a;color:#22c55e;padding:3px 8px;border-radius:20px;font-weight:700">✓ All optimal</span>`;
+
+    return `<div class="blood-panel-card">
+      <div class="blood-panel-title">
+        <span>${PANEL_LABELS[panel] || '🔬 ' + panel}</span>
+        ${badgeHtml}
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  // Trend charts for markers with >1 data point
+  const trendMarkers = Object.entries(history).filter(([k, vals]) => vals.length >= 2);
+  if (trendMarkers.length > 0 && allResults.length > 1) {
+    trendContainer.innerHTML = `<div class="card">
+      <div class="card-label" style="color:#a78bfa">📈 Trends Over Time</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Tracking ${trendMarkers.length} markers across ${allResults.length} lab results</div>
+      ${trendMarkers.map(([key, vals]) => {
+        const ref = BLOOD_REFS[key];
+        const sorted = [...vals].sort((a,b) => a.date.localeCompare(b.date));
+        const name = ref?.[3] || key;
+        const unit = ref?.[2] || (vals[0]?.unit || '');
+        const min = Math.min(...sorted.map(v => v.value));
+        const max = Math.max(...sorted.map(v => v.value));
+        const range = max - min || 1;
+        const refLo = ref?.[0], refHi = ref?.[1];
+        const dots = sorted.map((v, i) => {
+          const x = sorted.length === 1 ? 50 : (i / (sorted.length-1)) * 100;
+          const y = 100 - ((v.value - min) / range * 80 + 10);
+          const status = ref ? bloodStatus(key, v.value) : 'ok';
+          const col = {ok:'#22c55e',warn:'#f59e0b',bad:'#ef4444'}[status];
+          return `<circle cx="${x}%" cy="${y}%" r="5" fill="${col}"><title>${v.date}: ${v.value} ${unit}</title></circle>`;
+        }).join('');
+        const lines = sorted.map((v, i) => {
+          if (i === 0) return '';
+          const x1 = ((i-1)/(sorted.length-1))*100;
+          const y1 = 100 - ((sorted[i-1].value - min)/range*80+10);
+          const x2 = (i/(sorted.length-1))*100;
+          const y2 = 100 - ((v.value - min)/range*80+10);
+          return `<line x1="${x1}%" y1="${y1}%" x2="${x2}%" y2="${y2}%" stroke="#475569" stroke-width="1.5"/>`;
+        }).join('');
+        const first = sorted[0].value, last = sorted[sorted.length-1].value;
+        const chg = ((last-first)/first*100).toFixed(1);
+        return `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:600;color:var(--text)">${name}</span>
+            <span style="font-size:11px;color:${parseFloat(chg)>=0?'#f59e0b':'#22c55e'}">${parseFloat(chg)>=0?'+':''}${chg}% overall</span>
+          </div>
+          <svg width="100%" height="60" viewBox="0 0 100% 60" style="overflow:visible;display:block">
+            <rect width="100%" height="60" fill="transparent"/>
+            ${lines}${dots}
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px">
+            <span>${sorted[0].date}</span><span>Latest: ${last} ${unit}</span><span>${sorted[sorted.length-1].date}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else {
+    trendContainer.innerHTML = '';
+  }
+
+  // Show insights panel if exists
+  const insightsEl = document.getElementById('bloodAIInsights');
+  if (insightsEl) insightsEl.style.display = 'block';
+}
+
+async function generateBloodAIInsights(entry) {
+  const insightsEl = document.getElementById('bloodAIInsights');
+  const insightsText = document.getElementById('bloodAIInsightsText');
+  if (!insightsEl || !insightsText) return;
+  insightsEl.style.display = 'block';
+  insightsText.innerHTML = '<div style="color:var(--text3)">⏳ Generating health insights…</div>';
+
+  // Gather out of range / borderline markers
+  const flagged = entry.markers.filter(m => {
+    const s = bloodStatus(m.key, m.value);
+    return s === 'bad' || s === 'warn';
+  });
+
+  // Get recent nutrition averages for correlation
+  const nutritionSummary = getNutritionSummaryText(30);
+
+  const markerLines = entry.markers.map(m => {
+    const ref = BLOOD_REFS[m.key];
+    const status = ref ? bloodStatus(m.key, m.value) : 'ok';
+    const mname = ref ? ref[3] : m.name;
+    const flag = status !== 'ok' ? ' (' + status.toUpperCase() + ')' : '';
+    return mname + ': ' + m.value + ' ' + (m.unit || '') + flag;
+  }).join('\n');
+  const prompt = [
+    'You are a health coach analyzing blood work results for Jeremy, a 52-year-old male who lifts 3x/week and runs regularly. He tracks macros at 2,200 kcal/day with 190g protein.',
+    'Lab results from ' + entry.date + ':',
+    markerLines,
+    'Recent 30-day nutrition averages:',
+    nutritionSummary,
+    'Provide a concise actionable health analysis: 1) Most important findings, 2) What is going well, 3) Specific nutrition/lifestyle changes for flagged markers, 4) What to monitor at next draw.',
+    'Keep it practical. No disclaimers needed.'
+  ].join('\n\n');
+
+  try {
+    const data = await callClaudeAPI({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1200,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const text = data.content?.[0]?.text || 'Could not generate insights.';
+    insightsText.innerHTML = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  } catch(e) {
+    insightsText.textContent = 'Could not connect to AI. Check your network.';
+  }
+}
+
+async function analyzeBloodWithNutrition() {
+  const insightsText = document.getElementById('bloodAIInsightsText');
+  if (!insightsText) return;
+  insightsText.innerHTML = '<div style="color:var(--text3)">⏳ Correlating blood work with nutrition history…</div>';
+
+  const results = getBloodResults();
+  if (results.length === 0) return;
+
+  const nutritionSummary = getNutritionSummaryText(90);
+  const bloodSummary = results.map(r => {
+    const flagged = r.markers.filter(m => bloodStatus(m.key, m.value) !== 'ok')
+      .map(m => (BLOOD_REFS[m.key] ? BLOOD_REFS[m.key][3] : m.name) + ' ' + m.value)
+      .join(', ');
+    return r.date + ': ' + (flagged || 'All normal');
+  }).join('\n');
+
+  const prompt = [
+    "Analyze the relationship between Jeremy's nutrition and his blood work results.",
+    'Blood work history:\n' + bloodSummary,
+    '90-day nutrition data:\n' + nutritionSummary,
+    'Identify specific correlations between his diet and blood markers. For each flagged marker, explain which foods/nutrients are likely contributing and give concrete dietary changes. Focus on actionable insights for a 52-year-old male athlete.'
+  ].join('\n\n');
+
+  try {
+    const data = await callClaudeAPI({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const text = data.content?.[0]?.text || 'Could not generate analysis.';
+    insightsText.innerHTML = '<strong style="color:#a78bfa">🔗 Nutrition-Blood Work Correlation</strong><br><br>' +
+      text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  } catch(e) {
+    insightsText.textContent = 'AI unavailable. Try again.';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── EXTENDED NUTRITION TRACKING ────────────────────────
+// ═══════════════════════════════════════════════════════
+
+// Full USDA nutrient ID → key mapping
+const MICRO_NUTRIENT_IDS = {
+  // Vitamins
+  1106: 'vitA',       // Vitamin A RAE (mcg)
+  1162: 'vitC',       // Vitamin C (mg)
+  1114: 'vitD',       // Vitamin D (mcg)
+  1109: 'vitE',       // Vitamin E (mg)
+  1185: 'vitK',       // Vitamin K (mcg)
+  1165: 'vitB1',      // Thiamine B1 (mg)
+  1166: 'vitB2',      // Riboflavin B2 (mg)
+  1167: 'vitB3',      // Niacin B3 (mg)
+  1170: 'vitB5',      // Pantothenic acid B5 (mg)
+  1175: 'vitB6',      // Vitamin B6 (mg)
+  1177: 'folate',     // Folate (mcg)
+  1178: 'vitB12',     // Vitamin B12 (mcg)
+  // Minerals
+  1087: 'calcium',    // (mg)
+  1090: 'magnesium',  // (mg)
+  1092: 'phosphorus', // (mg)
+  1093: 'sodium',     // (mg)
+  1095: 'zinc',       // (mg)
+  1098: 'copper',     // (mg)
+  1101: 'manganese',  // (mg)
+  1103: 'selenium',   // (mcg)
+  1089: 'iron',       // (mg)
+  1091: 'potassium',  // (mg)
+  // Other
+  1079: 'fiber',      // Total dietary fiber (g)
+  1085: 'sugar',      // Total sugars (g)
+  1292: 'omega3',     // ALA omega-3 (g)
+  1316: 'epa',        // EPA (g)
+  1320: 'dpa',        // DPA (g)
+  1322: 'dha',        // DHA (g)
+  1253: 'cholesterol',// (mg)
+  1258: 'saturatedFat', // (g)
+  1292: 'omega3',     // Polyunsaturated (includes omega-3)
+  1257: 'transFat',   // (g)
+};
+
+// Recommended Daily Values for display
+const MICRO_RDV = {
+  vitA: [900, 'mcg', 'Vitamin A'],
+  vitC: [90, 'mg', 'Vitamin C'],
+  vitD: [20, 'mcg', 'Vitamin D'],
+  vitE: [15, 'mg', 'Vitamin E'],
+  vitK: [120, 'mcg', 'Vitamin K'],
+  vitB1: [1.2, 'mg', 'Vitamin B1 (Thiamine)'],
+  vitB2: [1.3, 'mg', 'Vitamin B2 (Riboflavin)'],
+  vitB3: [16, 'mg', 'Vitamin B3 (Niacin)'],
+  vitB5: [5, 'mg', 'Vitamin B5'],
+  vitB6: [1.7, 'mg', 'Vitamin B6'],
+  folate: [400, 'mcg', 'Folate'],
+  vitB12: [2.4, 'mcg', 'Vitamin B12'],
+  calcium: [1000, 'mg', 'Calcium'],
+  magnesium: [420, 'mg', 'Magnesium'],
+  phosphorus: [700, 'mg', 'Phosphorus'],
+  sodium: [2300, 'mg', 'Sodium'],
+  zinc: [11, 'mg', 'Zinc'],
+  copper: [0.9, 'mg', 'Copper'],
+  manganese: [2.3, 'mg', 'Manganese'],
+  selenium: [55, 'mcg', 'Selenium'],
+  iron: [8, 'mg', 'Iron'],
+  potassium: [3400, 'mg', 'Potassium'],
+  fiber: [38, 'g', 'Dietary Fiber'],
+  sugar: [50, 'g', 'Added Sugars'],
+  omega3: [1.6, 'g', 'Omega-3 (ALA)'],
+  epa: [0.5, 'g', 'EPA'],
+  dha: [0.5, 'g', 'DHA'],
+  cholesterol: [300, 'mg', 'Cholesterol'],
+  saturatedFat: [20, 'g', 'Saturated Fat'],
+};
+
+// Get nutrition summary text for AI prompts
+function getNutritionSummaryText(days) {
+  const entries = getRecentMicronutrientAverages(days);
+  if (Object.keys(entries).length === 0) return 'No detailed nutrition data available yet.';
+  return Object.entries(MICRO_RDV).map(([key, [rdv, unit, name]]) => {
+    const avg = entries[key] || 0;
+    const pct = Math.round(avg / rdv * 100);
+    return `${name}: ${avg.toFixed(1)} ${unit}/day (${pct}% of RDV)`;
+  }).join('\n');
+}
+
+function getRecentMicronutrientAverages(days) {
+  const foodEntries = getStorage('foodEntries', {});
+  const totals = {};
+  const counts = {};
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffKey = cutoff.toISOString().slice(0,10);
+
+  Object.entries(foodEntries).forEach(([dateKey, entries]) => {
+    if (dateKey < cutoffKey) return;
+    entries.forEach(e => {
+      if (!e.micros) return;
+      Object.entries(e.micros).forEach(([k, v]) => {
+        totals[k] = (totals[k] || 0) + v;
+        counts[k] = (counts[k] || 0) + 1;
+      });
+    });
+  });
+
+  const daysWithData = new Set(
+    Object.keys(foodEntries).filter(k => k >= cutoffKey)
+  ).size || 1;
+
+  const avgs = {};
+  Object.keys(totals).forEach(k => { avgs[k] = totals[k] / daysWithData; });
+  return avgs;
+}
+
+function renderNutritionReport(days) {
+  // Update active button
+  [7, 30, 90].forEach(d => {
+    const btn = document.getElementById('nrBtn'+d);
+    if (btn) btn.classList.toggle('nr-btn-active', d === days);
+  });
+
+  const avgs = getRecentMicronutrientAverages(days);
+  const grid = document.getElementById('nutritionReportGrid');
+  const details = document.getElementById('nutritionReportDetails');
+  if (!grid) return;
+
+  const hasData = Object.keys(avgs).length > 0;
+  if (!hasData) {
+    grid.innerHTML = '<div style="font-size:13px;color:var(--text2);text-align:center;padding:20px">No micronutrient data yet.<br><br>Micronutrients are captured when you scan barcodes or search the USDA database. Log a few foods to see your report.</div>';
+    if (details) details.innerHTML = '';
+    return;
+  }
+
+  // Category groupings
+  const categories = {
+    '💊 Vitamins': ['vitA','vitC','vitD','vitE','vitK','vitB1','vitB2','vitB3','vitB5','vitB6','folate','vitB12'],
+    '⚡ Minerals': ['calcium','magnesium','iron','potassium','sodium','zinc','phosphorus','copper','manganese','selenium'],
+    '🫀 Heart Health': ['fiber','cholesterol','saturatedFat','omega3','epa','dha','sugar'],
+  };
+
+  grid.innerHTML = Object.entries(categories).map(([catName, keys]) => {
+    const bars = keys.filter(k => avgs[k] !== undefined).map(k => {
+      const [rdv, unit, name] = MICRO_RDV[k] || [1, '', k];
+      const avg = avgs[k] || 0;
+      const pct = Math.min(150, Math.round(avg / rdv * 100));
+      const overRdv = pct > 100;
+      // Color: green 80-120%, yellow <50% or >130%, red <20%
+      const color = pct >= 80 && pct <= 120 ? '#22c55e'
+                  : pct >= 50 && pct <= 130  ? '#f59e0b'
+                  : '#ef4444';
+      return `<div class="nutr-bar-wrap">
+        <div class="nutr-bar-label">
+          <span style="color:var(--text2);font-size:12px">${name}</span>
+          <span style="color:${color};font-weight:600;font-size:12px">${avg.toFixed(1)} ${unit} <span style="color:var(--text3);font-weight:400">(${pct}%)</span></span>
+        </div>
+        <div class="nutr-bar-track">
+          <div class="nutr-bar-fill" style="width:${Math.min(100,pct)}%;background:${color}"></div>
+        </div>
+      </div>`;
+    });
+
+    if (bars.length === 0) return '';
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">${catName}</div>
+      ${bars.join('')}
+    </div>`;
+  }).join('');
+
+  // Summary stats
+  const tracked = Object.keys(avgs).length;
+  const optimal = Object.keys(MICRO_RDV).filter(k => {
+    const pct = avgs[k] ? avgs[k] / MICRO_RDV[k][0] * 100 : 0;
+    return pct >= 80 && pct <= 120;
+  }).length;
+  const low = Object.keys(MICRO_RDV).filter(k => {
+    const pct = avgs[k] ? avgs[k] / MICRO_RDV[k][0] * 100 : 0;
+    return pct < 50 && pct > 0;
+  });
+
+  if (details) {
+    details.innerHTML = `<div class="card">
+      <div class="card-label" style="color:#3b82f6">📊 ${days}-Day Summary</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;text-align:center">
+        <div style="background:var(--surface2);border-radius:12px;padding:12px">
+          <div style="font-size:22px;font-weight:800;color:#22c55e">${optimal}</div>
+          <div style="font-size:10px;color:var(--text3)">Optimal</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:12px;padding:12px">
+          <div style="font-size:22px;font-weight:800;color:#f59e0b">${low.length}</div>
+          <div style="font-size:10px;color:var(--text3)">Low</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:12px;padding:12px">
+          <div style="font-size:22px;font-weight:800;color:var(--text2)">${tracked}</div>
+          <div style="font-size:10px;color:var(--text3)">Tracked</div>
+        </div>
+      </div>
+      ${low.length > 0 ? `<div style="background:#1c0e00;border:1px solid #92400e;border-radius:12px;padding:12px">
+        <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">⚠️ Consistently Low</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">${low.map(k=>MICRO_RDV[k][2]).join(' · ')}</div>
+      </div>` : '<div style="background:#0d2d1a;border:1px solid #166534;border-radius:12px;padding:12px;font-size:12px;color:#4ade80;font-weight:600">✅ All tracked nutrients look solid over this period</div>'}
+    </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── EXTENDED USDA NUTRIENT PARSING ─────────────────────
+// ═══════════════════════════════════════════════════════
+
+// Extract micronutrients from a USDA food item's nutrient list
+function parseMicronutrients(foodNutrients, scale) {
+  const micros = {};
+  (foodNutrients || []).forEach(n => {
+    const id = n.nutrientId || n.nutrientNumber;
+    const key = MICRO_NUTRIENT_IDS[parseInt(id)] || MICRO_NUTRIENT_IDS[String(id)];
+    if (key && n.value != null) {
+      micros[key] = Math.round((n.value * scale) * 1000) / 1000;
+    }
+  });
+  return micros;
 }
 
 // ── Init ──
