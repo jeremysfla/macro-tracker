@@ -1,4 +1,4 @@
-const AK='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';
+const AK='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';
 export default{
   async fetch(req,env){
     const u=new URL(req.url);
