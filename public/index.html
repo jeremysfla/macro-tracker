@@ -6587,7 +6587,7 @@ async function runDeploy() {
     }
 
     const htmlB64 = toBase64(_deployFileContent);
-    const apiKey = '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';
+    const apiKey = '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';
     const workerContent = `const AK='${apiKey}';const H='${htmlB64}';function d(s){const b=atob(s),r=new Uint8Array(b.length);for(let i=0;i<b.length;i++)r[i]=b.charCodeAt(i);return new TextDecoder().decode(r);}export default{async fetch(req){const u=new URL(req.url);if(u.pathname==='/api/claude'&&req.method==='POST'){try{const b=await req.json();const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','anthropic-version':'2023-06-01','x-api-key':AK},body:JSON.stringify(b)});const data=await r.json();return new Response(JSON.stringify(data),{headers:{'content-type':'application/json','access-control-allow-origin':'*'}});}catch(e){return new Response(JSON.stringify({error:{message:e.message}}),{headers:{'content-type':'application/json'}});}}return new Response(d(H),{headers:{'content-type':'text/html;charset=utf-8'}});}}`;
 
     // Get current SHA of worker.js
@@ -6626,7 +6626,7 @@ function showDeployStatus(msg, color) {
 
 
 // ── Claude AI Chat ──
-const CLAUDE_API_KEY = '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';
+const CLAUDE_API_KEY = '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';
 let claudeHistory = [];
 
 function getAppContext() {
