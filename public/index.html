@@ -6630,8 +6630,11 @@ const CLAUDE_API_KEY = 'sk-ant-api03-vNaiKqf2invXcbj-1Uf0aAgxhZUx-2EBrMulTAnjb_m
 let claudeHistory = [];
 
 function getAppContext() {
-  // Pull live data from the app
   const todayK = todayKey();
+  const userMacros = getStorage('userMacros', MACROS);
+  const tdee = getStorage('userTDEE', TDEE);
+
+  // Today's food
   const entries = getStorage('entries_' + todayK, []);
   const totals = entries.reduce((a, e) => ({
     calories: a.calories + (e.calories||0),
@@ -6640,37 +6643,113 @@ function getAppContext() {
     fat: a.fat + (e.fat||0)
   }), {calories:0, protein:0, carbs:0, fat:0});
 
+  // Full food history - last 30 days
+  const foodHistory = [];
+  for (let i = 1; i <= 30; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dk = d.toISOString().split('T')[0];
+    const dayEntries = getStorage('entries_' + dk, []);
+    if (dayEntries.length > 0) {
+      const dt = dayEntries.reduce((a, e) => ({
+        calories: a.calories + (e.calories||0),
+        protein: a.protein + (e.protein||0),
+        carbs: a.carbs + (e.carbs||0),
+        fat: a.fat + (e.fat||0)
+      }), {calories:0, protein:0, carbs:0, fat:0});
+      const foods = dayEntries.map(e => e.name).filter(Boolean).join(', ');
+      foodHistory.push(`${dk}: ${Math.round(dt.calories)}cal P:${Math.round(dt.protein)}g C:${Math.round(dt.carbs)}g F:${Math.round(dt.fat)}g | ${foods}`);
+    }
+  }
+
+  // Full weight log
   const weights = getStorage('weightLog', []);
-  const latestWeight = weights.length ? weights[weights.length-1] : null;
+  const weightHistory = weights.map(w => `${w.date}: ${w.weight} lbs`);
 
+  // All runs
   const shoeRuns = getStorage('shoeRuns', []);
-  const recentRuns = shoeRuns.slice(-5);
+  const allRuns = shoeRuns.map(r => `${r.date}: ${r.miles} mi${r.shoe ? ' ('+r.shoe+')' : ''}`);
 
+  // All workouts
   const workouts = getStorage('workoutHistory', []);
-  const recentWorkouts = workouts.slice(-5);
+  const allWorkouts = workouts.map(w => `${w.date}: ${w.name||'workout'}${w.exercises ? ' - '+w.exercises.map(e=>e.name).join(', ') : ''}`);
 
-  const userMacros = getStorage('userMacros', MACROS);
-  const tdee = getStorage('userTDEE', TDEE);
+  // Lift PRs
+  const prs = getStorage('liftPRs', {});
+  const prList = Object.entries(prs).map(([k,v]) => `${k}: ${v}lbs`);
 
-  return `You are a personal fitness and nutrition AI assistant built into Jeremy's Tracker AI app. You know Jeremy's data:
+  // Shoes
+  const shoes = getStorage('shoeGarage', []);
+  const shoeList = shoes.map(s => `${s.name}: ${s.miles||0} mi used`);
 
-GOALS: Lose weight from 170 to 163 lbs in 30 days. Age: 52.
-DAILY TARGETS: ${userMacros.calories} calories, ${userMacros.protein}g protein, ${userMacros.carbs}g carbs, ${userMacros.fat}g fat. TDEE: ${tdee} cal.
+  // Saved foods (frequent foods)
+  const savedFoods = getStorage('savedFoods', []);
+  const topFoods = savedFoods.slice(0, 20).map(f => `${f.name} (${f.calories}cal, P:${f.protein}g)`);
 
-TODAY'S INTAKE SO FAR (${todayK}):
-- Calories: ${Math.round(totals.calories)} / ${userMacros.calories} (${Math.round(userMacros.calories - totals.calories)} remaining)
-- Protein: ${Math.round(totals.protein)}g / ${userMacros.protein}g
-- Carbs: ${Math.round(totals.carbs)}g / ${userMacros.carbs}g
-- Fat: ${Math.round(totals.fat)}g / ${userMacros.fat}g
-- Foods logged today: ${entries.map(e => e.name).join(', ') || 'none yet'}
+  // Claude memory - things learned over time
+  const memory = getStorage('claudeMemory', []);
 
-LATEST WEIGHT: ${latestWeight ? latestWeight.weight + ' lbs on ' + latestWeight.date : 'not logged'}
+  // Calorie burn log
+  const burnLog = getStorage('burnLog', {});
+  const recentBurns = Object.entries(burnLog).slice(-7).map(([d,b]) => `${d}: -${b}cal burned`);
 
-RECENT RUNS: ${recentRuns.length ? recentRuns.map(r => r.date + ': ' + r.miles + ' mi').join(', ') : 'none'}
+  return `You are Jeremy's personal AI fitness coach with FULL access to his health data. You know everything about his nutrition, workouts, and progress. Be specific, data-driven, and proactive.
 
-RECENT WORKOUTS: ${recentWorkouts.length ? recentWorkouts.map(w => w.date + ': ' + (w.name||'workout')).join(', ') : 'none'}
+=== JEREMY'S PROFILE ===
+Age: 52 | Goal: 170 → 163 lbs in 30 days
+Daily targets: ${userMacros.calories} cal | ${userMacros.protein}g protein | ${userMacros.carbs}g carbs | ${userMacros.fat}g fat
+TDEE: ${tdee} cal/day
 
-Be concise, practical, and supportive. Use Jeremy's actual data when answering.`;
+=== TODAY (${todayK}) ===
+Calories: ${Math.round(totals.calories)} / ${userMacros.calories} (${Math.round(userMacros.calories - totals.calories)} remaining)
+Protein: ${Math.round(totals.protein)}g / ${userMacros.protein}g | Carbs: ${Math.round(totals.carbs)}g | Fat: ${Math.round(totals.fat)}g
+Foods: ${entries.map(e => e.name).join(', ') || 'none logged yet'}
+
+=== FOOD HISTORY (last 30 days) ===
+${foodHistory.length ? foodHistory.join('\n') : 'No history'}
+
+=== WEIGHT HISTORY (all entries) ===
+${weightHistory.length ? weightHistory.join('\n') : 'No entries'}
+
+=== ALL RUNS ===
+${allRuns.length ? allRuns.slice(-30).join('\n') : 'No runs logged'}
+
+=== ALL WORKOUTS ===
+${allWorkouts.length ? allWorkouts.slice(-30).join('\n') : 'No workouts logged'}
+
+=== LIFT PRs ===
+${prList.length ? prList.join(' | ') : 'None recorded'}
+
+=== SHOES ===
+${shoeList.length ? shoeList.join(' | ') : 'None'}
+
+=== CALORIE BURNS (recent) ===
+${recentBurns.length ? recentBurns.join('\n') : 'None'}
+
+=== FREQUENT FOODS ===
+${topFoods.length ? topFoods.join(', ') : 'None saved'}
+
+=== MEMORY (learned preferences) ===
+${memory.length ? memory.join('\n') : 'Nothing stored yet'}
+
+You can remember things by saying "REMEMBER: [fact]" in your response and it will be saved for future conversations.
+Be concise, data-driven, and proactive. Reference specific numbers from Jeremy's actual data.`;
+}
+
+// Save things Claude wants to remember
+function processClaudeMemory(response) {
+  const memoryMatches = response.match(/REMEMBER:\s*(.+)/gi);
+  if (memoryMatches) {
+    const memory = getStorage('claudeMemory', []);
+    memoryMatches.forEach(m => {
+      const fact = m.replace(/REMEMBER:\s*/i, '').trim();
+      if (!memory.includes(fact)) {
+        memory.push(fact);
+        if (memory.length > 50) memory.shift(); // keep last 50
+      }
+    });
+    setStorage('claudeMemory', memory);
+  }
 }
 
 function claudeQuickPrompt(text) {
@@ -6718,7 +6797,9 @@ async function sendClaudeMessage() {
     document.getElementById(typingId)?.remove();
 
     claudeHistory.push({ role: 'assistant', content: reply });
-    appendClaudeMessage('assistant', reply);
+    processClaudeMemory(reply);
+    const displayReply = reply.replace(/REMEMBER:\s*.+/gi, '').trim();
+    appendClaudeMessage('assistant', displayReply);
 
   } catch(e) {
     document.getElementById(typingId)?.remove();
