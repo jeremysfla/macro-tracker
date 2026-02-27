@@ -944,9 +944,10 @@
 <div class="modal-overlay" id="addEventModal">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
-    <div class="modal-title">🏁 Add Event / Goal</div>
+    <div class="modal-title" id="addEventModalTitle">🏁 Add Event / Goal</div>
     <div class="modal-sub">Race, milestone, or weight target</div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input type="hidden" id="eventEditId" value="" />
+    <div id="evtTypeRow" style="display:flex;gap:8px;margin-bottom:14px">
       <button id="evtTypeRace" onclick="setEventType('race')" style="flex:1;padding:8px;border-radius:10px;border:2px solid #3b82f6;background:#3b82f6;color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">🏁 Race/Event</button>
       <button id="evtTypeWeight" onclick="setEventType('weight')" style="flex:1;padding:8px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">⚖️ Weight Goal</button>
     </div>
@@ -955,7 +956,7 @@
     <div id="eventWeightRow" style="display:none;margin-bottom:12px">
       <input type="number" id="eventWeightTarget" class="big-input" placeholder="Target weight (lbs)" step="0.1" />
     </div>
-    <button class="btn-green" onclick="saveEvent()">Save</button>
+    <button class="btn-green" id="saveEventBtn" onclick="saveEvent()">Save</button>
     <button class="btn-outline" onclick="document.getElementById('addEventModal').classList.remove('open')">Cancel</button>
   </div>
 </div>
@@ -6803,9 +6804,28 @@ function setEventType(type) {
 function openAddEventModal() {
   _eventType = 'race';
   setEventType('race');
+  document.getElementById('eventEditId').value = '';
   document.getElementById('eventNameInput').value = '';
   document.getElementById('eventDateInput').value = '';
   document.getElementById('eventWeightTarget').value = '';
+  document.getElementById('addEventModalTitle').textContent = '🏁 Add Event / Goal';
+  document.getElementById('saveEventBtn').textContent = 'Save';
+  document.getElementById('evtTypeRow').style.display = 'flex';
+  document.getElementById('addEventModal').classList.add('open');
+}
+
+function openEditEventModal(id) {
+  const event = getEvents().find(e => e.id === id);
+  if (!event) return;
+  _eventType = event.type || 'race';
+  setEventType(_eventType);
+  document.getElementById('eventEditId').value = id;
+  document.getElementById('eventNameInput').value = event.name;
+  document.getElementById('eventDateInput').value = event.date;
+  document.getElementById('eventWeightTarget').value = event.weightTarget || '';
+  document.getElementById('addEventModalTitle').textContent = '✏️ Edit Event';
+  document.getElementById('saveEventBtn').textContent = 'Update';
+  document.getElementById('evtTypeRow').style.display = 'none';
   document.getElementById('addEventModal').classList.add('open');
 }
 
@@ -6813,14 +6833,31 @@ function saveEvent() {
   const name = document.getElementById('eventNameInput').value.trim();
   const date = document.getElementById('eventDateInput').value;
   if (!name || !date) return;
-  const event = { id: Date.now(), name, date, type: _eventType };
-  if (_eventType === 'weight') {
-    const target = parseFloat(document.getElementById('eventWeightTarget').value);
-    if (target) event.weightTarget = target;
+  const editId = document.getElementById('eventEditId').value;
+  let events = getEvents();
+
+  if (editId) {
+    // Edit existing
+    events = events.map(e => {
+      if (e.id !== parseInt(editId) && e.id !== editId) return e;
+      const updated = { ...e, name, date };
+      if (e.type === 'weight') {
+        const target = parseFloat(document.getElementById('eventWeightTarget').value);
+        if (target) updated.weightTarget = target;
+      }
+      return updated;
+    });
+  } else {
+    // Add new
+    const event = { id: Date.now(), name, date, type: _eventType };
+    if (_eventType === 'weight') {
+      const target = parseFloat(document.getElementById('eventWeightTarget').value);
+      if (target) event.weightTarget = target;
+    }
+    events.push(event);
+    events.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const events = getEvents();
-  events.push(event);
-  events.sort((a, b) => a.date.localeCompare(b.date));
+
   saveEvents(events);
   document.getElementById('addEventModal').classList.remove('open');
   renderEventCountdowns();
@@ -6923,7 +6960,10 @@ function renderEventList() {
         <div style="font-size:14px;font-weight:700;color:var(--text)">${emoji} ${e.name}</div>
         <div style="font-size:11px;color:${color};font-weight:600;margin-top:2px">${sub} · ${new Date(e.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
       </div>
-      <button onclick="deleteEvent(${e.id})" style="background:none;border:none;color:#ef4444;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button>
+      <div style="display:flex;gap:4px">
+        <button onclick="openEditEventModal(${e.id})" style="background:none;border:none;color:#60a5fa;font-size:18px;cursor:pointer;padding:4px 8px">✏️</button>
+        <button onclick="deleteEvent(${e.id})" style="background:none;border:none;color:#ef4444;font-size:18px;cursor:pointer;padding:4px 8px">🗑</button>
+      </div>
     </div>`;
   }).join('');
 }
