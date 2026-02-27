@@ -1343,8 +1343,8 @@
       <div style="display:flex;flex-direction:column;height:calc(100vh - 120px)">
         <!-- Header -->
         <div style="padding:16px 16px 8px;border-bottom:1px solid #1e293b;flex-shrink:0">
-          <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:2px">🤖 AI Assistant</div>
-          <div style="font-size:11px;color:#64748b">Powered by Claude · Knows your fitness data</div>
+          <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:2px">🤖 Jeremy's AI Coach</div>
+          <div style="font-size:11px;color:#64748b">Powered by Claude · Full access to your data</div>
         </div>
 
         <!-- Quick prompts -->
@@ -1362,7 +1362,8 @@
 
         <!-- Input -->
         <div style="padding:12px 16px;border-top:1px solid #1e293b;flex-shrink:0;display:flex;gap:10px;align-items:flex-end">
-          <textarea id="claudeInput" placeholder="Ask Claude..." rows="1" style="flex:1;background:#0f172a;border:1.5px solid #1e3a5f;border-radius:14px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px;overflow-y:auto;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <textarea id="claudeInput" placeholder="Ask your AI coach..." rows="1" style="flex:1;background:#0f172a;border:1.5px solid #1e3a5f;border-radius:14px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px;overflow-y:auto;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <button id="claudeVoiceBtn" onclick="toggleVoiceDictation()" style="background:#1e3a5f;border:none;border-radius:12px;width:44px;height:44px;color:#fff;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">🎤</button>
           <button onclick="sendClaudeMessage()" id="claudeSendBtn" style="background:#3b82f6;border:none;border-radius:12px;width:44px;height:44px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
         </div>
       </div>
@@ -6663,7 +6664,8 @@ function getAppContext() {
   }
 
   // Full weight log
-  const weights = getStorage('weightLog', []);
+  const weightsRaw = getStorage('weightLog', []);
+  const weights = Array.isArray(weightsRaw) ? weightsRaw : Object.values(weightsRaw);
   const weightHistory = weights.map(w => `${w.date}: ${w.weight} lbs`);
 
   // All runs
@@ -6750,6 +6752,60 @@ function processClaudeMemory(response) {
     });
     setStorage('claudeMemory', memory);
   }
+}
+
+// Voice dictation for Claude input
+let _voiceRecognition = null;
+let _voiceActive = false;
+
+function toggleVoiceDictation() {
+  const btn = document.getElementById('claudeVoiceBtn');
+  const input = document.getElementById('claudeInput');
+
+  if (_voiceActive) {
+    _voiceRecognition?.stop();
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    alert('Voice dictation not supported in this browser.');
+    return;
+  }
+
+  _voiceRecognition = new SR();
+  _voiceRecognition.lang = 'en-US';
+  _voiceRecognition.continuous = false;
+  _voiceRecognition.interimResults = true;
+
+  _voiceRecognition.onstart = () => {
+    _voiceActive = true;
+    btn.style.background = '#ef4444';
+    btn.textContent = '🔴';
+  };
+
+  _voiceRecognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    input.value = transcript;
+    input.style.height = 'auto';
+    input.style.height = input.scrollHeight + 'px';
+  };
+
+  _voiceRecognition.onend = () => {
+    _voiceActive = false;
+    btn.style.background = '#1e3a5f';
+    btn.textContent = '🎤';
+    // Auto-send if we got something
+    if (input.value.trim()) sendClaudeMessage();
+  };
+
+  _voiceRecognition.onerror = () => {
+    _voiceActive = false;
+    btn.style.background = '#1e3a5f';
+    btn.textContent = '🎤';
+  };
+
+  _voiceRecognition.start();
 }
 
 function claudeQuickPrompt(text) {
