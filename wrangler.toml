@@ -4,5 +4,5 @@ workers_dev = true
 
 [assets]
 directory = "./public"
-html_handling = "auto-trailing-slash"
+html_handling = "force-trailing-slash"
 not_found_handling = "single-page-application"
