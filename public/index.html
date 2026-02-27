@@ -834,7 +834,15 @@
           </div>
           <input type="file" id="bloodFileInput" accept="image/*,.pdf" style="display:none" onchange="handleBloodFile(this.files[0])">
           <div id="bloodUploadStatus" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--text2);display:none"></div>
-          <button id="bloodAnalyzeBtn" onclick="analyzeBloodReport()" style="display:none;width:100%;margin-top:12px;background:#ef4444;border:none;border-radius:12px;padding:13px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze with AI</button>
+          <button id="bloodAnalyzeBtn" onclick="analyzeBloodReport()" style="display:none;width:100%;margin-top:12px;background:#ef4444;border:none;border-radius:12px;padding:13px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze Image with AI</button>
+          <!-- PDF text paste fallback -->
+          <div id="bloodPasteToggle" style="text-align:center;margin-top:12px">
+            <button onclick="toggleBloodPaste()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline">📋 Or paste report text instead (for PDFs)</button>
+          </div>
+          <div id="bloodPasteArea" style="display:none;margin-top:10px">
+            <textarea id="bloodPasteText" placeholder="Paste the full text of your lab report here..." style="width:100%;height:120px;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+            <button onclick="analyzeBloodPasteText()" style="width:100%;margin-top:8px;background:#7c3aed;border:none;border-radius:12px;padding:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🤖 Analyze Pasted Text</button>
+          </div>
         </div>
         <div id="bloodResultsList"></div>
         <div id="bloodAIInsights" style="display:none" class="card">
@@ -6606,6 +6614,71 @@ function bloodStatus(key, value) {
   return 'ok';
 }
 
+function buildBloodParsePrompt() {
+  return 'You are a medical lab results parser. Extract ALL test results from this lab report.' +
+    ' Return ONLY valid JSON with no markdown or explanation:' +
+    ' {"test_date":"YYYY-MM-DD","lab_name":"string","markers":[' +
+    '{"name":"exact name","key":"snake_case_key","value":0,"unit":"string","ref_low":0,"ref_high":0,"flag":"H or L or null"}' +
+    ']}.' +
+    ' Valid keys include: glucose, hba1c, bun, creatinine, egfr, sodium, potassium, calcium, total_cholesterol, ldl, hdl, triglycerides,' +
+    ' testosterone_total, testosterone_free, cortisol, tsh, t4_free, insulin, dhea_s, wbc, rbc, hemoglobin, hematocrit, platelets,' +
+    ' vitamin_d, vitamin_b12, folate, ferritin, iron, crp, alt, ast, alkaline_phosphatase, uric_acid.' +
+    ' For unlisted markers create a descriptive snake_case key.' +
+    ' Extract EVERY marker visible. Include ref_low/ref_high parsed from reference intervals. Set flag to H if high, L if low, null if normal.';
+}
+
+async function saveBloodEntry(parsed) {
+  const testDate = parsed.test_date || new Date().toISOString().slice(0,10);
+  const results = getBloodResults();
+  const newEntry = {
+    id: Date.now(),
+    date: testDate,
+    lab: parsed.lab_name || 'Lab Results',
+    markers: parsed.markers || [],
+    uploadedAt: new Date().toISOString(),
+  };
+  results.unshift(newEntry);
+  saveBloodResults(results);
+  return newEntry;
+}
+
+function toggleBloodPaste() {
+  const area = document.getElementById('bloodPasteArea');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+}
+
+async function analyzeBloodPasteText() {
+  const text = (document.getElementById('bloodPasteText')?.value || '').trim();
+  if (!text) { showToast('Please paste your lab report text first'); return; }
+  
+  const status = document.getElementById('bloodUploadStatus');
+  const btn = document.querySelector('[onclick="analyzeBloodPasteText()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing…'; }
+  status.style.display = 'block';
+  status.style.color = 'var(--text2)';
+  status.textContent = 'AI is reading your pasted lab results…';
+
+  try {
+    const data = await callClaudeAPI({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
+    });
+    const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+    const newEntry = await saveBloodEntry(parsed);
+    status.textContent = '✅ Imported ' + newEntry.markers.length + ' markers from ' + newEntry.date;
+    document.getElementById('bloodPasteArea').style.display = 'none';
+    document.getElementById('bloodPasteText').value = '';
+    renderBloodWorkPage();
+    generateBloodAIInsights(newEntry);
+  } catch(e) {
+    status.textContent = '❌ Could not parse. Check the pasted text and try again.';
+    status.style.color = '#ef4444';
+    if (btn) { btn.disabled = false; btn.textContent = '🤖 Analyze Pasted Text'; }
+  }
+}
+
 async function analyzeBloodReport() {
   if (!_bloodFileData) return;
   const btn    = document.getElementById('bloodAnalyzeBtn');
@@ -6613,73 +6686,54 @@ async function analyzeBloodReport() {
   btn.disabled = true;
   btn.textContent = '⏳ Reading your lab report…';
   status.style.display = 'block';
-  status.textContent = 'AI is extracting all values from your lab report…';
+  status.style.color = 'var(--text2)';
+  status.textContent = 'AI is extracting all values from your lab report image…';
 
   const isPdf = _bloodFileData.mediaType === 'application/pdf';
 
-  const prompt = `You are a medical lab results parser. Extract ALL test results from this lab report image.
-
-Return ONLY valid JSON — no markdown, no explanation:
-{
-  "test_date": "YYYY-MM-DD or null",
-  "lab_name": "string or null",
-  "markers": [
-    {
-      "name": "exact name from report",
-      "key": "snake_case key matching one of: ${Object.keys(BLOOD_REFS).join(', ')}, or a descriptive snake_case if not listed",
-      "value": number,
-      "unit": "unit string",
-      "ref_low": number or null,
-      "ref_high": number or null,
-      "flag": "H" or "L" or "HH" or "LL" or null
-    }
-  ]
-}
-
-Extract EVERY marker visible. Use the closest matching key from the list provided. If a marker doesn't match any key, create a descriptive snake_case key.`;
-
   try {
-    const msgContent = isPdf
-      ? [{ type: 'text', text: 'Lab report PDF — ' + prompt }]
-      : [
-          { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 }},
-          { type: 'text', text: prompt }
-        ];
+    let msgContent;
+    if (isPdf) {
+      // PDFs: send as base64 document type (Claude API document format)
+      msgContent = [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: _bloodFileData.base64 }
+        },
+        { type: 'text', text: buildBloodParsePrompt() }
+      ];
+    } else {
+      // Images: send as base64 image
+      msgContent = [
+        { type: 'image', source: { type: 'base64', media_type: _bloodFileData.mediaType, data: _bloodFileData.base64 }},
+        { type: 'text', text: buildBloodParsePrompt() }
+      ];
+    }
 
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
-      max_tokens: 2000,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
       messages: [{ role: 'user', content: msgContent }]
     });
 
     const raw = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(raw);
-
-    const testDate = parsed.test_date || new Date().toISOString().slice(0,10);
-    const results = getBloodResults();
-    const newEntry = {
-      id: Date.now(),
-      date: testDate,
-      lab: parsed.lab_name || 'Lab Results',
-      markers: parsed.markers || [],
-      uploadedAt: new Date().toISOString(),
-    };
-    results.unshift(newEntry);
-    saveBloodResults(results);
+    const newEntry = await saveBloodEntry(parsed);
 
     btn.style.display = 'none';
     document.getElementById('bloodUploadName').textContent = '';
     _bloodFileData = null;
     document.getElementById('bloodFileInput').value = '';
-    status.textContent = `✅ Imported ${newEntry.markers.length} markers from ${testDate}`;
+    status.textContent = '✅ Imported ' + newEntry.markers.length + ' markers from ' + newEntry.date;
 
     renderBloodWorkPage();
     generateBloodAIInsights(newEntry);
 
   } catch(e) {
+    console.error('Blood parse error:', e);
     btn.disabled = false;
-    btn.textContent = '🤖 Analyze with AI';
-    status.textContent = '❌ Could not parse report. Try a clearer photo.';
+    btn.textContent = '🤖 Analyze Image with AI';
+    status.textContent = '❌ Could not parse image. Try the "paste text" option below instead.';
     status.style.color = '#ef4444';
   }
 }
@@ -7279,6 +7333,65 @@ handleStravaCallback();
       fetchGarminToday();
     }
   }
+})();
+
+// ── One-time seed: Labcorp Oct 2024 results ──
+(function seedLabcorpOct2024() {
+  try {
+    const existing = JSON.parse(localStorage.getItem('bloodResults') || '[]');
+    if (existing.some(r => r.date === '2024-10-11')) return;
+    const entry = {
+      id: 1728691200000,
+      date: '2024-10-11',
+      lab: 'Labcorp',
+      markers: [
+        {name:'WBC',key:'wbc',value:4.4,unit:'x10E3/uL',ref_low:3.4,ref_high:10.8,flag:null},
+        {name:'RBC',key:'rbc',value:4.74,unit:'x10E6/uL',ref_low:4.14,ref_high:5.80,flag:null},
+        {name:'Hemoglobin',key:'hemoglobin',value:14.5,unit:'g/dL',ref_low:13.0,ref_high:17.7,flag:null},
+        {name:'Hematocrit',key:'hematocrit',value:44.5,unit:'%',ref_low:37.5,ref_high:51.0,flag:null},
+        {name:'Platelets',key:'platelets',value:269,unit:'x10E3/uL',ref_low:150,ref_high:450,flag:null},
+        {name:'Glucose',key:'glucose',value:83,unit:'mg/dL',ref_low:70,ref_high:99,flag:null},
+        {name:'BUN',key:'bun',value:26,unit:'mg/dL',ref_low:6,ref_high:24,flag:'H'},
+        {name:'Creatinine',key:'creatinine',value:1.13,unit:'mg/dL',ref_low:0.76,ref_high:1.27,flag:null},
+        {name:'eGFR',key:'egfr',value:79,unit:'mL/min/1.73',ref_low:59,ref_high:999,flag:null},
+        {name:'Sodium',key:'sodium',value:139,unit:'mmol/L',ref_low:134,ref_high:144,flag:null},
+        {name:'Potassium',key:'potassium',value:4.8,unit:'mmol/L',ref_low:3.5,ref_high:5.2,flag:null},
+        {name:'Calcium',key:'calcium',value:10.6,unit:'mg/dL',ref_low:8.7,ref_high:10.2,flag:'H'},
+        {name:'ALT',key:'alt',value:17,unit:'IU/L',ref_low:0,ref_high:44,flag:null},
+        {name:'AST',key:'ast',value:22,unit:'IU/L',ref_low:0,ref_high:40,flag:null},
+        {name:'Alkaline Phosphatase',key:'alkaline_phosphatase',value:57,unit:'IU/L',ref_low:44,ref_high:121,flag:null},
+        {name:'Total Cholesterol',key:'total_cholesterol',value:243,unit:'mg/dL',ref_low:0,ref_high:199,flag:'H'},
+        {name:'LDL',key:'ldl',value:153,unit:'mg/dL',ref_low:0,ref_high:99,flag:'H'},
+        {name:'HDL',key:'hdl',value:77,unit:'mg/dL',ref_low:40,ref_high:999,flag:null},
+        {name:'Triglycerides',key:'triglycerides',value:76,unit:'mg/dL',ref_low:0,ref_high:149,flag:null},
+        {name:'Lipoprotein(a)',key:'lipoprotein_a',value:123.2,unit:'nmol/L',ref_low:0,ref_high:75,flag:'H'},
+        {name:'Apolipoprotein B',key:'apolipoprotein_b',value:117,unit:'mg/dL',ref_low:0,ref_high:90,flag:'H'},
+        {name:'Testosterone',key:'testosterone_total',value:614,unit:'ng/dL',ref_low:264,ref_high:916,flag:null},
+        {name:'Free Testosterone',key:'testosterone_free',value:104.9,unit:'pg/mL',ref_low:30.3,ref_high:183.2,flag:null},
+        {name:'TSH',key:'tsh',value:1.64,unit:'uIU/mL',ref_low:0.45,ref_high:4.5,flag:null},
+        {name:'Free T4',key:'t4_free',value:1.68,unit:'ng/dL',ref_low:0.82,ref_high:1.77,flag:null},
+        {name:'Free T3',key:'free_t3',value:3.2,unit:'pg/mL',ref_low:2.0,ref_high:4.4,flag:null},
+        {name:'DHEA-Sulfate',key:'dhea_s',value:111,unit:'ug/dL',ref_low:71.6,ref_high:375.4,flag:null},
+        {name:'Cortisol',key:'cortisol',value:16.0,unit:'ug/dL',ref_low:6.2,ref_high:19.4,flag:null},
+        {name:'Insulin',key:'insulin',value:2.1,unit:'uIU/mL',ref_low:2.6,ref_high:24.9,flag:'L'},
+        {name:'Estradiol',key:'estradiol',value:9.7,unit:'pg/mL',ref_low:7.6,ref_high:42.6,flag:null},
+        {name:'Vitamin D',key:'vitamin_d',value:44.8,unit:'ng/mL',ref_low:30,ref_high:100,flag:null},
+        {name:'Vitamin B12',key:'vitamin_b12',value:699,unit:'pg/mL',ref_low:232,ref_high:1245,flag:null},
+        {name:'Folate',key:'folate',value:10.2,unit:'ng/mL',ref_low:3.0,ref_high:20,flag:null},
+        {name:'Ferritin',key:'ferritin',value:88,unit:'ng/mL',ref_low:30,ref_high:400,flag:null},
+        {name:'Iron',key:'iron',value:103,unit:'ug/dL',ref_low:38,ref_high:169,flag:null},
+        {name:'CRP Cardiac',key:'crp',value:0.46,unit:'mg/L',ref_low:0,ref_high:3.0,flag:null},
+        {name:'HbA1c',key:'hba1c',value:5.5,unit:'%',ref_low:4.8,ref_high:5.6,flag:null},
+        {name:'PSA',key:'psa',value:0.5,unit:'ng/mL',ref_low:0,ref_high:4.0,flag:null},
+        {name:'Magnesium',key:'magnesium',value:2.1,unit:'mg/dL',ref_low:1.6,ref_high:2.3,flag:null},
+      ],
+      uploadedAt: new Date().toISOString(),
+    };
+    const all = JSON.parse(localStorage.getItem('bloodResults') || '[]');
+    all.unshift(entry);
+    localStorage.setItem('bloodResults', JSON.stringify(all));
+    console.log('✅ Seeded Labcorp Oct 2024 (39 markers)');
+  } catch(e) { console.warn('Seed failed:', e); }
 })();
 
 // ── Hidden Deploy Panel ──
