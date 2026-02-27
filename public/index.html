@@ -6952,10 +6952,7 @@ async function analyzeBloodReport() {
     if (_bloodFileData.extractedText) {
       // PDF with client-side extracted text — small payload, no size limit issues
       status.textContent = 'AI is parsing your lab values…';
-      msgContent = buildBloodParsePrompt() + '
-
-LAB REPORT TEXT:
-' + _bloodFileData.extractedText;
+      msgContent = buildBloodParsePrompt() + `\n\nLAB REPORT TEXT:\n` + _bloodFileData.extractedText;
     } else if (_bloodFileData.base64 && _bloodFileData.mediaType === 'application/pdf') {
       // PDF fallback — base64 document
       status.textContent = 'AI is reading your PDF…';
