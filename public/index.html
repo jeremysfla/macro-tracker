@@ -6866,6 +6866,97 @@ const BLOOD_REFS = {
 
 
 
+const KEY_ALIASES = {
+  'blood_glucose':'glucose','fasting_glucose':'glucose','serum_glucose':'glucose',
+  'hemoglobin_a1c':'hba1c','hb_a1c':'hba1c','a1c':'hba1c','glycated_hemoglobin':'hba1c',
+  'blood_urea_nitrogen':'bun','urea_nitrogen':'bun','serum_creatinine':'creatinine',
+  'estimated_gfr':'egfr','gfr':'egfr',
+  'cholesterol_total':'total_cholesterol','total_chol':'total_cholesterol','cholesterol':'total_cholesterol',
+  'ldl_cholesterol':'ldl','ldl_chol':'ldl','ldl_calculated':'ldl','ldl_c':'ldl',
+  'ldl_chol_calc':'ldl','ldl_chol_calc_nih':'ldl','ldl_direct':'ldl',
+  'hdl_cholesterol':'hdl','hdl_chol':'hdl','hdl_c':'hdl',
+  'trig':'triglycerides','trigs':'triglycerides','tg':'triglycerides',
+  'vldl_cholesterol':'vldl','vldl_chol':'vldl',
+  'lp_a':'lipoprotein_a','lpa':'lipoprotein_a',
+  'apo_b':'apolipoprotein_b','apob':'apolipoprotein_b',
+  'non_hdl_cholesterol':'non_hdl','non_hdl_chol':'non_hdl',
+  'tchol_hdl_ratio':'t_chol_hdl_ratio','chol_hdl_ratio':'t_chol_hdl_ratio',
+  'testosterone':'testosterone_total','total_testosterone':'testosterone_total',
+  'free_testosterone':'testosterone_free','testosterone_free_calc':'testosterone_free',
+  'sex_hormone_binding_globulin':'shbg','sex_horm_binding_glob':'shbg',
+  'estradiol_e2':'estradiol','e2':'estradiol',
+  'cortisol_am':'cortisol','morning_cortisol':'cortisol',
+  'thyroid_stimulating_hormone':'tsh','thyrotropin':'tsh',
+  'free_t4':'t4_free','thyroxine_free':'t4_free','t4_free_direct':'t4_free',
+  'free_thyroxine':'t4_free','thyroxine_t4_free':'t4_free','thyroxine_t4':'t4_free',
+  't3_free':'free_t3','triiodothyronine_free':'free_t3','ft3':'free_t3',
+  't3_uptake':'t3_uptake','resin_t3_uptake':'t3_uptake',
+  'fasting_insulin':'insulin','serum_insulin':'insulin',
+  'dhea_sulfate':'dhea_s','dheas':'dhea_s','dhea':'dhea_s',
+  'prostate_specific_antigen':'psa','psa_total':'psa',
+  'white_blood_cell':'wbc','white_blood_cells':'wbc','leukocytes':'wbc',
+  'red_blood_cell':'rbc','red_blood_cells':'rbc','erythrocytes':'rbc',
+  'hgb':'hemoglobin','hb':'hemoglobin','haemoglobin':'hemoglobin',
+  'hct':'hematocrit','packed_cell_volume':'hematocrit',
+  'platelet_count':'platelets','thrombocytes':'platelets','plt':'platelets',
+  'mean_corpuscular_volume':'mcv','mean_corpuscular_hemoglobin_concentration':'mchc',
+  'red_cell_distribution_width':'rdw','rdw_cv':'rdw',
+  'lymphs_absolute':'lymphocytes_abs','lymphocytes_absolute':'lymphocytes_abs',
+  'absolute_lymphocytes':'lymphocytes_abs','lymphs':'lymphocytes_pct',
+  'lymphocytes':'lymphocytes_pct',
+  'neutrophils_absolute':'neutrophils_abs','absolute_neutrophils':'neutrophils_abs',
+  'neutrophils':'neutrophils_pct',
+  'monocytes_absolute':'monocytes_abs','absolute_monocytes':'monocytes_abs',
+  'monocytes':'monocytes_pct',
+  'eos_absolute':'eosinophils_abs','eosinophils_absolute':'eosinophils_abs',
+  'eosinophils':'eosinophils_pct',
+  'baso_absolute':'basophils_abs','basophils_absolute':'basophils_abs',
+  'basophils':'basophils_pct',
+  'immature_granulocytes':'immature_grans_pct',
+  'immature_grans_abs':'immature_grans_abs',
+  'bun_creatinine':'bun_creatinine_ratio','bun_cr_ratio':'bun_creatinine_ratio',
+  'chloride_serum':'chloride','serum_chloride':'chloride',
+  'co2':'carbon_dioxide','carbon_dioxide_total':'carbon_dioxide',
+  'bicarbonate':'carbon_dioxide',
+  'total_protein':'protein_total','protein_serum':'protein_total',
+  'globulin':'globulin_total','serum_globulin':'globulin_total',
+  'vitamin_d_25_hydroxy':'vitamin_d','25_oh_vitamin_d':'vitamin_d','vit_d':'vitamin_d',
+  'vitamin_b12_serum':'vitamin_b12','cobalamin':'vitamin_b12','b12':'vitamin_b12',
+  'folic_acid':'folate','folate_serum':'folate',
+  'c_reactive_protein':'crp','crp_cardiac':'crp','hs_crp':'crp',
+  'high_sensitivity_crp':'crp','c_reactive_protein_cardiac':'crp',
+  'serum_ferritin':'ferritin','ferritin_serum':'ferritin',
+  'serum_iron':'iron','iron_serum':'iron',
+  'tibc':'iron_tibc','total_iron_binding_capacity':'iron_tibc',
+  'iron_sat':'transferrin_sat','iron_saturation':'transferrin_sat',
+  'alanine_aminotransferase':'alt','alt_sgpt':'alt','sgpt':'alt',
+  'aspartate_aminotransferase':'ast','ast_sgot':'ast','sgot':'ast',
+  'alk_phos':'alkaline_phosphatase','alp':'alkaline_phosphatase',
+  'gamma_glutamyl_transferase':'ggt','gamma_gt':'ggt',
+  'bilirubin_total':'bilirubin','total_bilirubin':'bilirubin',
+  'albumin_serum':'albumin','serum_albumin':'albumin',
+};
+
+function normalizeBloodKey(key) {
+  if (!key) return key;
+  var k = key.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  return KEY_ALIASES[k] || k;
+}
+
+function normalizeBloodMarkers(markers) {
+  if (!markers) return markers;
+  var seen = {};
+  return markers
+    .map(function(m) {
+      return {name:m.name, key:normalizeBloodKey(m.key), value:m.value, unit:m.unit, ref_low:m.ref_low, ref_high:m.ref_high, flag:m.flag};
+    })
+    .filter(function(m) {
+      if (seen[m.key]) return false;
+      seen[m.key] = true;
+      return true;
+    });
+}
+
 const PANEL_LABELS = {
   metabolic:    '🔬 Metabolic',
   lipids:       '❤️ Lipids',
@@ -6918,7 +7009,7 @@ async function saveBloodEntry(parsed) {
     id: Date.now(),
     date: testDate,
     lab: parsed.lab_name || 'Lab Results',
-    markers: parsed.markers || [],
+    markers: normalizeBloodMarkers(parsed.markers || []),
     uploadedAt: new Date().toISOString(),
   };
   results.unshift(newEntry);
