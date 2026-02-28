@@ -168,36 +168,48 @@
 
   /* Blood work cards */
   /* ── Blood Work ─────────────────────────────────── */
-  .blood-panel-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
+  /* Panel cards */
+  .blood-panel-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:0; margin-bottom:12px; overflow:hidden; }
   .blood-panel-card.has-bad  { border-color:#ef444444; }
   .blood-panel-card.has-warn { border-color:#f59e0b44; }
-  .blood-panel-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+  .blood-panel-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; user-select:none; -webkit-user-select:none; }
+  .blood-panel-header-left { display:flex; align-items:center; gap:8px; }
+  .blood-panel-title { font-size:13px; font-weight:700; color:var(--text); }
+  .blood-panel-badge { font-size:10px; padding:3px 9px; border-radius:20px; font-weight:700; }
+  .blood-panel-badge.bad { background:#450a0a; color:#ef4444; }
+  .blood-panel-badge.warn { background:#422006; color:#f59e0b; }
+  .blood-panel-badge.ok { background:#0d2d1a; color:#22c55e; }
+  .blood-panel-chevron { color:var(--text3); font-size:14px; transition:transform 0.2s; }
+  .blood-panel-chevron.collapsed { transform:rotate(-90deg); }
+  .blood-panel-body { border-top:1px solid var(--border); }
 
   /* Marker rows */
-  .blood-marker-row { padding:10px 0; border-bottom:1px solid var(--border); }
+  .blood-marker-row { padding:12px 16px; border-bottom:1px solid var(--border); }
   .blood-marker-row:last-child { border-bottom:none; }
-  .blood-marker-row.status-bad  { background:linear-gradient(90deg,#ef444408 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #ef4444; }
-  .blood-marker-row.status-warn { background:linear-gradient(90deg,#f59e0b08 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #f59e0b; }
-  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
-  .blood-marker-name { font-size:13px; color:var(--text2); font-weight:500; flex:1; }
+  .blood-marker-row.status-bad  { border-left:3px solid #ef4444; background:linear-gradient(90deg,#ef444406 0%,transparent 40%); }
+  .blood-marker-row.status-warn { border-left:3px solid #f59e0b; background:linear-gradient(90deg,#f59e0b06 0%,transparent 40%); }
+  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; }
+  .blood-marker-name { font-size:12px; color:var(--text2); font-weight:500; flex:1; }
   .blood-marker-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .blood-marker-val  { font-size:15px; font-weight:800; }
   .blood-marker-val.status-ok   { color:#22c55e; }
   .blood-marker-val.status-warn { color:#f59e0b; }
   .blood-marker-val.status-bad  { color:#ef4444; }
+  .blood-marker-unit { font-size:10px; font-weight:400; color:var(--text3); margin-left:2px; }
   .blood-marker-flag { font-size:9px; font-weight:800; padding:2px 6px; border-radius:20px; }
   .blood-marker-flag.H, .blood-marker-flag.HH { background:#450a0a; color:#ef4444; }
   .blood-marker-flag.L, .blood-marker-flag.LL { background:#0c1a4e; color:#60a5fa; }
-  .blood-marker-trend { font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
+  .blood-marker-trend { font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
   .blood-marker-trend.good { background:#0d2d1a; color:#22c55e; }
-  .blood-marker-trend.bad  { background:#450a0a; color:#ef4444; }
+  .blood-marker-trend.bad  { background:#2d0d0d; color:#ef4444; }
   .blood-marker-trend.neut { background:var(--surface2); color:var(--text3); }
+  .blood-marker-refs { font-size:9px; color:var(--text3); margin-top:4px; display:flex; gap:10px; }
+  .blood-marker-refs .opt { color:#22c55e80; }
 
   /* Range bar */
-  .blood-range-bar { height:6px; background:var(--surface2); border-radius:3px; position:relative; margin-top:4px; overflow:visible; }
-  .blood-range-zone { position:absolute; top:0; height:6px; background:#22c55e22; border-radius:3px; }
-  .blood-range-dot  { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--bg); z-index:2; }
-  .blood-range-labels { display:flex; justify-content:space-between; font-size:9px; color:var(--text3); margin-top:3px; }
+  .blood-range-bar { height:6px; background:var(--surface2); border-radius:3px; position:relative; margin-top:6px; overflow:visible; }
+  .blood-range-zone { position:absolute; top:0; height:100%; }
+  .blood-range-dot  { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--surface); z-index:2; box-shadow:0 0 6px rgba(0,0,0,0.5); }
 
   /* Summary dashboard */
   .blood-summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
@@ -205,11 +217,43 @@
   .blood-summary-num  { font-size:24px; font-weight:800; line-height:1; }
   .blood-summary-lbl  { font-size:10px; color:var(--text3); margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
 
-  /* Out of range strip */
-  .blood-oob-strip { background:#450a0a; border:1px solid #ef444430; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
-  .blood-oob-strip-title { font-size:11px; font-weight:800; color:#ef4444; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
-  .blood-oob-item { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid #ef444418; }
-  .blood-oob-item:last-child { border-bottom:none; }
+  /* Needs Attention section */
+  .blood-attn-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-radius:16px;
+    background:linear-gradient(135deg, #1a0a0a, #1a1020);
+    border:1px solid #ef444430; cursor:pointer; user-select:none; -webkit-user-select:none;
+    margin-bottom:0;
+  }
+  .blood-attn-header.expanded { border-radius:16px 16px 0 0; border-bottom:none; }
+  .blood-attn-header-left { display:flex; align-items:center; gap:8px; }
+  .blood-attn-count { font-size:12px; font-weight:800; color:#ef4444; background:#ef444420; padding:3px 10px; border-radius:20px; }
+  .blood-attn-title { font-size:13px; font-weight:700; color:#ef4444; }
+  .blood-attn-chevron { color:#ef4444; font-size:14px; transition:transform 0.2s; }
+  .blood-attn-chevron.collapsed { transform:rotate(-90deg); }
+  .blood-attn-body {
+    background:var(--surface); border:1px solid #ef444430; border-top:none;
+    border-radius:0 0 16px 16px; overflow:hidden; margin-bottom:16px;
+  }
+  /* Attention card (each flagged marker) */
+  .blood-attn-card { padding:14px 16px; border-bottom:1px solid var(--border); }
+  .blood-attn-card:last-child { border-bottom:none; }
+  .blood-attn-card.severity-bad { border-left:3px solid #ef4444; }
+  .blood-attn-card.severity-warn { border-left:3px solid #f59e0b; }
+  .blood-attn-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+  .blood-attn-name { font-size:14px; font-weight:700; }
+  .blood-attn-name.bad { color:#ef4444; }
+  .blood-attn-name.warn { color:#f59e0b; }
+  .blood-attn-panel-tag { font-size:9px; color:var(--text3); margin-top:2px; }
+  .blood-attn-value-block { text-align:right; flex-shrink:0; }
+  .blood-attn-value { font-size:20px; font-weight:800; line-height:1; }
+  .blood-attn-value.bad { color:#ef4444; }
+  .blood-attn-value.warn { color:#f59e0b; }
+  .blood-attn-unit { font-size:10px; color:var(--text3); font-weight:500; }
+  .blood-attn-ref-row { display:flex; gap:8px; margin-top:6px; font-size:10px; }
+  .blood-attn-ref-tag { padding:2px 8px; border-radius:8px; font-weight:600; }
+  .blood-attn-ref-tag.opt { background:#22c55e15; color:#22c55e; }
+  .blood-attn-ref-tag.std { background:var(--surface2); color:var(--text3); }
 
   /* Trend chart v2 */
   .btchart-wrap { background:var(--surface2); border-radius:14px; padding:12px; margin-bottom:10px; }
@@ -7382,18 +7426,13 @@ function rangeBar(key, value) {
   const dotColor = {ok:'#22c55e',warn:'#f59e0b',bad:'#ef4444'}[status];
 
   // 5-zone gradient bar
-  return `<div class="blood-range-bar" style="height:8px;background:transparent;position:relative;border-radius:4px;overflow:hidden">
-    <div style="position:absolute;left:0;top:0;width:${stdLoPct}%;height:100%;background:#ef4444;opacity:0.3;border-radius:4px 0 0 4px"></div>
-    <div style="position:absolute;left:${stdLoPct}%;top:0;width:${Math.max(0,optLoPct-stdLoPct)}%;height:100%;background:#f59e0b;opacity:0.3"></div>
-    <div style="position:absolute;left:${optLoPct}%;top:0;width:${Math.max(0,optHiPct-optLoPct)}%;height:100%;background:#22c55e;opacity:0.35"></div>
-    <div style="position:absolute;left:${optHiPct}%;top:0;width:${Math.max(0,stdHiPct-optHiPct)}%;height:100%;background:#f59e0b;opacity:0.3"></div>
-    <div style="position:absolute;left:${stdHiPct}%;top:0;width:${100-stdHiPct}%;height:100%;background:#ef4444;opacity:0.3;border-radius:0 4px 4px 0"></div>
+  return `<div class="blood-range-bar">
+    <div class="blood-range-zone" style="left:0;width:${stdLoPct}%;background:#ef4444;opacity:0.15;border-radius:3px 0 0 3px"></div>
+    <div class="blood-range-zone" style="left:${stdLoPct}%;width:${Math.max(0,optLoPct-stdLoPct)}%;background:#f59e0b;opacity:0.2"></div>
+    <div class="blood-range-zone" style="left:${optLoPct}%;width:${Math.max(0,optHiPct-optLoPct)}%;background:#22c55e;opacity:0.25"></div>
+    <div class="blood-range-zone" style="left:${optHiPct}%;width:${Math.max(0,stdHiPct-optHiPct)}%;background:#f59e0b;opacity:0.2"></div>
+    <div class="blood-range-zone" style="left:${stdHiPct}%;width:${100-stdHiPct}%;background:#ef4444;opacity:0.15;border-radius:0 3px 3px 0"></div>
     <div class="blood-range-dot" style="left:${dotPct}%;background:${dotColor}"></div>
-  </div>
-  <div class="blood-range-labels" style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:3px">
-    <span>${stdLo}</span>
-    <span style="color:#22c55e;font-weight:700">${optLo}–${optHi}</span>
-    <span>${stdHi}</span>
   </div>`;
 }
 
@@ -7465,7 +7504,7 @@ function renderBloodPanels(idx) {
       </div>
     </div>`;
 
-  // ── OUT OF RANGE STRIP ───────────────────────────────
+  // ── NEEDS ATTENTION (Collapsible) ────────────────────
   const oobEl = document.getElementById('bloodOOBStrip');
   const flagged = entry.markers.filter(m => {
     const s = bloodStatus(m.key, m.value);
@@ -7478,30 +7517,51 @@ function renderBloodPanels(idx) {
   });
 
   if (oobEl && flagged.length > 0) {
-    oobEl.innerHTML = `<div class="blood-oob-strip" style="margin-bottom:12px">
-      <div class="blood-oob-strip-title">⚠️ ${flagged.length} Markers Need Attention</div>
-      ${flagged.map(m => {
-        const status = bloodStatus(m.key, m.value);
-        const ref = BLOOD_REFS[m.key];
-        const name = ref?.[5] || m.name;
-        const unit = m.unit || ref?.[4] || '';
-        const color = status === 'bad' ? '#ef4444' : '#f59e0b';
-        const trend = trendBadge(m.key, history[m.key], m.value);
-        const refText = ref ? `Opt: ${ref[0]}–${ref[1]} ${ref[4]}` : '';
-        return `<div class="blood-oob-item">
+    const attnCards = flagged.map(m => {
+      const status = bloodStatus(m.key, m.value);
+      const ref = BLOOD_REFS[m.key];
+      const name = ref?.[5] || m.name;
+      const unit = m.unit || ref?.[4] || '';
+      const sevClass = status === 'bad' ? 'severity-bad' : 'severity-warn';
+      const nameClass = status === 'bad' ? 'bad' : 'warn';
+      const valClass = nameClass;
+      const panelKey = ref ? ref[6] : 'other';
+      const panelName = PANEL_LABELS[panelKey] || 'Other';
+      const trend = trendBadge(m.key, history[m.key], m.value);
+      const bar = ref ? rangeBar(m.key, m.value) : '';
+      const optText = ref ? `Optimal: ${ref[0]}–${ref[1]}` : '';
+      const stdText = ref ? `Standard: ${ref[2]}–${ref[3]}` : '';
+      return `<div class="blood-attn-card ${sevClass}">
+        <div class="blood-attn-top">
           <div>
-            <span style="font-size:12px;font-weight:700;color:${color}">${name}</span>
-            <span style="font-size:10px;color:var(--text3);margin-left:6px">${refText}</span>
+            <div class="blood-attn-name ${nameClass}">${name}</div>
+            <div class="blood-attn-panel-tag">${panelName.replace(/^.+\s/,'')}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            ${trend}
-            <span style="font-size:14px;font-weight:800;color:${color}">${m.value} ${unit}</span>
+          <div class="blood-attn-value-block">
+            <div class="blood-attn-value ${valClass}">${m.value}</div>
+            <div class="blood-attn-unit">${unit}</div>
+            ${trend ? `<div style="margin-top:4px">${trend}</div>` : ''}
           </div>
-        </div>`;
-      }).join('')}
-    </div>`;
+        </div>
+        ${bar}
+        <div class="blood-attn-ref-row">
+          ${optText ? `<span class="blood-attn-ref-tag opt">${optText}</span>` : ''}
+          ${stdText ? `<span class="blood-attn-ref-tag std">${stdText}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    oobEl.innerHTML = `
+      <div class="blood-attn-header expanded" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.classList.toggle('expanded',!open);el.querySelector('.blood-attn-chevron').classList.toggle('collapsed',open)})(this)">
+        <div class="blood-attn-header-left">
+          <span class="blood-attn-count">${flagged.length}</span>
+          <span class="blood-attn-title">Needs Attention</span>
+        </div>
+        <span class="blood-attn-chevron">▼</span>
+      </div>
+      <div class="blood-attn-body">${attnCards}</div>`;
   } else if (oobEl) {
-    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within normal range</div>`;
+    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within optimal range</div>`;
   }
 
   // ── PANELS VIEW ──────────────────────────────────────
@@ -7528,47 +7588,51 @@ function renderBloodPanels(idx) {
       const bad  = markers.filter(m => bloodStatus(m.key, m.value) === 'bad').length;
       const warn = markers.filter(m => bloodStatus(m.key, m.value) === 'warn').length;
       const panelClass = bad > 0 ? 'blood-panel-card has-bad' : warn > 0 ? 'blood-panel-card has-warn' : 'blood-panel-card';
+      const hasIssues = bad > 0 || warn > 0;
+      const startOpen = hasIssues;
 
-      const badge = bad > 0
-        ? `<span style="font-size:10px;background:#450a0a;color:#ef4444;padding:3px 9px;border-radius:20px;font-weight:700">${bad} out of range</span>`
+      const badgeClass = bad > 0 ? 'bad' : warn > 0 ? 'warn' : 'ok';
+      const badgeText = bad > 0
+        ? `${bad} out of range`
         : warn > 0
-        ? `<span style="font-size:10px;background:#422006;color:#f59e0b;padding:3px 9px;border-radius:20px;font-weight:700">${warn} borderline</span>`
-        : `<span style="font-size:10px;background:#0d2d1a;color:#22c55e;padding:3px 9px;border-radius:20px;font-weight:700">✓ All optimal</span>`;
+        ? `${warn} borderline`
+        : '✓ All optimal';
 
       const rows = markers.map(m => {
         const ref = BLOOD_REFS[m.key];
         const status = bloodStatus(m.key, m.value);
         const name = ref?.[5] || m.name;
         const unit = m.unit || ref?.[4] || '';
-        const refText = ref
-          ? `${ref[0]}–${ref[1]} ${ref[4]}`
-          : '';
         const trend = trendBadge(m.key, history[m.key], m.value);
-        const flagHtml = m.flag
-          ? `<span class="blood-marker-flag ${m.flag}">${m.flag}</span>`
-          : '';
         const bar = ref ? rangeBar(m.key, m.value) : '';
+        const optText = ref ? `Optimal: ${ref[0]}–${ref[1]}` : '';
+        const stdText = ref ? `Std: ${ref[2]}–${ref[3]}` : '';
 
         return `<div class="blood-marker-row status-${status}">
           <div class="blood-marker-top">
             <div class="blood-marker-name">${name}</div>
             <div class="blood-marker-right">
               ${trend}
-              ${flagHtml}
-              <div class="blood-marker-val status-${status}">${m.value} <span style="font-size:10px;font-weight:500;color:var(--text3)">${unit}</span></div>
+              <div class="blood-marker-val status-${status}">${m.value}<span class="blood-marker-unit">${unit}</span></div>
             </div>
           </div>
           ${bar}
-          <div style="font-size:10px;color:var(--text3);margin-top:3px">Optimal: ${refText || 'see report'} · Std: ${ref ? ref[2]+'–'+ref[3]+' '+ref[4] : ''}</div>
+          <div class="blood-marker-refs"><span class="opt">${optText}</span><span>${stdText}</span></div>
         </div>`;
       }).join('');
 
+      const panelId = 'bpanel_' + panel;
       return `<div class="${panelClass}">
-        <div class="blood-panel-title">
-          <span>${PANEL_LABELS[panel] || '🔬 Other'}</span>
-          ${badge}
+        <div class="blood-panel-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-panel-chevron').classList.toggle('collapsed',open)})(this)">
+          <div class="blood-panel-header-left">
+            <span class="blood-panel-title">${PANEL_LABELS[panel] || '🔬 Other'}</span>
+            <span class="blood-panel-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <span class="blood-panel-chevron${startOpen ? '' : ' collapsed'}">▼</span>
         </div>
-        ${rows}
+        <div class="blood-panel-body" style="${startOpen ? '' : 'display:none'}">
+          ${rows}
+        </div>
       </div>`;
     }).join('');
   }
