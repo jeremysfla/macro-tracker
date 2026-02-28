@@ -6798,67 +6798,128 @@ function handleBloodFile(file) {
 function getBloodResults() { return getStorage('bloodResults', []); }
 function saveBloodResults(r) { setStorage('bloodResults', r); }
 
-// Known reference ranges [low, high, unit, display name]
+// ── BLOOD REFERENCE RANGES (5-tier: Optimal DX / Ways2Well compatible) ──
+// Format: [optLo, optHi, stdLo, stdHi, unit, displayName, panel]
+// optLo-optHi = optimal/functional range (green)
+// stdLo-stdHi = standard/lab range (the wider acceptable range)
+// Values outside std = alarm/out of range
 const BLOOD_REFS = {
-  // ── Metabolic ──────────────────────────────────────
-  'glucose':           [70, 99,   'mg/dL',    'Glucose',               'metabolic'],
-  'hba1c':             [4.0, 5.6, '%',         'HbA1c',                 'metabolic'],
-  'bun':               [6, 24,   'mg/dL',    'BUN',                   'metabolic'],
-  'creatinine':        [0.76, 1.27,'mg/dL',  'Creatinine',            'metabolic'],
-  'egfr':              [60, 999,  'mL/min',   'eGFR',                  'metabolic'],
-  'sodium':            [134, 144, 'mmol/L',   'Sodium',                'metabolic'],
-  'potassium':         [3.5, 5.2, 'mmol/L',   'Potassium',             'metabolic'],
-  'calcium':           [8.7, 10.2,'mg/dL',   'Calcium',               'metabolic'],
-  'uric_acid':         [3.4, 7.0, 'mg/dL',    'Uric Acid',             'metabolic'],
-  'magnesium':         [1.6, 2.3, 'mg/dL',    'Magnesium',             'metabolic'],
+  // ── Blood Glucose ──────────────────────────────────
+  'glucose':           [75, 86, 65, 99, 'mg/dL', 'Glucose Fasting', 'blood_glucose'],
+  'hba1c':             [4.6, 5.3, 4.8, 5.6, '%', 'Hemoglobin A1C', 'blood_glucose'],
+  'eag':               [85, 105, 82, 154, 'mg/dL', 'eAG', 'blood_glucose'],
+  'insulin':           [2.6, 5.0, 2.6, 24.9, 'µIU/mL', 'Insulin - Fasting', 'blood_glucose'],
+
+  // ── Renal ──────────────────────────────────────────
+  'bun':               [10, 16, 6, 24, 'mg/dL', 'BUN', 'renal'],
+  'creatinine':        [0.8, 1.1, 0.76, 1.27, 'mg/dL', 'Creatinine', 'renal'],
+  'bun_creatinine_ratio':[10, 16, 9, 20, 'Ratio', 'BUN : Creatinine', 'renal'],
+  'egfr':              [90, 120, 59, 160, 'mL/min', 'eGFR', 'renal'],
+
+  // ── Prostate ───────────────────────────────────────
+  'psa':               [0, 2.0, 0, 4.0, 'ng/mL', 'PSA - Total', 'prostate'],
+
+  // ── Electrolytes ───────────────────────────────────
+  'sodium':            [137, 142, 134, 144, 'mEq/L', 'Sodium', 'electrolytes'],
+  'potassium':         [4.0, 5.0, 3.5, 5.2, 'mEq/L', 'Potassium', 'electrolytes'],
+  'chloride':          [100, 106, 96, 106, 'mEq/L', 'Chloride', 'electrolytes'],
+  'carbon_dioxide':    [25, 30, 20, 29, 'mEq/L', 'CO2', 'electrolytes'],
+
+  // ── Proteins ───────────────────────────────────────
+  'protein_total':     [6.9, 8.1, 6.0, 8.5, 'g/dL', 'Protein - Total', 'proteins'],
+  'albumin':           [4.5, 5.0, 3.8, 4.9, 'g/dL', 'Albumin', 'proteins'],
+  'globulin_total':    [2.4, 2.8, 1.5, 4.5, 'g/dL', 'Globulin - Total', 'proteins'],
+  'albumin_globulin':  [1.4, 2.1, 1.2, 2.2, 'ratio', 'Albumin : Globulin', 'proteins'],
+
+  // ── Minerals ───────────────────────────────────────
+  'calcium':           [8.9, 9.5, 8.7, 10.2, 'mg/dL', 'Calcium', 'minerals'],
+  'magnesium':         [2.2, 2.5, 1.6, 2.3, 'mg/dL', 'Magnesium - Serum', 'minerals'],
+
+  // ── Liver and GB ───────────────────────────────────
+  'alkaline_phosphatase':[45, 100, 39, 117, 'IU/L', 'Alk Phos', 'liver_gb'],
+  'ast':               [10, 26, 0, 40, 'IU/L', 'AST', 'liver_gb'],
+  'alt':               [10, 26, 0, 44, 'IU/L', 'ALT', 'liver_gb'],
+  'bilirubin':         [0.5, 0.9, 0, 1.2, 'mg/dL', 'Bilirubin - Total', 'liver_gb'],
+  'ggt':               [8, 61, 8, 61, 'U/L', 'GGT', 'liver_gb'],
+
+  // ── Iron Markers ───────────────────────────────────
+  'iron':              [85, 130, 38, 169, 'µg/dL', 'Iron - Serum', 'iron_markers'],
+  'ferritin':          [45, 79, 30, 400, 'ng/mL', 'Ferritin', 'iron_markers'],
+  'iron_tibc':         [250, 350, 250, 450, 'µg/dL', 'TIBC', 'iron_markers'],
+  'uibc':              [130, 300, 111, 343, 'µg/dL', 'UIBC', 'iron_markers'],
+  'transferrin_sat':   [24, 35, 15, 55, '%', '% Transferrin Saturation', 'iron_markers'],
 
   // ── Lipids ─────────────────────────────────────────
-  'total_cholesterol': [0,   200, 'mg/dL',    'Total Cholesterol',     'lipids'],
-  'ldl':               [0,   100, 'mg/dL',    'LDL Cholesterol',       'lipids'],
-  'hdl':               [40,  999, 'mg/dL',    'HDL Cholesterol',       'lipids'],
-  'triglycerides':     [0,   150, 'mg/dL',    'Triglycerides',         'lipids'],
-  'non_hdl':           [0,   130, 'mg/dL',    'Non-HDL Cholesterol',   'lipids'],
-  'lipoprotein_a':     [0,   75,  'nmol/L',   'Lipoprotein(a)',         'lipids'],  // ⚠️ yours = 123 HIGH
-  'apolipoprotein_b':  [0,   90,  'mg/dL',    'Apolipoprotein B',      'lipids'],  // ⚠️ yours = 117 HIGH
-  'vldl':              [5,   40,  'mg/dL',    'VLDL Cholesterol',      'lipids'],
+  'total_cholesterol': [160, 199, 100, 199, 'mg/dL', 'Cholesterol - Total', 'lipids'],
+  'triglycerides':     [70, 80, 0, 149, 'mg/dL', 'Triglycerides', 'lipids'],
+  'ldl':               [80, 99.99, 0, 99, 'mg/dL', 'LDL Cholesterol', 'lipids'],
+  'hdl':               [55, 93, 39, 100, 'mg/dL', 'HDL Cholesterol', 'lipids'],
+  'vldl':              [0, 15, 5, 40, 'mg/dL', 'VLDL Cholesterol', 'lipids'],
+  'non_hdl':           [0, 130, 0, 130, 'mg/dL', 'Non-HDL Cholesterol', 'lipids'],
+  't_chol_hdl_ratio':  [0, 3.0, 0, 4.4, 'Ratio', 'Cholesterol : HDL', 'lipids'],
 
-  // ── Hormones ───────────────────────────────────────
-  'testosterone_total':[264, 916, 'ng/dL',    'Testosterone (Total)',  'hormones'],
-  'testosterone_free': [30.3,183, 'pg/mL',    'Testosterone (Free)',   'hormones'],
-  'shbg':              [19.3,76.4,'nmol/L',   'SHBG',                  'hormones'],
-  'estradiol':         [7.6, 42.6,'pg/mL',    'Estradiol',             'hormones'],
-  'cortisol':          [6.2, 19.4,'mcg/dL',   'Cortisol (AM)',         'hormones'],
-  'tsh':               [0.45, 4.5,'uIU/mL',   'TSH',                   'hormones'],
-  't4_free':           [0.82,1.77,'ng/dL',    'Free T4',               'hormones'],
-  'free_t3':           [2.0, 4.4, 'pg/mL',    'Free T3',               'hormones'],
-  'insulin':           [2.6,24.9, 'uIU/mL',   'Insulin',               'hormones'],
-  'dhea_s':            [71.6,375, 'ug/dL',    'DHEA-S',                'hormones'],
-  'psa':               [0,   4.0, 'ng/mL',    'PSA',                   'hormones'],
+  // ── Lipoproteins ───────────────────────────────────
+  'lipoprotein_a':     [0, 18, 0, 74.99, 'nmol/L', 'Lipoprotein (a)', 'lipoproteins'],
+  'apolipoprotein_b':  [52, 80, 0, 90, 'mg/dL', 'Apolipoprotein B', 'lipoproteins'],
 
-  // ── CBC ────────────────────────────────────────────
-  'wbc':               [3.4, 10.8,'x10E3/uL', 'WBC',                   'cbc'],
-  'rbc':               [4.14,5.80,'x10E6/uL', 'RBC',                   'cbc'],
-  'hemoglobin':        [13.0,17.7,'g/dL',     'Hemoglobin',            'cbc'],
-  'hematocrit':        [37.5,51.0,'%',         'Hematocrit',            'cbc'],
-  'platelets':         [150, 450, 'x10E3/uL', 'Platelets',             'cbc'],
-  'mcv':               [79,  97,  'fL',        'MCV',                   'cbc'],
-  'mchc':              [31.5,35.7,'g/dL',     'MCHC',                  'cbc'],
+  // ── Thyroid ────────────────────────────────────────
+  'tsh':               [1.0, 2.0, 0.45, 4.5, 'mIU/L', 'TSH', 'thyroid'],
+  't4_total':          [6.0, 11.9, 4.5, 12.0, 'µg/dL', 'T4 - Total', 'thyroid'],
+  't4_free':           [1.0, 1.5, 0.82, 1.77, 'ng/dL', 'T4 - Free', 'thyroid'],
+  'free_t3':           [3.0, 3.5, 2.0, 4.4, 'pg/mL', 'T3 - Free', 'thyroid'],
+  't3_uptake':         [27, 35, 24, 39, '%', 'T3 Uptake', 'thyroid'],
+  'free_thyroxine_index':[1.7, 4.6, 1.2, 4.9, 'Index', 'Free Thyroxine Index (T7)', 'thyroid'],
+  'thyroglobulin_abs': [0, 1.0, 0, 1.0, 'IU/mL', 'Thyroglobulin Abs', 'thyroid'],
+  'thyroglobulin':     [5.0, 14.0, 1.4, 29.2, 'ng/ml', 'Thyroglobulin', 'thyroid'],
+  'free_t3_free_t4':   [2.4, 2.7, 2.2, 2.9, 'Ratio', 'Free T3 : Free T4', 'thyroid'],
+
+  // ── Inflammation ───────────────────────────────────
+  'crp':               [0, 0.55, 0, 3.0, 'mg/L', 'Hs CRP', 'inflammation'],
 
   // ── Vitamins ───────────────────────────────────────
-  'vitamin_d':         [40,  80,  'ng/mL',    'Vitamin D (25-OH)',     'vitamins'],  // optimal range
-  'vitamin_b12':       [400, 1000,'pg/mL',    'Vitamin B12',           'vitamins'],  // optimal
-  'folate':            [3.0, 20,  'ng/mL',    'Folate',                'vitamins'],
+  'vitamin_d':         [50, 90, 30, 100, 'ng/mL', 'Vitamin D (25-OH)', 'vitamins'],
+  'vitamin_b12':       [545, 1100, 232, 1245, 'pg/mL', 'Vitamin B12', 'vitamins'],
+  'folate':            [15, 27, 3, 27, 'ng/mL', 'Folate - Serum', 'vitamins'],
 
-  // ── Inflammation & Iron ────────────────────────────
-  'ferritin':          [30,  300, 'ng/mL',    'Ferritin',              'inflammation'],
-  'iron':              [38,  169, 'ug/dL',    'Iron',                  'inflammation'],
-  'crp':               [0,   1.0, 'mg/L',     'CRP Cardiac',           'inflammation'],
+  // ── Hormones ───────────────────────────────────────
+  'dhea_s':            [350, 530.5, 164.3, 530.5, 'µg/dL', 'DHEA-S', 'hormones'],
+  'testosterone_total':[700, 1100, 264, 916, 'ng/dL', 'Testosterone Total', 'hormones'],
+  'testosterone_free': [150, 224, 46, 224, 'pg/mL', 'Testosterone Free', 'hormones'],
+  'testosterone_bio':  [375, 575, 110, 575, 'ng/dL', 'Testosterone Bioavailable', 'hormones'],
+  'shbg':              [40, 46, 19.3, 76.4, 'nmol/L', 'Sex Hormone Binding Globulin', 'hormones'],
+  'estradiol':         [24, 39, 7.6, 42.6, 'pg/mL', 'Estradiol', 'hormones'],
+  'prolactin':         [2.0, 10.0, 2.0, 18.0, 'ng/mL', 'Prolactin', 'hormones'],
+  'igf1':              [100, 170, 95, 290, 'ng/mL', 'IGF-1', 'hormones'],
+  'cortisol':          [10, 15, 6.2, 19.4, 'µg/dL', 'Cortisol - Total/AM', 'hormones'],
+  'pth':               [15, 32, 15, 65, 'pg/mL', 'Parathyroid Hormone - PTH', 'hormones'],
 
-  // ── Liver ──────────────────────────────────────────
-  'alt':               [7,   44,  'IU/L',     'ALT',                   'liver'],
-  'ast':               [0,   40,  'IU/L',     'AST',                   'liver'],
-  'alkaline_phosphatase':[44, 121,'IU/L',     'Alkaline Phosphatase',  'liver'],
-  'ggt':               [8,   61,  'U/L',      'GGT',                   'liver'],
+  // ── CBC ────────────────────────────────────────────
+  'rbc':               [4.8, 5.5, 4.14, 5.8, 'M/cumm', 'RBC', 'cbc'],
+  'hemoglobin':        [14.0, 15.0, 13.0, 17.7, 'g/dL', 'Hemoglobin', 'cbc'],
+  'hematocrit':        [40, 48, 37.5, 51, '%', 'Hematocrit', 'cbc'],
+  'mcv':               [82, 89.9, 79, 97, 'fL', 'MCV', 'cbc'],
+  'mch':               [28, 31.9, 26.6, 33, 'pg', 'MCH', 'cbc'],
+  'mchc':              [34, 36, 31.5, 35.7, 'g/dL', 'MCHC', 'cbc'],
+  'platelets':         [190, 300, 150, 450, '10E3/uL', 'Platelets', 'cbc'],
+  'rdw':               [11, 12.6, 11.6, 15.4, '%', 'RDW', 'cbc'],
+
+  // ── WBCs ───────────────────────────────────────────
+  'wbc':               [3.8, 6.0, 3.4, 10.8, 'k/cumm', 'Total WBCs', 'wbcs'],
+  'neutrophils_pct':   [50, 60, 38, 74, '%', 'Neutrophils - %', 'wbcs'],
+  'immature_grans_pct':[0, 0.5, 0, 1.0, '%', 'Immature Granulocytes - %', 'wbcs'],
+  'lymphocytes_pct':   [30, 35, 14, 46, '%', 'Lymphocytes - %', 'wbcs'],
+  'monocytes_pct':     [4, 7, 4, 13, '%', 'Monocytes - %', 'wbcs'],
+  'eosinophils_pct':   [0, 3, 0, 3, '%', 'Eosinophils - %', 'wbcs'],
+  'basophils_pct':     [0, 1, 0, 1, '%', 'Basophils - %', 'wbcs'],
+  'neutrophils_abs':   [1.9, 4.2, 1.4, 7.0, 'k/cumm', 'Neutrophils - Absolute', 'wbcs'],
+  'immature_grans_abs':[0, 0.03, 0, 0.1, 'k/cumm', 'Immature Granulocytes - Abs', 'wbcs'],
+  'lymphocytes_abs':   [1.44, 2.54, 0.7, 3.1, 'k/cumm', 'Lymphocytes - Absolute', 'wbcs'],
+  'monocytes_abs':     [0.2, 0.4, 0.1, 0.9, 'k/cumm', 'Monocytes - Absolute', 'wbcs'],
+  'eosinophils_abs':   [0.03, 0.2, 0, 0.4, 'k/cumm', 'Eosinophils - Absolute', 'wbcs'],
+  'basophils_abs':     [0, 0.1, 0, 0.2, 'k/cumm', 'Basophils - Absolute', 'wbcs'],
+
+  // ── Legacy/extra keys ──────────────────────────────
+  'uric_acid':         [3.4, 7.0, 3.4, 7.0, 'mg/dL', 'Uric Acid', 'renal'],
 };
 
 
@@ -6940,6 +7001,26 @@ const KEY_ALIASES = {
   'gamma_glutamyl_transferase':'ggt','gamma_gt':'ggt',
   'bilirubin_total':'bilirubin','total_bilirubin':'bilirubin',
   'albumin_serum':'albumin','serum_albumin':'albumin',
+  // New aliases for Ways2Well markers
+  'estimated_average_glucose':'eag','estimated_avg_glucose':'eag',
+  'ag_ratio':'albumin_globulin','albumin_globulin_ratio':'albumin_globulin',
+  'a_g_ratio':'albumin_globulin','a_g':'albumin_globulin',
+  'magnesium_serum':'magnesium','serum_magnesium':'magnesium',
+  'unsaturated_iron_binding_capacity':'uibc',
+  'transferrin_saturation':'transferrin_sat','percent_transferrin_saturation':'transferrin_sat',
+  'iron_percent_saturation':'transferrin_sat',
+  'cholesterol_hdl_ratio':'t_chol_hdl_ratio','total_cholesterol_hdl_ratio':'t_chol_hdl_ratio',
+  'lp_a_nmol':'lipoprotein_a','lp_a_mass':'lipoprotein_a',
+  't4_total':'t4_total','thyroxine_total':'t4_total','total_t4':'t4_total',
+  'thyroglobulin_antibodies':'thyroglobulin_abs','tg_abs':'thyroglobulin_abs',
+  'thyroglobulin_ab':'thyroglobulin_abs',
+  'free_thyroxine_index':'free_thyroxine_index','t7':'free_thyroxine_index','fti':'free_thyroxine_index',
+  'free_t3_t4_ratio':'free_t3_free_t4','t3_t4_ratio':'free_t3_free_t4',
+  'igf_1':'igf1','insulin_like_growth_factor':'igf1','somatomedin_c':'igf1',
+  'parathyroid_hormone':'pth','intact_pth':'pth','parathyroid':'pth',
+  'bioavailable_testosterone':'testosterone_bio','testosterone_bioavailable':'testosterone_bio',
+  'mch':'mch','mean_corpuscular_hemoglobin':'mch',
+  'total_wbc':'wbc','total_wbcs':'wbc',
 };
 
 function normalizeBloodKey(key) {
@@ -6986,32 +7067,55 @@ function migrateBloodKeys() {
 }
 
 const PANEL_LABELS = {
-  metabolic:    '🔬 Metabolic',
-  lipids:       '❤️ Lipids',
-  hormones:     '⚡ Hormones',
-  cbc:          '🩺 CBC',
-  vitamins:     '💊 Vitamins',
-  inflammation: '🔥 Inflammation',
-  liver:        '🫀 Liver',
+  blood_glucose: '🩸 Blood Glucose',
+  renal:         '🫘 Renal',
+  prostate:      '🔬 Prostate',
+  electrolytes:  '⚡ Electrolytes',
+  proteins:      '🧬 Proteins',
+  minerals:      '💎 Minerals',
+  liver_gb:      '🫀 Liver & GB',
+  iron_markers:  '🔴 Iron Markers',
+  lipids:        '❤️ Lipids',
+  lipoproteins:  '💔 Lipoproteins',
+  thyroid:       '🦋 Thyroid',
+  inflammation:  '🔥 Inflammation',
+  vitamins:      '💊 Vitamins',
+  hormones:      '⚡ Hormones',
+  cbc:           '🩺 CBC',
+  wbcs:          '🛡️ WBCs',
 };
 
 // Markers where LOWER is better (used for trend direction color)
 const LOWER_BETTER = new Set(['ldl','triglycerides','total_cholesterol','glucose','crp','uric_acid',
-  'hba1c','cortisol','insulin','lipoprotein_a','apolipoprotein_b','non_hdl','vldl','bun','psa']);
+  'hba1c','cortisol','insulin','lipoprotein_a','apolipoprotein_b','non_hdl','vldl','bun','psa',
+  'eag','bun_creatinine_ratio','t_chol_hdl_ratio','ferritin','transferrin_sat']);
 
 // Markers where HIGHER is better
 const HIGHER_BETTER = new Set(['hdl','egfr','vitamin_d','vitamin_b12','testosterone_total',
-  'testosterone_free','ferritin','rbc','hemoglobin','hematocrit','dhea_s','free_t3','folate']);
+  'testosterone_free','testosterone_bio','ferritin','rbc','hemoglobin','hematocrit','dhea_s','free_t3','folate',
+  'albumin','protein_total']);
 
+// 5-tier status: ok (optimal), above_opt, below_opt, high (out of standard), low (out of standard)
+// Returns simplified: ok, warn, bad
 function bloodStatus(key, value) {
   const ref = BLOOD_REFS[key];
   if (!ref) return 'ok';
-  const [lo, hi] = ref;
-  // For HDL, eGFR — only low side matters
-  if (hi >= 999) return value < lo ? (value < lo * 0.85 ? 'bad' : 'warn') : 'ok';
-  if (value < lo * 0.85 || value > hi * 1.15) return 'bad';
-  if (value < lo || value > hi) return 'warn';
-  return 'ok';
+  const [optLo, optHi, stdLo, stdHi] = ref;
+  if (value < stdLo || value > stdHi) return 'bad';        // outside standard range
+  if (value >= optLo && value <= optHi) return 'ok';         // optimal
+  return 'warn';                                              // between standard & optimal
+}
+
+// Detailed 5-tier status for range bar coloring
+function bloodStatus5(key, value) {
+  const ref = BLOOD_REFS[key];
+  if (!ref) return 'optimal';
+  const [optLo, optHi, stdLo, stdHi] = ref;
+  if (value < stdLo) return 'alarm_low';
+  if (value > stdHi) return 'alarm_high';
+  if (value < optLo) return 'below_optimal';
+  if (value > optHi) return 'above_optimal';
+  return 'optimal';
 }
 
 
@@ -7024,16 +7128,17 @@ function buildBloodParsePrompt() {
     'ref_low and ref_high must be numbers. If only one bound exists use null for the other.',
     'flag must be exactly H, L, or null (JSON null not the string null).',
     'key must be lowercase snake_case. Use EXACTLY these canonical keys (pick the closest match):',
-    'glucose hba1c bun creatinine egfr bun_creatinine_ratio sodium potassium chloride carbon_dioxide calcium',
+    'glucose hba1c eag bun creatinine egfr bun_creatinine_ratio sodium potassium chloride carbon_dioxide calcium magnesium',
+    'protein_total albumin globulin_total albumin_globulin',
     'total_cholesterol ldl hdl triglycerides vldl non_hdl t_chol_hdl_ratio lipoprotein_a apolipoprotein_b',
-    'testosterone_total testosterone_free shbg estradiol cortisol dhea_s psa igf1 insulin',
-    'tsh t4_free free_t3 t3_uptake',
+    'testosterone_total testosterone_free testosterone_bio shbg estradiol cortisol dhea_s psa igf1 insulin prolactin pth',
+    'tsh t4_free t4_total free_t3 t3_uptake free_thyroxine_index thyroglobulin_abs thyroglobulin free_t3_free_t4',
     'wbc rbc hemoglobin hematocrit mcv mch mchc rdw platelets',
     'neutrophils_pct lymphocytes_pct monocytes_pct eosinophils_pct basophils_pct',
     'neutrophils_abs lymphocytes_abs monocytes_abs eosinophils_abs basophils_abs',
     'immature_grans_pct immature_grans_abs',
-    'alt ast alkaline_phosphatase ggt bilirubin albumin protein_total globulin_total',
-    'crp ferritin iron iron_tibc transferrin_sat vitamin_d vitamin_b12 folate',
+    'alt ast alkaline_phosphatase ggt bilirubin albumin protein_total globulin_total albumin_globulin',
+    'crp ferritin iron iron_tibc uibc transferrin_sat vitamin_d vitamin_b12 folate',
     'OUTPUT FORMAT (return exactly this structure):',
     '{"test_date":"YYYY-MM-DD","lab_name":"string","markers":[{"name":"string","key":"canonical_key","value":0,"unit":"string","ref_low":0,"ref_high":0,"flag":null}]}',
     'Extract every single marker. Do not skip any. Do not add any text outside the JSON.',
@@ -7253,36 +7358,43 @@ function setBloodView(view) {
 function rangeBar(key, value) {
   const ref = BLOOD_REFS[key];
   if (!ref) return '';
-  const [lo, hi] = ref;
-  // Handle one-sided ranges
-  const isHighOnly = hi >= 900;
-  const isLowOnly = lo <= 0;
+  const [optLo, optHi, stdLo, stdHi] = ref;
 
-  // Display range: show 50% below lo and 50% above hi
-  const pad = (hi - lo) * 0.6;
-  const dispLo = Math.max(0, lo - pad);
-  const dispHi = isHighOnly ? lo * 2.5 : hi + pad;
-  const dispRange = dispHi - dispLo;
+  // Display range with padding beyond standard
+  const stdRange = stdHi - stdLo || 1;
+  const pad = stdRange * 0.15;
+  const dispLo = Math.max(0, stdLo - pad);
+  const dispHi = stdHi + pad;
+  const dispRange = dispHi - dispLo || 1;
 
-  // Zone positions (optimal range)
-  const zoneLPct = ((lo - dispLo) / dispRange * 100).toFixed(1);
-  const zoneWPct = isHighOnly ? (100 - parseFloat(zoneLPct)).toFixed(1) :
-                   ((hi - lo) / dispRange * 100).toFixed(1);
+  const toPct = v => Math.max(0, Math.min(100, ((v - dispLo) / dispRange * 100)));
+
+  // Zone positions
+  const stdLoPct = toPct(stdLo);
+  const optLoPct = toPct(optLo);
+  const optHiPct = toPct(optHi);
+  const stdHiPct = toPct(stdHi);
 
   // Dot position
   const clampedVal = Math.max(dispLo, Math.min(dispHi, value));
-  const dotPct = ((clampedVal - dispLo) / dispRange * 100).toFixed(1);
+  const dotPct = toPct(clampedVal);
   const status = bloodStatus(key, value);
   const dotColor = {ok:'#22c55e',warn:'#f59e0b',bad:'#ef4444'}[status];
 
-  const loLbl = isHighOnly ? '' : lo;
-  const hiLbl = isHighOnly ? lo + '+' : hi;
-
-  return `<div class="blood-range-bar">
-    <div class="blood-range-zone" style="left:${zoneLPct}%;width:${zoneWPct}%"></div>
+  // 5-zone gradient bar
+  return `<div class="blood-range-bar" style="height:8px;background:transparent;position:relative;border-radius:4px;overflow:hidden">
+    <div style="position:absolute;left:0;top:0;width:${stdLoPct}%;height:100%;background:#ef4444;opacity:0.3;border-radius:4px 0 0 4px"></div>
+    <div style="position:absolute;left:${stdLoPct}%;top:0;width:${Math.max(0,optLoPct-stdLoPct)}%;height:100%;background:#f59e0b;opacity:0.3"></div>
+    <div style="position:absolute;left:${optLoPct}%;top:0;width:${Math.max(0,optHiPct-optLoPct)}%;height:100%;background:#22c55e;opacity:0.35"></div>
+    <div style="position:absolute;left:${optHiPct}%;top:0;width:${Math.max(0,stdHiPct-optHiPct)}%;height:100%;background:#f59e0b;opacity:0.3"></div>
+    <div style="position:absolute;left:${stdHiPct}%;top:0;width:${100-stdHiPct}%;height:100%;background:#ef4444;opacity:0.3;border-radius:0 4px 4px 0"></div>
     <div class="blood-range-dot" style="left:${dotPct}%;background:${dotColor}"></div>
   </div>
-  <div class="blood-range-labels"><span>${dispLo.toFixed(dispRange>10?0:1)}</span><span style="color:#22c55e;font-weight:700">${loLbl}–${hiLbl}</span><span>${dispHi.toFixed(dispRange>10?0:1)}</span></div>`;
+  <div class="blood-range-labels" style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:3px">
+    <span>${stdLo}</span>
+    <span style="color:#22c55e;font-weight:700">${optLo}–${optHi}</span>
+    <span>${stdHi}</span>
+  </div>`;
 }
 
 function trendBadge(key, hist, currentVal) {
@@ -7317,24 +7429,39 @@ function renderBloodPanels(idx) {
   const view = window._bloodView || 'panels';
 
   // ── SUMMARY BAR ─────────────────────────────────────
-  const allStatuses = entry.markers.map(m => bloodStatus(m.key, m.value));
-  const badCount  = allStatuses.filter(s => s === 'bad').length;
-  const warnCount = allStatuses.filter(s => s === 'warn').length;
-  const okCount   = allStatuses.filter(s => s === 'ok').length;
+  const allStatuses5 = entry.markers.map(m => bloodStatus5(m.key, m.value));
+  const alarmLow  = allStatuses5.filter(s => s === 'alarm_low').length;
+  const belowOpt  = allStatuses5.filter(s => s === 'below_optimal').length;
+  const optimal   = allStatuses5.filter(s => s === 'optimal').length;
+  const aboveOpt  = allStatuses5.filter(s => s === 'above_optimal').length;
+  const alarmHigh = allStatuses5.filter(s => s === 'alarm_high').length;
+  const totalM    = entry.markers.length;
   const summaryEl = document.getElementById('bloodSummaryBar');
   if (summaryEl) summaryEl.innerHTML = `
-    <div class="blood-summary-grid" style="margin-bottom:12px">
-      <div class="blood-summary-tile" style="border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444">${badCount}</div>
-        <div class="blood-summary-lbl">Out of Range</div>
+    <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
+        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmLow}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Low</div>
       </div>
-      <div class="blood-summary-tile" style="border:1.5px solid #f59e0b30">
-        <div class="blood-summary-num" style="color:#f59e0b">${warnCount}</div>
-        <div class="blood-summary-lbl">Borderline</div>
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #60a5fa30">
+        <div class="blood-summary-num" style="color:#60a5fa;font-size:18px">${belowOpt}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Below Opt</div>
       </div>
-      <div class="blood-summary-tile" style="border:1.5px solid #22c55e30">
-        <div class="blood-summary-num" style="color:#22c55e">${okCount}</div>
-        <div class="blood-summary-lbl">Optimal</div>
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #22c55e30">
+        <div class="blood-summary-num" style="color:#22c55e;font-size:18px">${optimal}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Optimal</div>
+      </div>
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #f59e0b30">
+        <div class="blood-summary-num" style="color:#f59e0b;font-size:18px">${aboveOpt}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Above Opt</div>
+      </div>
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
+        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmHigh}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">High</div>
+      </div>
+      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid var(--border)">
+        <div class="blood-summary-num" style="color:var(--text);font-size:18px">${totalM}</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Total</div>
       </div>
     </div>`;
 
@@ -7356,11 +7483,11 @@ function renderBloodPanels(idx) {
       ${flagged.map(m => {
         const status = bloodStatus(m.key, m.value);
         const ref = BLOOD_REFS[m.key];
-        const name = ref?.[3] || m.name;
-        const unit = m.unit || ref?.[2] || '';
+        const name = ref?.[5] || m.name;
+        const unit = m.unit || ref?.[4] || '';
         const color = status === 'bad' ? '#ef4444' : '#f59e0b';
         const trend = trendBadge(m.key, history[m.key], m.value);
-        const refText = ref ? (ref[1] >= 900 ? '>' + ref[0] : ref[0] + '–' + ref[1]) + ' ' + ref[2] : '';
+        const refText = ref ? `Opt: ${ref[0]}–${ref[1]} ${ref[4]}` : '';
         return `<div class="blood-oob-item">
           <div>
             <span style="font-size:12px;font-weight:700;color:${color}">${name}</span>
@@ -7390,12 +7517,12 @@ function renderBloodPanels(idx) {
     const panels = {};
     entry.markers.forEach(m => {
       const ref = BLOOD_REFS[m.key];
-      const panel = ref ? ref[4] : 'other';
+      const panel = ref ? ref[6] : 'other';
       if (!panels[panel]) panels[panel] = [];
       panels[panel].push(m);
     });
 
-    const panelOrder = ['lipids','metabolic','hormones','cbc','vitamins','inflammation','liver','other'];
+    const panelOrder = ['blood_glucose','renal','prostate','electrolytes','proteins','minerals','liver_gb','iron_markers','lipids','lipoproteins','thyroid','inflammation','vitamins','hormones','cbc','wbcs','other'];
     panelsEl.innerHTML = panelOrder.filter(p => panels[p]).map(panel => {
       const markers = panels[panel];
       const bad  = markers.filter(m => bloodStatus(m.key, m.value) === 'bad').length;
@@ -7411,10 +7538,10 @@ function renderBloodPanels(idx) {
       const rows = markers.map(m => {
         const ref = BLOOD_REFS[m.key];
         const status = bloodStatus(m.key, m.value);
-        const name = ref?.[3] || m.name;
-        const unit = m.unit || ref?.[2] || '';
+        const name = ref?.[5] || m.name;
+        const unit = m.unit || ref?.[4] || '';
         const refText = ref
-          ? (ref[1] >= 900 ? '>' + ref[0] + ' ' + ref[2] : ref[0] + '–' + ref[1] + ' ' + ref[2])
+          ? `${ref[0]}–${ref[1]} ${ref[4]}`
           : '';
         const trend = trendBadge(m.key, history[m.key], m.value);
         const flagHtml = m.flag
@@ -7432,7 +7559,7 @@ function renderBloodPanels(idx) {
             </div>
           </div>
           ${bar}
-          <div style="font-size:10px;color:var(--text3);margin-top:3px">Normal: ${refText || 'see report'}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Optimal: ${refText || 'see report'} · Std: ${ref ? ref[2]+'–'+ref[3]+' '+ref[4] : ''}</div>
         </div>`;
       }).join('');
 
@@ -7467,12 +7594,12 @@ function renderBloodPanels(idx) {
         ${trendMarkers.map(([key, vals]) => {
           const ref = BLOOD_REFS[key];
           const sorted = [...vals].sort((a,b) => a.date.localeCompare(b.date));
-          const name = ref?.[3] || key;
-          const unit = ref?.[2] || '';
+          const name = ref?.[5] || key;
+          const unit = ref?.[4] || '';
           const refLo = ref?.[0], refHi = ref?.[1];
           const allVals = sorted.map(v => v.value);
           const minV = Math.min(...allVals, refLo || Infinity);
-          const maxV = Math.max(...allVals, refHi < 900 ? refHi : 0);
+          const maxV = Math.max(...allVals, refHi || 0);
           const pad = (maxV - minV) * 0.2 || 1;
           const chartMin = Math.max(0, minV - pad);
           const chartMax = maxV + pad;
@@ -7483,16 +7610,14 @@ function renderBloodPanels(idx) {
           const toX = i => sorted.length === 1 ? W/2 : (i / (sorted.length-1)) * W;
 
           // Reference band
-          const refBand = (refLo !== undefined && refHi !== undefined && refHi < 900)
-            ? `<rect x="0" y="${toY(refHi).toFixed(1)}" width="${W}" height="${(toY(refLo)-toY(refHi)).toFixed(1)}" fill="#22c55e15" rx="2"/>`
-            : refLo !== undefined
-            ? `<rect x="0" y="0" width="${W}" height="${toY(refLo).toFixed(1)}" fill="#ef444410" rx="2"/>`
+          const refBand = (refLo !== undefined && refHi !== undefined)
+            ? `<rect x="0" y="${toY(refHi).toFixed(1)}" width="${W}" height="${Math.max(0,(toY(refLo)-toY(refHi))).toFixed(1)}" fill="#22c55e15" rx="2"/>`
             : '';
 
           // Ref lines
           const refLines = [];
           if (refLo !== undefined) refLines.push(`<line x1="0" y1="${toY(refLo).toFixed(1)}" x2="${W}" y2="${toY(refLo).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
-          if (refHi !== undefined && refHi < 900) refLines.push(`<line x1="0" y1="${toY(refHi).toFixed(1)}" x2="${W}" y2="${toY(refHi).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
+          if (refHi !== undefined) refLines.push(`<line x1="0" y1="${toY(refHi).toFixed(1)}" x2="${W}" y2="${toY(refHi).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
 
           // Polyline
           const points = sorted.map((v,i) => `${toX(i).toFixed(1)},${toY(v.value).toFixed(1)}`).join(' ');
@@ -7563,8 +7688,8 @@ function renderBloodPanels(idx) {
 
     const rows = sortedKeys.map(key => {
       const ref = BLOOD_REFS[key];
-      const name = ref?.[3] || key;
-      const unit = ref?.[2] || '';
+      const name = ref?.[5] || key;
+      const unit = ref?.[4] || '';
       const latestMarker = entry.markers.find(m => m.key === key);
       const latestStatus = latestMarker ? bloodStatus(key, latestMarker.value) : 'ok';
       const rowClass = latestStatus === 'bad' ? 'row-bad' : latestStatus === 'warn' ? 'row-warn' : '';
@@ -7598,25 +7723,30 @@ function renderBloodPanels(idx) {
         return `<td style="text-align:right"><span style="font-size:13px;font-weight:700;color:${col}">${m.value}</span>${trendHtml}</td>`;
       }).join('');
 
-      const refText = ref ? (ref[1]>=900 ? '>'+ref[0] : ref[0]+'–'+ref[1]) : '–';
+      const refText = ref ? `${ref[0]}–${ref[1]}` : '–';
+      const stdText = ref ? `${ref[2]}–${ref[3]}` : '–';
 
       return `<tr class="${rowClass}">
         <td style="font-size:11px;font-weight:600;color:var(--text)">
           <span class="bcomp-dot" style="background:${dotCol}"></span>${name}
-          <div style="font-size:9px;color:var(--text3);margin-top:1px;padding-left:12px">${refText} ${unit}</div>
+          <div style="font-size:9px;color:var(--text3);margin-top:1px;padding-left:12px">${unit}</div>
         </td>
         ${cells}
+        <td style="text-align:center;font-size:10px;color:#22c55e;white-space:nowrap">${refText}</td>
+        <td style="text-align:center;font-size:10px;color:var(--text3);white-space:nowrap">${stdText}</td>
       </tr>`;
     }).join('');
 
     tableEl.innerHTML = `<div class="card">
-      <div class="card-label" style="color:#3b82f6">📊 Side-by-Side Comparison</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">All markers across every lab result. Red/yellow rows = currently out of range. ↑↓ shows change from prior draw.</div>
+      <div class="card-label" style="color:#3b82f6">📊 Blood Test Comparative</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Side-by-side results with optimal & standard ranges. Matches Ways2Well / Optimal DX report format.</div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="bcomp-table">
           <thead><tr>
             <th>Marker</th>
             ${dateHeaders}
+            <th style="text-align:center;color:#22c55e;font-size:10px">Optimal</th>
+            <th style="text-align:center;color:var(--text3);font-size:10px">Standard</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -7648,7 +7778,7 @@ async function generateBloodAIInsights(entry) {
   const markerLines = entry.markers.map(m => {
     const ref = BLOOD_REFS[m.key];
     const status = ref ? bloodStatus(m.key, m.value) : 'ok';
-    const mname = ref ? ref[3] : m.name;
+    const mname = ref ? ref[5] : m.name;
     const flag = status !== 'ok' ? ' (' + status.toUpperCase() + ')' : '';
     return mname + ': ' + m.value + ' ' + (m.unit || '') + flag;
   }).join('\n');
