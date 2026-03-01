@@ -2371,6 +2371,193 @@ function setRPE(key, val) {
 }
 
 // ── renderWorkoutPage ─────────────────────────────────────────
+
+const EXERCISE_LIBRARY = {
+  'Chest': [
+    { name: 'Barbell Bench Press',     reps: '6–8',   notes: 'Primary chest builder' },
+    { name: 'Incline Barbell Press',   reps: '8–10',  notes: 'Upper chest focus' },
+    { name: 'Incline Dumbbell Press',  reps: '8–10',  notes: '' },
+    { name: 'Dumbbell Fly',            reps: '12–15', notes: 'Light, full stretch' },
+    { name: 'Cable Fly',               reps: '12–15', notes: '' },
+    { name: 'Dip',                     reps: '8–12',  notes: 'Lean forward for chest' },
+    { name: 'Push-Up',                 reps: '15–20', notes: '' },
+    { name: 'Pec Deck',                reps: '12–15', notes: '' },
+  ],
+  'Back': [
+    { name: 'Barbell Row',             reps: '6–8',   notes: 'Brace core hard' },
+    { name: 'Deadlift',                reps: '3–5',   notes: 'Hip hinge, brace, drive' },
+    { name: 'Lat Pulldown',            reps: '8–10',  notes: '' },
+    { name: 'Seated Cable Row',        reps: '10–12', notes: '' },
+    { name: 'Pull-Up',                 reps: '6–10',  notes: 'Full ROM' },
+    { name: 'Chin-Up',                 reps: '6–10',  notes: 'Supinated grip' },
+    { name: 'Single-Arm DB Row',       reps: '10–12', notes: '' },
+    { name: 'Face Pulls',              reps: '15–20', notes: 'Shoulder health essential' },
+    { name: 'Straight-Arm Pulldown',   reps: '12–15', notes: '' },
+  ],
+  'Shoulders': [
+    { name: 'Overhead Press',          reps: '6–8',   notes: 'Seated or standing' },
+    { name: 'Dumbbell Shoulder Press', reps: '8–10',  notes: '' },
+    { name: 'Lateral Raises',          reps: '12–15', notes: 'Light, controlled' },
+    { name: 'Front Raises',            reps: '12–15', notes: '' },
+    { name: 'Rear Delt Fly',           reps: '15–20', notes: '' },
+    { name: 'Arnold Press',            reps: '10–12', notes: '' },
+    { name: 'Upright Row',             reps: '10–12', notes: '' },
+    { name: 'Shrugs',                  reps: '12–15', notes: '' },
+  ],
+  'Triceps': [
+    { name: 'Tricep Pushdowns',        reps: '10–12', notes: '' },
+    { name: 'Overhead Tricep Ext.',    reps: '10–12', notes: '' },
+    { name: 'Skull Crushers',          reps: '10–12', notes: '' },
+    { name: 'Close-Grip Bench',        reps: '8–10',  notes: '' },
+    { name: 'Cable Kickbacks',         reps: '12–15', notes: '' },
+    { name: 'Dip (Tricep Focus)',      reps: '10–15', notes: 'Upright torso' },
+  ],
+  'Biceps': [
+    { name: 'Barbell Curl',            reps: '8–10',  notes: '' },
+    { name: 'Hammer Curl',             reps: '10–12', notes: '' },
+    { name: 'Incline DB Curl',         reps: '10–12', notes: 'Full stretch' },
+    { name: 'Preacher Curl',           reps: '10–12', notes: '' },
+    { name: 'Cable Curl',              reps: '12–15', notes: '' },
+    { name: 'Concentration Curl',      reps: '12–15', notes: '' },
+  ],
+  'Legs': [
+    { name: 'Barbell Squat',           reps: '6–8',   notes: 'Prioritize depth & form' },
+    { name: 'Romanian Deadlift',       reps: '8–10',  notes: 'Hip hinge focus' },
+    { name: 'Leg Press',               reps: '10–12', notes: '' },
+    { name: 'Leg Curl',                reps: '10–12', notes: '' },
+    { name: 'Leg Extension',           reps: '12–15', notes: '' },
+    { name: 'Calf Raise',              reps: '15–20', notes: '' },
+    { name: 'Bulgarian Split Squat',   reps: '8–10',  notes: 'Each leg' },
+    { name: 'Hack Squat',              reps: '10–12', notes: '' },
+    { name: 'Walking Lunge',           reps: '12–15', notes: 'Each leg' },
+    { name: 'Hip Thrust',              reps: '10–12', notes: '' },
+  ],
+  'Core': [
+    { name: 'Plank',                   reps: '45–60s', notes: '' },
+    { name: 'Cable Crunch',            reps: '15–20', notes: '' },
+    { name: 'Hanging Leg Raise',       reps: '12–15', notes: '' },
+    { name: 'Ab Wheel',                reps: '10–15', notes: '' },
+    { name: 'Russian Twist',           reps: '20',    notes: '' },
+    { name: 'Side Plank',              reps: '30–45s', notes: 'Each side' },
+    { name: 'Dead Bug',                reps: '10–12', notes: '' },
+  ],
+  'Cardio / Conditioning': [
+    { name: 'Treadmill',               reps: '20–30 min', notes: '' },
+    { name: 'Rowing Machine',          reps: '15–20 min', notes: '' },
+    { name: 'Kettlebell Swing',        reps: '15–20', notes: '' },
+    { name: 'Box Jump',                reps: '8–10',  notes: '' },
+    { name: 'Battle Ropes',            reps: '30–45s', notes: '' },
+    { name: 'Sled Push',               reps: '4×20m', notes: '' },
+  ],
+};
+
+// Session-specific exercise overrides (added/removed during session)
+var sessionExOverrides = {}; // { 'A': [{name,sets,reps,notes,added:true}, ...] }
+// Tracks removed program exercises by session+index: { 'A': [0,2] }
+var sessionExRemoved = {};
+
+function getSessionExercises(sessKey) {
+  const base = PROGRAM[sessKey].exercises
+    .map((ex, i) => ({ ...ex, _progIdx: i, _added: false }))
+    .filter((ex, i) => !(sessionExRemoved[sessKey] || []).includes(i));
+  const added = (sessionExOverrides[sessKey] || []);
+  return [...base, ...added];
+}
+
+
+function openAddExerciseModal() {
+  const sessKey = activeSession;
+  // Get rep scheme from current session to suggest sets
+  const sessName = PROGRAM[sessKey].name;
+
+  const overlay = document.createElement('div');
+  overlay.id = '_addExOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;overflow:hidden';
+
+  // Build category HTML
+  const cats = Object.keys(EXERCISE_LIBRARY);
+  overlay.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#0f172a;border-bottom:1px solid #1e293b;flex-shrink:0">
+      <button onclick="document.body.removeChild(document.getElementById('_addExOverlay'))"
+        style="background:#1e293b;border:none;border-radius:10px;color:#94a3b8;font-size:18px;width:36px;height:36px;cursor:pointer;font-family:inherit">✕</button>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#fff">Add Exercise</div>
+        <div style="font-size:11px;color:#64748b">${PROGRAM[sessKey].name}</div>
+      </div>
+    </div>
+    <div style="padding:10px 14px;background:#0f172a;flex-shrink:0">
+      <input id="_exSearch" type="text" placeholder="Search exercises…"
+        style="width:100%;background:#1e293b;border:1.5px solid #334155;border-radius:12px;padding:10px 14px;color:#fff;font-size:14px;outline:none;font-family:inherit;box-sizing:border-box"
+        oninput="filterExercises(this.value)"/>
+    </div>
+    <div id="_exLibraryList" style="flex:1;overflow-y:auto;padding:8px 14px 80px">
+      ${cats.map(cat => `
+        <div class="_exCatSection">
+          <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:1.5px;text-transform:uppercase;padding:10px 0 6px">${cat}</div>
+          ${EXERCISE_LIBRARY[cat].map(ex => `
+            <div class="_exRow" data-name="${ex.name}" data-cat="${cat}" data-reps="${ex.reps}" data-notes="${ex.notes || ''}"
+              onclick="selectExerciseToAdd('${ex.name.replace(/'/g,"\'")}','${ex.reps}','${ex.notes.replace(/'/g,"\'")||''}')"
+              style="display:flex;align-items:center;justify-content:space-between;padding:11px 12px;margin-bottom:4px;background:#111827;border-radius:12px;cursor:pointer;border:1px solid #1e293b">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#f1f5f9">${ex.name}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">3 sets · ${ex.reps} reps${ex.notes ? ' · ' + ex.notes : ''}</div>
+              </div>
+              <div style="font-size:20px;color:#22c55e;font-weight:300">+</div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>`;
+
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('_exSearch').focus(), 100);
+}
+
+function filterExercises(q) {
+  q = q.toLowerCase().trim();
+  document.querySelectorAll('._exRow').forEach(row => {
+    const name = row.dataset.name.toLowerCase();
+    const cat  = row.dataset.cat.toLowerCase();
+    row.style.display = (!q || name.includes(q) || cat.includes(q)) ? '' : 'none';
+  });
+  document.querySelectorAll('._exCatSection').forEach(sec => {
+    const rows = sec.querySelectorAll('._exRow');
+    const anyVisible = [...rows].some(r => r.style.display !== 'none');
+    sec.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function selectExerciseToAdd(name, reps, notes) {
+  const sessKey = activeSession;
+  if (!sessionExOverrides[sessKey]) sessionExOverrides[sessKey] = [];
+  // Check not already in session
+  const existing = getSessionExercises(sessKey);
+  if (existing.some(e => e.name === name)) {
+    showToast('⚠️ Already in this session');
+    return;
+  }
+  sessionExOverrides[sessKey].push({ name, sets: 3, reps, notes, _added: true });
+  // Close modal
+  const ov = document.getElementById('_addExOverlay');
+  if (ov) document.body.removeChild(ov);
+  showToast('✅ ' + name + ' added!');
+  renderWorkoutPage();
+}
+
+function removeExercise(sessKey, progIdx, isAdded, addedName) {
+  if (isAdded) {
+    // Remove from overrides
+    if (sessionExOverrides[sessKey]) {
+      sessionExOverrides[sessKey] = sessionExOverrides[sessKey].filter(e => e.name !== addedName);
+    }
+  } else {
+    // Mark program exercise as removed
+    if (!sessionExRemoved[sessKey]) sessionExRemoved[sessKey] = [];
+    if (!sessionExRemoved[sessKey].includes(progIdx)) sessionExRemoved[sessKey].push(progIdx);
+  }
+  renderWorkoutPage();
+}
+
 function renderWorkoutPage() {
   // Start timer if not running
   startWorkoutTimer();
@@ -2389,24 +2576,39 @@ function renderWorkoutPage() {
       <span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;background:#0d2d1a;color:#22c55e">3×/wk</span>
     </div>`;
 
-  document.getElementById('exerciseList').innerHTML = sess.exercises.map((ex, i) => {
+  const allExercises = getSessionExercises(activeSession);
+  document.getElementById('exerciseList').innerHTML = allExercises.map((ex, i) => {
     const key       = `${activeSession}-${i}`;
-    const lastData  = getLastWorkout(activeSession, i);
+    const lastData  = ex._added ? null : getLastWorkout(activeSession, ex._progIdx);
     const lastSets  = lastData?.sets  || null;
     const lastRPE   = lastData?.rpe   || null;
     const suggested = getSuggestedWeight(lastSets, ex.reps, lastRPE);
+    const removeCall = ex._added
+      ? `removeExercise('${activeSession}', -1, true, '${ex.name.replace(/'/g,"\\'")}')`
+      : `removeExercise('${activeSession}', ${ex._progIdx}, false, '')`;
+    const addedBadge = ex._added ? ' <span style="font-size:9px;background:#1e3a5f;color:#60a5fa;border-radius:6px;padding:2px 6px;font-weight:700;margin-left:4px">+ADDED</span>' : '';
     return `<div class="ex-card" id="excard-${key}">
-      <div class="ex-header" style="cursor:pointer" onclick="openExChart('${ex.name.replace(/'/g,"\'")}')">
-        <div class="ex-badge" id="exbadge-${key}">${i+1}</div>
-        <div style="flex:1">
-          <div class="ex-name">${ex.name}</div>
-          <div class="ex-meta">${ex.sets} × ${ex.reps}</div>
+      <div class="ex-header" style="display:flex;align-items:center">
+        <div style="cursor:pointer;display:flex;align-items:center;flex:1;gap:8px" onclick="openExChart('${ex.name.replace(/'/g,"\\'")}')">
+          <div class="ex-badge" id="exbadge-${key}">${i+1}</div>
+          <div style="flex:1">
+            <div class="ex-name">${ex.name}${addedBadge}</div>
+            <div class="ex-meta">${ex.sets} × ${ex.reps}</div>
+          </div>
+          <div style="font-size:10px;color:#60a5fa;font-weight:600">📈</div>
         </div>
-        <div style="font-size:10px;color:#60a5fa;font-weight:600">📈 chart</div>
+        <button onclick="${removeCall}" title="Remove"
+          style="background:none;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:4px 8px;opacity:0.6;flex-shrink:0"
+          onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">🗑</button>
       </div>
       ${buildSetRows(activeSession, i, ex.sets, ex.reps, lastSets, suggested, lastRPE)}
     </div>`;
-  }).join('');
+  }).join('') + `<div style="padding:8px 0 16px">
+    <button onclick="openAddExerciseModal()"
+      style="width:100%;background:#0f172a;border:1.5px dashed #334155;border-radius:14px;color:#60a5fa;font-size:14px;font-weight:700;padding:14px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
+      <span style="font-size:20px">+</span> Add Exercise
+    </button>
+  </div>`;
 
   updateTimerStats();
 }
