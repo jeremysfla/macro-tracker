@@ -673,6 +673,8 @@ PROMISE ERROR:
             <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">source</div>
           </div>
         </div>
+        <!-- WHOOP day badge -->
+        <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px">
           <button class="btn-scan" onclick="openScanner()">
             <span style="font-size:16px">&#x1F4F7;</span> Scan
@@ -912,6 +914,48 @@ PROMISE ERROR:
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
         <button id="htab-lift"    class="htab-btn"             onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
+        <button id="htab-whoop"   class="htab-btn"             onclick="switchHistoryTab('whoop')">💍 WHOOP</button>
+      </div>
+
+      <!-- WHOOP DASHBOARD -->
+      <div id="historyTab-whoop" style="display:none">
+
+        <!-- Upload Card -->
+        <div id="whoopUploadCard" class="card" style="padding:16px 18px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📁 Import WHOOP Data</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Export your data from WHOOP app → Account → Privacy → Export Data. Upload the ZIP file here.</div>
+          <label id="whoopDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;background:#0f0d1a;border:2px dashed #4c1d95;border-radius:14px;cursor:pointer;min-height:80px;transition:border-color 0.2s">
+            <div style="font-size:28px">💍</div>
+            <div style="font-size:13px;font-weight:700;color:#a78bfa">Tap to upload WHOOP ZIP</div>
+            <div id="whoopUploadStatus" style="font-size:11px;color:var(--text3)">physiological_cycles.csv + sleeps.csv + workouts.csv</div>
+            <input type="file" accept=".zip" style="display:none" onchange="handleWhoopUpload(this)" />
+          </label>
+          <div id="whoopParseProgress" style="display:none;margin-top:10px;font-size:12px;color:var(--text2);text-align:center;padding:8px;background:var(--surface2);border-radius:10px"></div>
+        </div>
+
+        <!-- Summary row: shown after data loaded -->
+        <div id="whoopDashboard" style="display:none">
+          <!-- Today's Status -->
+          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopTodayCard"></div>
+
+          <!-- 7-day sparkline tiles -->
+          <div id="whoopSparkRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"></div>
+
+          <!-- Sleep breakdown -->
+          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopSleepCard"></div>
+
+          <!-- Workout activity breakdown -->
+          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopWorkoutCard"></div>
+
+          <!-- AI Insights -->
+          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopAICard">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">🤖 AI Recovery Coach</div>
+              <button onclick="runWhoopAI()" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);border:none;border-radius:10px;padding:7px 14px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Analyze</button>
+            </div>
+            <div id="whoopAIResult" style="font-size:13px;color:var(--text2)">Tap Analyze to get personalized recovery and training insights based on your WHOOP data.</div>
+          </div>
+        </div>
       </div>
 
       <!-- LIFT HISTORY -->
@@ -995,6 +1039,11 @@ PROMISE ERROR:
             <button class="chart-tab" data-metric="carbs" onclick="setTrendMetric('carbs',this)">Carbs</button>
             <button class="chart-tab" data-metric="fat" onclick="setTrendMetric('fat',this)">Fat</button>
             <button class="chart-tab" data-metric="weight" onclick="setTrendMetric('weight',this)">Weight</button>
+            <button class="chart-tab" data-metric="recovery" onclick="setTrendMetric('recovery',this)">💍 Recovery</button>
+            <button class="chart-tab" data-metric="hrv" onclick="setTrendMetric('hrv',this)">💍 HRV</button>
+            <button class="chart-tab" data-metric="rhr" onclick="setTrendMetric('rhr',this)">💍 RHR</button>
+            <button class="chart-tab" data-metric="strain" onclick="setTrendMetric('strain',this)">💍 Strain</button>
+            <button class="chart-tab" data-metric="sleepPerf" onclick="setTrendMetric('sleepPerf',this)">💍 Sleep</button>
           </div>
           <div class="chart-container" id="monthChartContainer"></div>
           <div id="trendSummaryRow" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>
@@ -5492,6 +5541,7 @@ function renderRings(overrideMacros) {
   if (tPro) tPro.textContent  = targets.protein + 'g';
   if (tCarb) tCarb.textContent = targets.carbs + 'g';
   if (tFat) tFat.textContent  = targets.fat + 'g';
+  safeCall(renderWhoopDayBadge, "whoopDayBadge");
   if (tSrc) {
     if (garminAdj || overrideMacros) {
       const hasStrava = !!getStorage('stravaToken', null);
@@ -5505,6 +5555,39 @@ function renderRings(overrideMacros) {
       tSrc.style.color = 'var(--text3)';
     }
   }
+}
+
+// ── WHOOP Day Badge on Today Page ──
+function renderWhoopDayBadge() {
+  const el = document.getElementById('whoopDayBadge');
+  if (!el) return;
+  const dateKey = getSelectedDateKey();
+  const w = getWhoopForDate(dateKey);
+  if (!w || (w.recovery == null && w.hrv == null)) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  const c = wrecoveryColor(w.recovery || 0);
+  const rec = w.recovery != null ? w.recovery + '%' : '--';
+  const hrv = w.hrv != null ? w.hrv + 'ms' : '--';
+  const rhr = w.rhr != null ? w.rhr + 'bpm' : '--';
+  const strain = w.strain != null ? w.strain.toFixed(1) : '--';
+  const sleep = w.sleepPerf != null ? w.sleepPerf + '%' : '--';
+  const debt = w.sleepDebt != null ? (w.sleepDebt/60).toFixed(1)+'h debt' : '';
+  el.innerHTML = `<div style="background:${c.bg};border:1.5px solid ${c.border};border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="switchTab('history');switchHistoryTab('whoop')">
+    <div style="text-align:center;flex-shrink:0">
+      <div style="font-size:18px;font-weight:900;color:${c.text}">${rec}</div>
+      <div style="font-size:9px;font-weight:700;color:${c.text};text-transform:uppercase">Recovery</div>
+    </div>
+    <div style="flex:1;display:flex;gap:12px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text2)">💚 HRV <b style="color:#22c55e">${hrv}</b></span>
+      <span style="font-size:11px;color:var(--text2)">❤️ RHR <b style="color:#ef4444">${rhr}</b></span>
+      <span style="font-size:11px;color:var(--text2)">⚡ Strain <b style="color:#3b82f6">${strain}</b></span>
+      <span style="font-size:11px;color:var(--text2)">😴 Sleep <b style="color:#f59e0b">${sleep}</b>${debt?' · '+debt:''}</span>
+    </div>
+    <div style="font-size:9px;color:${c.text};opacity:0.7">💍</div>
+  </div>`;
 }
 
 // ── Copy Yesterday's Meals ──
@@ -7133,7 +7216,7 @@ function onStravaRunSynced(runData) {
 // ═══════════════════════════════════════════════════════
 
 function switchHistoryTab(tab) {
-  ['lift','blood','nutr','trends'].forEach(t => {
+  ['lift','blood','nutr','trends','whoop'].forEach(t => {
     const el = document.getElementById('historyTab-'+t);
     const btn = document.getElementById('htab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
@@ -7142,8 +7225,742 @@ function switchHistoryTab(tab) {
   if (tab === 'lift')   renderHistoryPage();
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
-  if (tab === 'trends') { renderMonthChart(); renderTrendSummary(); }
+  if (tab === 'trends') { renderTrendChart(); }
+  if (tab === 'whoop')  renderWhoopDashboard();
 }
+
+// ═══════════════════════════════════════════════════════
+// ── WHOOP INTEGRATION ──────────────────────────────────
+// ═══════════════════════════════════════════════════════
+
+// ── Storage helpers ──
+function getWhoopData() { return getStorage('whoopData', null); }
+function setWhoopData(d) { setStorage('whoopData', d); }
+
+// ── ZIP Parser — reads WHOOP export ZIP client-side ──
+async function handleWhoopUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('whoopUploadStatus');
+  const progressEl = document.getElementById('whoopParseProgress');
+  statusEl.textContent = 'Reading ZIP…';
+  progressEl.style.display = 'block';
+  progressEl.textContent = '⏳ Loading JSZip…';
+
+  try {
+    // Load JSZip dynamically
+    if (!window.JSZip) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    progressEl.textContent = '📦 Extracting ZIP…';
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Find the CSVs — they may be nested in a folder
+    const findFile = name => {
+      const keys = Object.keys(zip.files);
+      const key = keys.find(k => k.endsWith(name));
+      return key ? zip.files[key] : null;
+    };
+
+    const cyclesFile   = findFile('physiological_cycles.csv');
+    const sleepsFile   = findFile('sleeps.csv');
+    const workoutsFile = findFile('workouts.csv');
+
+    if (!cyclesFile || !sleepsFile || !workoutsFile) {
+      progressEl.textContent = '❌ Missing CSVs. Expected: physiological_cycles.csv, sleeps.csv, workouts.csv';
+      return;
+    }
+
+    progressEl.textContent = '📊 Parsing cycles…';
+    const cyclesCSV   = await cyclesFile.async('text');
+    const sleepsCSV   = await sleepsFile.async('text');
+    const workoutsCSV = await workoutsFile.async('text');
+
+    progressEl.textContent = '🔢 Processing data…';
+    const data = parseWhoopCSVs(cyclesCSV, sleepsCSV, workoutsCSV);
+
+    setWhoopData(data);
+    progressEl.textContent = `✅ Imported ${data.cycles.length} days, ${data.sleeps.length} sleeps, ${data.workouts.length} workouts`;
+    statusEl.textContent = `Last import: ${new Date().toLocaleDateString()}`;
+    document.getElementById('whoopDropZone').style.borderColor = '#7c3aed';
+
+    setTimeout(renderWhoopDashboard, 300);
+  } catch(e) {
+    progressEl.textContent = '❌ Error: ' + e.message;
+    console.error('WHOOP upload error:', e);
+  }
+}
+
+// ── Parse CSV text into array of objects ──
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+    const obj = {};
+    headers.forEach((h,i) => obj[h] = vals[i] || '');
+    return obj;
+  }).filter(r => r[headers[0]]);
+}
+
+// ── Parse and normalize all three CSVs ──
+function parseWhoopCSVs(cyclesCSV, sleepsCSV, workoutsCSV) {
+  const rawCycles   = parseCSV(cyclesCSV);
+  const rawSleeps   = parseCSV(sleepsCSV);
+  const rawWorkouts = parseCSV(workoutsCSV);
+
+  const num = (v, fallback=null) => { const n = parseFloat(v); return isNaN(n) ? fallback : n; };
+  const dateStr = v => v ? v.slice(0,10) : null;
+
+  const cycles = rawCycles.map(r => ({
+    date:        dateStr(r['Cycle start time']),
+    recovery:    num(r['Recovery score %']),
+    hrv:         num(r['Heart rate variability (ms)']),
+    rhr:         num(r['Resting heart rate (bpm)']),
+    skinTemp:    num(r['Skin temp (celsius)']),
+    spo2:        num(r['Blood oxygen %']),
+    strain:      num(r['Day Strain']),
+    calories:    num(r['Energy burned (cal)']),
+    sleepPerf:   num(r['Sleep performance %']),
+    deepMin:     num(r['Deep (SWS) duration (min)']),
+    remMin:      num(r['REM duration (min)']),
+    lightMin:    num(r['Light sleep duration (min)']),
+    asleepMin:   num(r['Asleep duration (min)']),
+    awakeMin:    num(r['Awake duration (min)']),
+    sleepDebt:   num(r['Sleep debt (min)']),
+    respRate:    num(r['Respiratory rate (rpm)']),
+    sleepConsistency: num(r['Sleep consistency %']),
+  })).filter(r => r.date && r.recovery !== null);
+
+  const sleeps = rawSleeps.filter(r => r['Nap']?.toLowerCase() !== 'true').map(r => ({
+    date:      dateStr(r['Sleep onset']),
+    onset:     r['Sleep onset'],
+    wake:      r['Wake onset'],
+    perf:      num(r['Sleep performance %']),
+    asleepMin: num(r['Asleep duration (min)']),
+    deepMin:   num(r['Deep (SWS) duration (min)']),
+    remMin:    num(r['REM duration (min)']),
+    lightMin:  num(r['Light sleep duration (min)']),
+    debt:      num(r['Sleep debt (min)']),
+    respRate:  num(r['Respiratory rate (rpm)']),
+    efficiency: num(r['Sleep efficiency %']),
+    consistency: num(r['Sleep consistency %']),
+    isNap:     false,
+  })).filter(r => r.date && r.asleepMin);
+
+  const workouts = rawWorkouts.map(r => ({
+    date:     dateStr(r['Workout start time']),
+    activity: r['Activity name'],
+    strain:   num(r['Activity Strain']),
+    calories: num(r['Energy burned (cal)']),
+    duration: num(r['Duration (min)']),
+    maxHR:    num(r['Max HR (bpm)']),
+    avgHR:    num(r['Average HR (bpm)']),
+    z1: num(r['HR Zone 1 %']), z2: num(r['HR Zone 2 %']),
+    z3: num(r['HR Zone 3 %']), z4: num(r['HR Zone 4 %']),
+    z5: num(r['HR Zone 5 %']),
+  })).filter(r => r.date && r.activity);
+
+  return { cycles, sleeps, workouts, importedAt: Date.now() };
+}
+
+// ── Main render function ──
+function renderWhoopDashboard() {
+  const data = getWhoopData();
+  const uploadCard = document.getElementById('whoopUploadCard');
+  const dashboard  = document.getElementById('whoopDashboard');
+  if (!dashboard) return;
+
+  if (!data || !data.cycles?.length) {
+    uploadCard.style.display = 'block';
+    dashboard.style.display  = 'none';
+    return;
+  }
+
+  uploadCard.style.display = 'block'; // keep upload available for re-import
+  dashboard.style.display  = 'block';
+
+  renderWhoopToday(data);
+  renderWhoopSparklines(data);
+  renderWhoopSleep(data);
+  renderWhoopWorkouts(data);
+}
+
+// ── Helper: average ──
+function wavg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function wrecoveryColor(r) {
+  if (r >= 67) return { bg:'#052e1e', border:'#16a34a', text:'#22c55e' };
+  if (r >= 34) return { bg:'#2d2005', border:'#ca8a04', text:'#eab308' };
+  return { bg:'#2a0a0a', border:'#dc2626', text:'#ef4444' };
+}
+function wrecoveryEmoji(r) { return r>=67 ? '🟢' : r>=34 ? '🟡' : '🔴'; }
+
+// ── Today's Status card ──
+function renderWhoopToday(data) {
+  const el = document.getElementById('whoopTodayCard');
+  if (!el) return;
+  const today = data.cycles[0]; // most recent
+  const c = wrecoveryColor(today.recovery || 0);
+  const rec = today.recovery || 0;
+  const hrv = today.hrv || 0;
+  const rhr = today.rhr || 0;
+  const strain = today.strain || 0;
+  const sleepDebt = today.sleepDebt || 0;
+  const spo2 = today.spo2 || 0;
+
+  // 30-day baselines
+  const last30 = data.cycles.slice(0,30);
+  const avgHRV = wavg(last30.map(r=>r.hrv).filter(Boolean));
+  const avgRHR = wavg(last30.map(r=>r.rhr).filter(Boolean));
+
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">💍 Today's Recovery Status · ${today.date}</div>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <div style="width:80px;height:80px;border-radius:50%;background:${c.bg};border:3px solid ${c.border};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="font-size:22px;font-weight:900;color:${c.text}">${rec}%</div>
+        <div style="font-size:9px;color:${c.text};font-weight:700;text-transform:uppercase">Recovery</div>
+      </div>
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${wStatTile('HRV', hrv + 'ms', hrv >= avgHRV ? '↑' : '↓', hrv >= avgHRV ? '#22c55e' : '#f59e0b', `avg ${avgHRV.toFixed(0)}ms`)}
+        ${wStatTile('RHR', rhr + ' bpm', rhr <= avgRHR ? '↓' : '↑', rhr <= avgRHR ? '#22c55e' : '#f59e0b', `avg ${avgRHR.toFixed(0)}bpm`)}
+        ${wStatTile('Strain', strain.toFixed(1), '', '#3b82f6', 'day strain')}
+        ${wStatTile('SpO2', spo2 ? spo2.toFixed(1)+'%' : '--', '', spo2>=95?'#22c55e':'#f59e0b', 'blood O₂')}
+      </div>
+    </div>
+    ${sleepDebt > 0 ? `<div style="background:#1c1008;border:1px solid #78350f;border-radius:10px;padding:8px 12px;font-size:12px;color:#f59e0b;font-weight:600">⚠️ Sleep debt: ${(sleepDebt/60).toFixed(1)}h behind — prioritize sleep tonight</div>` : '<div style="background:#052e1e;border:1px solid #166534;border-radius:10px;padding:8px 12px;font-size:12px;color:#22c55e;font-weight:600">✅ No significant sleep debt</div>'}`;
+}
+
+function wStatTile(label, val, arrow, color, sub) {
+  return `<div style="background:var(--surface2);border-radius:10px;padding:8px 10px">
+    <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:2px">${label}</div>
+    <div style="font-size:16px;font-weight:800;color:${color}">${arrow} ${val}</div>
+    <div style="font-size:10px;color:var(--text3)">${sub}</div>
+  </div>`;
+}
+
+// ── 7-day sparkline tiles ──
+function renderWhoopSparklines(data) {
+  const el = document.getElementById('whoopSparkRow');
+  if (!el) return;
+  const days = data.cycles.slice(0,14).reverse(); // oldest→newest for chart
+
+  const metrics = [
+    { key:'recovery', label:'Recovery', unit:'%', color:'#a78bfa' },
+    { key:'hrv',      label:'HRV',      unit:'ms', color:'#22c55e' },
+    { key:'strain',   label:'Strain',   unit:'',  color:'#3b82f6' },
+    { key:'sleepPerf',label:'Sleep',    unit:'%', color:'#f59e0b' },
+  ];
+
+  el.innerHTML = metrics.map(m => {
+    const vals = days.map(d => d[m.key] || 0);
+    const max  = Math.max(...vals) || 1;
+    const latest = data.cycles[0][m.key] || 0;
+    const sparkBars = vals.map(v => {
+      const h = Math.max(4, Math.round((v/max)*36));
+      const fill = m.key==='recovery' ? wrecoveryColor(v).text : m.color;
+      return `<div style="width:10px;height:${h}px;background:${fill};border-radius:2px;align-self:flex-end;opacity:0.85"></div>`;
+    }).join('');
+    return `<div class="card" style="padding:12px 14px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${m.label} (14d)</div>
+      <div style="font-size:20px;font-weight:900;color:${m.key==='recovery'?wrecoveryColor(latest).text:m.color};margin-bottom:8px">${typeof latest==='number'?latest.toFixed(m.key==='hrv'?0:1):latest}${m.unit}</div>
+      <div style="display:flex;gap:3px;align-items:flex-end;height:40px">${sparkBars}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Sleep breakdown ──
+function renderWhoopSleep(data) {
+  const el = document.getElementById('whoopSleepCard');
+  if (!el) return;
+  const recent = data.sleeps.slice(0,30).filter(s=>s.asleepMin);
+  if (!recent.length) { el.innerHTML='<div style="color:var(--text3);font-size:13px">No sleep data</div>'; return; }
+
+  const avgAsleep = wavg(recent.map(s=>s.asleepMin));
+  const avgDeep   = wavg(recent.map(s=>s.deepMin||0));
+  const avgREM    = wavg(recent.map(s=>s.remMin||0));
+  const avgLight  = wavg(recent.map(s=>s.lightMin||0));
+  const avgPerf   = wavg(recent.map(s=>s.perf||0));
+  const avgDebt   = wavg(recent.map(s=>s.debt||0));
+  const avgResp   = wavg(recent.map(s=>s.respRate||0));
+
+  // Recent 7 nights mini table
+  const nights = data.sleeps.slice(0,7).map(s => {
+    const emoji = s.perf>=85?'🟢':s.perf>=65?'🟡':'🔴';
+    const hrs = s.asleepMin ? (s.asleepMin/60).toFixed(1) : '--';
+    const deep = s.deepMin ? Math.round(s.deepMin) : '--';
+    const rem  = s.remMin  ? Math.round(s.remMin)  : '--';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--text3);width:80px">${s.date}</span>
+      <span>${emoji} ${s.perf||'--'}%</span>
+      <span style="color:var(--text2)">${hrs}h</span>
+      <span style="color:#3b82f6">💤${deep}m</span>
+      <span style="color:#8b5cf6">🌙${rem}m</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">😴 Sleep Quality · 30-Day Average</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      ${wBigStat((avgAsleep/60).toFixed(1)+'h', 'Avg Sleep', '#e2e8f0')}
+      ${wBigStat(avgPerf.toFixed(0)+'%', 'Performance', avgPerf>=80?'#22c55e':avgPerf>=65?'#eab308':'#ef4444')}
+      ${wBigStat((avgDebt/60).toFixed(1)+'h', 'Avg Debt', avgDebt<30?'#22c55e':avgDebt<60?'#eab308':'#ef4444')}
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Sleep Architecture (avg)</div>
+      <div style="display:flex;gap:4px;height:20px;border-radius:6px;overflow:hidden;margin-bottom:6px">
+        ${wSleepBar(avgDeep,  avgAsleep, '#3b82f6', 'Deep')}
+        ${wSleepBar(avgREM,   avgAsleep, '#8b5cf6', 'REM')}
+        ${wSleepBar(avgLight, avgAsleep, '#1e3a5f', 'Light')}
+      </div>
+      <div style="display:flex;gap:14px;font-size:11px;font-weight:600">
+        <span style="color:#3b82f6">💤 Deep ${avgDeep.toFixed(0)}m (${(100*avgDeep/avgAsleep).toFixed(0)}%)</span>
+        <span style="color:#8b5cf6">🌙 REM ${avgREM.toFixed(0)}m (${(100*avgREM/avgAsleep).toFixed(0)}%)</span>
+        <span style="color:#475569">Light ${avgLight.toFixed(0)}m</span>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Last 7 Nights</div>
+    ${nights}
+    <div style="margin-top:10px;display:flex;gap:12px;font-size:11px;color:var(--text3)">
+      <span>Resp: ${avgResp.toFixed(1)} rpm avg</span>
+    </div>`;
+}
+
+function wBigStat(val, label, color) {
+  return `<div style="text-align:center;background:var(--surface2);border-radius:12px;padding:10px 8px">
+    <div style="font-size:20px;font-weight:900;color:${color}">${val}</div>
+    <div style="font-size:10px;color:var(--text3);font-weight:600;margin-top:2px">${label}</div>
+  </div>`;
+}
+function wSleepBar(val, total, color, label) {
+  const pct = total>0 ? (val/total)*100 : 0;
+  return `<div style="flex:${pct};background:${color};min-width:4px" title="${label}: ${val.toFixed(0)}min"></div>`;
+}
+
+// ── Workout breakdown ──
+function renderWhoopWorkouts(data) {
+  const el = document.getElementById('whoopWorkoutCard');
+  if (!el) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-90);
+  const cutoffStr = cutoff.toISOString().slice(0,10);
+  const recent = data.workouts.filter(w=>w.date>=cutoffStr);
+  if (!recent.length) { el.innerHTML='<div style="color:var(--text3);font-size:13px">No workout data</div>'; return; }
+
+  // Group by activity
+  const byType = {};
+  recent.forEach(w => {
+    if (!byType[w.activity]) byType[w.activity]={count:0,totalCal:0,totalDur:0,totalStrain:0};
+    byType[w.activity].count++;
+    byType[w.activity].totalCal += w.calories||0;
+    byType[w.activity].totalDur += w.duration||0;
+    byType[w.activity].totalStrain += w.strain||0;
+  });
+  const sorted = Object.entries(byType).sort((a,b)=>b[1].count-a[1].count);
+  const totalStrain = wavg(recent.filter(w=>w.strain).map(w=>w.strain));
+  const totalCal = recent.reduce((s,w)=>s+(w.calories||0),0);
+
+  const actEmoji = {Running:'🏃',Cycling:'🚴',Weightlifting:'🏋️',Powerlifting:'🏋️',Softball:'⚾',Baseball:'⚾',Golf:'⛳',Tennis:'🎾',Swimming:'🏊',Activity:'💪'};
+
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">🏃 Workouts · Last 90 Days</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      ${wBigStat(recent.length, 'Sessions', '#e2e8f0')}
+      ${wBigStat(totalStrain.toFixed(1), 'Avg Strain', '#3b82f6')}
+      ${wBigStat(Math.round(totalCal/1000)+'k', 'Total Cal', '#f59e0b')}
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">By Activity</div>
+    ${sorted.map(([act,s])=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="font-weight:700;color:var(--text)">${actEmoji[act]||'💪'} ${act}</span>
+        <span style="color:var(--text3)">${s.count}x · ${(s.totalDur/s.count).toFixed(0)}min avg</span>
+        <span style="color:#f59e0b;font-weight:700">${(s.totalCal/s.count).toFixed(0)} cal</span>
+      </div>`).join('')}`;
+}
+
+// ── AI Analysis ──
+async function runWhoopAI() {
+  const data = getWhoopData();
+  if (!data) { showToast('Upload WHOOP data first'); return; }
+
+  const btn = document.querySelector('#whoopAICard button');
+  const result = document.getElementById('whoopAIResult');
+  btn.disabled = true; btn.textContent = '⏳ Analyzing…';
+  result.innerHTML = '<div style="color:var(--text3);font-size:13px">Analyzing your WHOOP data…</div>';
+
+  // Build context from last 30 days
+  const last30 = data.cycles.slice(0,30);
+  const last7  = data.cycles.slice(0,7);
+  const mean   = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+
+  const avgRec = mean(last30.map(r=>r.recovery||0));
+  const avgHRV = mean(last30.map(r=>r.hrv||0));
+  const avgRHR = mean(last30.map(r=>r.rhr||0));
+  const avgSleep = mean(data.sleeps.slice(0,30).map(s=>s.asleepMin||0));
+  const avgDeep  = mean(data.sleeps.slice(0,30).map(s=>s.deepMin||0));
+  const avgREM   = mean(data.sleeps.slice(0,30).map(s=>s.remMin||0));
+  const sleepDebt = data.cycles[0]?.sleepDebt || 0;
+  const recentStrain = mean(last7.filter(r=>r.strain).map(r=>r.strain));
+
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
+  const recentWorkouts = data.workouts.filter(w=>w.date>=cutoff.toISOString().slice(0,10));
+  const wTypes = {};
+  recentWorkouts.forEach(w=>{ wTypes[w.activity]=(wTypes[w.activity]||0)+1; });
+
+  const last14Snapshot = last7.map(r=>
+    `${r.date}: rec=${r.recovery}% HRV=${r.hrv}ms RHR=${r.rhr}bpm strain=${r.strain||'--'} sleep=${r.sleepPerf||'--'}%`
+  ).join('\n');
+
+  const prompt = `You are a recovery and performance coach analyzing Jeremy's WHOOP biometric data. Jeremy is 52, an avid runner training for Grandma's Marathon (June 2026), lifting weights, and trying to lose weight (goal: 163 lbs).
+
+=== 30-DAY AVERAGES ===
+Recovery score: ${avgRec.toFixed(1)}% (Green=67+, Yellow=34-66, Red=<34)
+HRV: ${avgHRV.toFixed(1)}ms  
+RHR: ${avgRHR.toFixed(1)} bpm
+Sleep: ${(avgSleep/60).toFixed(1)}h avg, Deep SWS: ${avgDeep.toFixed(0)}min, REM: ${avgREM.toFixed(0)}min
+Current sleep debt: ${(sleepDebt/60).toFixed(1)}h
+7-day avg strain: ${recentStrain.toFixed(1)}/21
+
+=== WORKOUT MIX (last 30d) ===
+${Object.entries(wTypes).map(([k,v])=>`${k}: ${v}x`).join(', ')}
+
+=== LAST 7 DAYS DAILY ===
+${last14Snapshot}
+
+=== GOALS ===
+- Marathon training (June 2026)
+- Weight loss to 163 lbs
+- Optimize recovery between hard runs
+- Manage stress
+
+Please analyze and provide:
+1. **Recovery Assessment** — what his scores mean for a 52-year-old athlete
+2. **Sleep Quality** — SWS and REM are the key recovery stages, how is he doing?
+3. **Training Load vs Recovery** — is he overreaching? What strain level should he target?
+4. **Top 3 Actionable Recommendations** — specific things to change this week
+5. **Marathon Readiness** — is his recovery trending the right direction for June?
+
+Be direct, data-driven, and specific to his numbers. No fluff.`;
+
+  try {
+    const resp = await fetch('/api/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user',content:prompt}] })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error.message);
+    const text = d.content?.[0]?.text || 'No response';
+    result.innerHTML = formatAIResponse(text);
+  } catch(e) {
+    result.textContent = '❌ Error: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = 'Re-analyze';
+}
+
+// ── Add WHOOP context to AI Coach ──
+function getWhoopContext() {
+  const data = getWhoopData();
+  if (!data?.cycles?.length) return '';
+  const today = data.cycles[0];
+  const last7  = data.cycles.slice(0,7);
+  const mean   = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+  const avgHRV = mean(last7.map(r=>r.hrv||0));
+  const avgRec = mean(last7.map(r=>r.recovery||0));
+  return `\n=== WHOOP BIOMETRICS (latest) ===
+Today: Recovery=${today.recovery}% HRV=${today.hrv}ms RHR=${today.rhr}bpm Strain=${today.strain||'--'} SpO2=${today.spo2||'--'}%
+7-day avg: Recovery=${avgRec.toFixed(0)}% HRV=${avgHRV.toFixed(0)}ms
+Sleep debt: ${today.sleepDebt ? (today.sleepDebt/60).toFixed(1)+'h' : 'unknown'}
+Sleep last night: ${today.sleepPerf||'--'}% performance, ${today.deepMin||'--'}min deep, ${today.remMin||'--'}min REM`;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// ── WHOOP DATE-INDEXED INTEGRATION ────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// Build a date-keyed lookup index from WHOOP data for fast access
+function buildWhoopIndex(data) {
+  if (!data) return {};
+  const idx = {};
+  // Index cycles by date
+  (data.cycles || []).forEach(c => {
+    if (!c.date) return;
+    if (!idx[c.date]) idx[c.date] = { recovery: null, hrv: null, rhr: null, strain: null, spo2: null, skinTemp: null, sleepPerf: null, deepMin: null, remMin: null, lightMin: null, asleepMin: null, sleepDebt: null, respRate: null, sleepConsistency: null };
+    const d = idx[c.date];
+    if (c.recovery != null) d.recovery = c.recovery;
+    if (c.hrv != null) d.hrv = c.hrv;
+    if (c.rhr != null) d.rhr = c.rhr;
+    if (c.strain != null) d.strain = c.strain;
+    if (c.spo2 != null) d.spo2 = c.spo2;
+    if (c.skinTemp != null) d.skinTemp = c.skinTemp;
+    if (c.sleepPerf != null) d.sleepPerf = c.sleepPerf;
+    if (c.deepMin != null) d.deepMin = c.deepMin;
+    if (c.remMin != null) d.remMin = c.remMin;
+    if (c.lightMin != null) d.lightMin = c.lightMin;
+    if (c.asleepMin != null) d.asleepMin = c.asleepMin;
+    if (c.sleepDebt != null) d.sleepDebt = c.sleepDebt;
+    if (c.respRate != null) d.respRate = c.respRate;
+    if (c.sleepConsistency != null) d.sleepConsistency = c.sleepConsistency;
+  });
+  // Index workouts by date (array — multiple workouts per day)
+  (data.workouts || []).forEach(w => {
+    if (!w.date) return;
+    if (!idx[w.date]) idx[w.date] = {};
+    if (!idx[w.date].workouts) idx[w.date].workouts = [];
+    idx[w.date].workouts.push(w);
+  });
+  return idx;
+}
+
+// Get cached index (rebuild on demand)
+let _whoopIndex = null;
+let _whoopIndexVersion = null;
+function getWhoopIndex() {
+  const data = getWhoopData();
+  if (!data) return {};
+  const version = data.importedAt;
+  if (!_whoopIndex || _whoopIndexVersion !== version) {
+    _whoopIndex = buildWhoopIndex(data);
+    _whoopIndexVersion = version;
+  }
+  return _whoopIndex;
+}
+
+// Get WHOOP data for a specific date key (YYYY-MM-DD)
+function getWhoopForDate(dateKey) {
+  const idx = getWhoopIndex();
+  return idx[dateKey] || null;
+}
+
+// Get WHOOP summary for date range — used in AI context
+function getWhoopRangeSummary(days) {
+  const data = getWhoopData();
+  if (!data?.cycles?.length) return null;
+  const idx = getWhoopIndex();
+  const summaries = [];
+  const today = nowEST();
+  for (let i = 0; i < days; i++) {
+    const d = nowEST();
+    d.setDate(today.getDate() - i);
+    const key = dateToKey(d);
+    const w = idx[key];
+    if (w && (w.recovery != null || w.hrv != null)) {
+      const parts = [];
+      if (w.recovery != null) parts.push(`rec=${w.recovery}%`);
+      if (w.hrv != null) parts.push(`HRV=${w.hrv}ms`);
+      if (w.rhr != null) parts.push(`RHR=${w.rhr}bpm`);
+      if (w.strain != null) parts.push(`strain=${w.strain.toFixed(1)}`);
+      if (w.sleepPerf != null) parts.push(`sleep=${w.sleepPerf}%`);
+      if (w.deepMin != null) parts.push(`deep=${Math.round(w.deepMin)}m`);
+      if (w.asleepMin != null) parts.push(`slept=${(w.asleepMin/60).toFixed(1)}h`);
+      summaries.push(`${key}: ${parts.join(' ')}`);
+    }
+  }
+  return summaries;
+}
+
+// ── Enhanced getAppContext to include WHOOP per-date data ──
+// This replaces the simple getWhoopContext() call with rich per-day data
+function getWhoopContextFull() {
+  const data = getWhoopData();
+  if (!data?.cycles?.length) return '';
+
+  const today = data.cycles[0];
+  const last30 = data.cycles.slice(0, 30);
+  const wavg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+  const avgHRV = wavg(last30.map(r=>r.hrv||0).filter(Boolean));
+  const avgRHR = wavg(last30.map(r=>r.rhr||0).filter(Boolean));
+  const avgRec = wavg(last30.map(r=>r.recovery||0).filter(Boolean));
+  const avgSleep = wavg(last30.map(r=>r.asleepMin||0).filter(Boolean));
+  const avgDeep = wavg(last30.map(r=>r.deepMin||0).filter(Boolean));
+  const avgREM = wavg(last30.map(r=>r.remMin||0).filter(Boolean));
+
+  const last30Days = getWhoopRangeSummary(30) || [];
+  const daysSinceImport = today?.date
+    ? Math.round((Date.now() - new Date(today.date).getTime()) / 86400000)
+    : null;
+
+  // Workout breakdown
+  const cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate()-30);
+  const cutoffStr = cutoff30.toISOString().slice(0,10);
+  const recentWorkouts = data.workouts.filter(w=>w.date>=cutoffStr);
+  const wTypes = {};
+  recentWorkouts.forEach(w=>{ wTypes[w.activity]=(wTypes[w.activity]||0)+1; });
+
+  return `
+=== WHOOP BIOMETRICS (${data.cycles.length} days of data, imported ${daysSinceImport != null ? daysSinceImport+'d ago' : 'recently'}) ===
+LATEST: Recovery=${today.recovery}% HRV=${today.hrv}ms RHR=${today.rhr}bpm Strain=${today.strain!=null?today.strain.toFixed(1):'--'} SpO2=${today.spo2||'--'}%
+Sleep debt: ${today.sleepDebt!=null?(today.sleepDebt/60).toFixed(1)+'h':'unknown'} | Sleep: ${today.sleepPerf||'--'}% perf, ${today.deepMin?Math.round(today.deepMin):'--'}min deep, ${today.remMin?Math.round(today.remMin):'--'}min REM
+
+30-DAY WHOOP AVERAGES:
+Recovery: ${avgRec.toFixed(1)}% | HRV: ${avgHRV.toFixed(1)}ms | RHR: ${avgRHR.toFixed(1)}bpm
+Sleep: ${(avgSleep/60).toFixed(1)}h avg | Deep SWS: ${avgDeep.toFixed(0)}min (${avgSleep>0?(100*avgDeep/avgSleep).toFixed(0):0}%) | REM: ${avgREM.toFixed(0)}min (${avgSleep>0?(100*avgREM/avgSleep).toFixed(0):0}%)
+Workout mix (30d): ${Object.entries(wTypes).map(([k,v])=>k+':'+v+'x').join(', ')||'none'}
+
+DAILY WHOOP LOG (last 30d) — use to correlate with food/weight/workouts:
+${last30Days.slice(0,30).join('\n') || 'No data'}`;
+}
+
+// ── 30-Day WHOOP Reminder ──
+function checkWhoopUpdateReminder() {
+  const data = getWhoopData();
+  const snoozeKey = 'whoopReminderSnooze';
+  const snooze = getStorage(snoozeKey, null);
+  if (snooze && new Date(snooze) > new Date()) return; // snoozed
+
+  if (!data) {
+    // Never imported — show once after a delay
+    const firstOpen = getStorage('whoopReminderFirstOpen', null);
+    if (!firstOpen) {
+      setStorage('whoopReminderFirstOpen', new Date().toISOString());
+      return; // First ever open — don't bug them immediately
+    }
+    const daysSinceFirst = (Date.now() - new Date(firstOpen).getTime()) / 86400000;
+    if (daysSinceFirst > 3) {
+      showWhoopReminder('never');
+    }
+    return;
+  }
+
+  // Imported — check age
+  const importDate = data.importedAt ? new Date(data.importedAt) : null;
+  if (!importDate) return;
+  const daysSince = (Date.now() - importDate.getTime()) / 86400000;
+
+  if (daysSince >= 30) {
+    showWhoopReminder('stale', Math.round(daysSince));
+  }
+}
+
+function showWhoopReminder(type, daysSince) {
+  // Don't show if already visible
+  if (document.getElementById('whoopReminderBanner')) return;
+
+  const msg = type === 'never'
+    ? '💍 Connect your WHOOP data for deeper health insights. Export from WHOOP app → History tab.'
+    : `💍 Your WHOOP data is ${daysSince} days old. Export a fresh copy from WHOOP app for accurate AI analysis.`;
+
+  const banner = document.createElement('div');
+  banner.id = 'whoopReminderBanner';
+  banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);width:calc(100%-32px);max-width:480px;background:linear-gradient(135deg,#1e0a3c,#2d1556);border:1.5px solid #7c3aed;border-radius:16px;padding:12px 16px;z-index:9000;box-shadow:0 4px 24px rgba(124,58,237,0.35);display:flex;align-items:center;gap:12px;animation:slideUp 0.3s ease';
+  banner.innerHTML = `
+    <div style="flex:1;font-size:13px;color:#e2d9f3;font-weight:600;line-height:1.4">${msg}</div>
+    <button onclick="switchTab('history');switchHistoryTab('whoop');dismissWhoopReminder()" style="background:#7c3aed;border:none;border-radius:10px;padding:7px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">Update</button>
+    <button onclick="snoozeWhoopReminder()" style="background:transparent;border:1px solid #4c1d95;border-radius:10px;padding:7px 10px;color:#a78bfa;font-size:11px;cursor:pointer;font-family:inherit">Later</button>
+    <button onclick="dismissWhoopReminder()" style="background:none;border:none;color:#6b7280;font-size:16px;cursor:pointer;line-height:1;padding:0 2px">×</button>`;
+
+  document.body.appendChild(banner);
+  setTimeout(() => {
+    if (banner.parentNode) banner.style.opacity = '0';
+    setTimeout(() => banner.remove(), 500);
+  }, 12000);
+}
+
+function dismissWhoopReminder() {
+  const b = document.getElementById('whoopReminderBanner');
+  if (b) b.remove();
+  // Mark as seen today
+  setStorage('whoopReminderSnooze', new Date(Date.now() + 86400000).toISOString());
+}
+
+function snoozeWhoopReminder() {
+  const b = document.getElementById('whoopReminderBanner');
+  if (b) b.remove();
+  // Snooze 7 days
+  setStorage('whoopReminderSnooze', new Date(Date.now() + 7*86400000).toISOString());
+}
+
+// ── Add WHOOP metrics to Trends chart ──
+// Extend existing setTrendMetric to support WHOOP metrics
+const _origSetTrendMetric = setTrendMetric;
+function setTrendMetric(metric, btn) {
+  if (['recovery','hrv','rhr','strain','sleepPerf'].includes(metric)) {
+    currentTrendMetric = metric;
+    document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderWhoopTrendChart(metric);
+    return;
+  }
+  _origSetTrendMetric(metric, btn);
+}
+
+function renderWhoopTrendChart(metric) {
+  const container = document.getElementById('monthChartContainer');
+  const summaryRow = document.getElementById('trendSummaryRow');
+  if (!container) return;
+
+  const idx = getWhoopIndex();
+  const today = nowEST();
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = nowEST();
+    d.setDate(today.getDate() - i);
+    const key = dateToKey(d);
+    const w = idx[key];
+    const val = w ? w[metric] : null;
+    days.push({ key, label: d.getDate(), val: val != null ? parseFloat(val) : null });
+  }
+
+  const logged = days.filter(d => d.val !== null);
+  if (!logged.length) {
+    container.innerHTML = `<div class="empty-state" style="padding:30px 0;text-align:center">No WHOOP ${metric} data for last 30 days.<br><small style="color:var(--text3)">Upload WHOOP data in History → 💍 WHOOP</small></div>`;
+    summaryRow.innerHTML = '';
+    return;
+  }
+
+  const maxVal = Math.max(...logged.map(v=>v.val));
+  const minVal = Math.min(...logged.map(v=>v.val));
+  const avgVal = logged.reduce((s,v)=>s+v.val,0)/logged.length;
+  const colors = { recovery:'#a78bfa', hrv:'#22c55e', rhr:'#ef4444', strain:'#3b82f6', sleepPerf:'#f59e0b' };
+  const labels = { recovery:'Recovery %', hrv:'HRV (ms)', rhr:'RHR (bpm)', strain:'Day Strain', sleepPerf:'Sleep Perf %' };
+  const color = colors[metric];
+
+  const bars = days.map(d => {
+    const hasVal = d.val !== null;
+    const pct = hasVal ? Math.max(4, Math.round(((d.val - minVal*0.9) / ((maxVal*1.05) - minVal*0.9)) * 100)) : 2;
+    const isToday = d.key === todayKey();
+    const barColor = hasVal
+      ? (metric==='recovery' ? wrecoveryColor(d.val).text : color)
+      : 'var(--surface2)';
+    const showLabel = d.label === 1 || d.label % 7 === 1;
+    return `<div class="month-bar-wrap" title="${d.key}: ${d.val!=null?d.val.toFixed(1):'no data'}">
+      <div class="month-bar" style="height:${pct}%;background:${barColor};${isToday?'outline:2px solid #3b82f6;border-radius:5px 5px 0 0':''}${!hasVal?';opacity:0.2':''}"></div>
+      <div class="month-bar-lbl">${showLabel?d.label:''}</div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="month-bar-chart">${bars}</div>`;
+
+  const trend30 = logged.length >= 7 ? (logged[logged.length-1].val - logged[0].val).toFixed(1) : null;
+  const trendStr = trend30 === null ? '—' : (parseFloat(trend30)>0?'+':'')+trend30;
+  const unit = metric==='hrv'?'ms':metric==='rhr'?'bpm':metric==='strain'?'':' %';
+  const trendGood = (['recovery','hrv','sleepPerf'].includes(metric) && parseFloat(trendStr)>0) ||
+                    (['rhr'].includes(metric) && parseFloat(trendStr)<0);
+
+  summaryRow.innerHTML = `
+    <div class="weekly-stat" style="border-color:${color}30">
+      <div class="weekly-stat-val" style="color:${color}">${avgVal.toFixed(1)}${unit}</div>
+      <div class="weekly-stat-lbl">30-Day Avg</div>
+    </div>
+    <div class="weekly-stat">
+      <div class="weekly-stat-val">${maxVal.toFixed(1)}</div>
+      <div class="weekly-stat-lbl">Peak</div>
+    </div>
+    <div class="weekly-stat">
+      <div class="weekly-stat-val">${minVal.toFixed(1)}</div>
+      <div class="weekly-stat-lbl">Low</div>
+    </div>
+    <div class="weekly-stat">
+      <div class="weekly-stat-val" style="color:${trend30!==null?(trendGood?'var(--green)':'var(--red)'):'var(--text)'}">${trendStr}</div>
+      <div class="weekly-stat-lbl">30d Trend</div>
+    </div>`;
+}
+
 
 // ═══════════════════════════════════════════════════════
 // ── BLOOD WORK ─────────────────────────────────────────
@@ -8533,6 +9350,7 @@ safeCall(renderStreakCard, 'renderStreakCard');
 safeCall(renderProteinPace, 'renderProteinPace');
 safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner');
 setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
+  setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
 
 safeCall(loadDailyQuote, 'loadDailyQuote');
 safeCall(renderRecipeList, 'renderRecipeList');
@@ -9343,6 +10161,8 @@ ${memory.length ? memory.join('\n') : 'Nothing stored yet'}
 
 === APP USAGE PATTERNS ===
 ${getUsageSummary()}
+
+${getWhoopContextFull()}
 
 You can remember things by saying "REMEMBER: [fact]" in your response and it will be saved for future conversations.
 Be concise, data-driven, and proactive. Reference specific numbers from Jeremy's actual data.`;
