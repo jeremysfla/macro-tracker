@@ -8477,8 +8477,27 @@ function parseMicronutrients(foodNutrients, scale) {
 // ── Init ──
 // Each call is isolated so one failure can't white-screen the app
 function safeCall(fn, label) {
-  try { fn(); } catch(e) { /* silent — never white-screen for one render */ }
+  try { fn(); } catch(e) {
+    console.error('[safeCall] ' + (label||fn.name) + ':', e);
+    var d = document.getElementById('_err');
+    if (d) { d.style.display='block'; d.textContent += (label||fn.name)+': '+e.message+'\n'; }
+  }
 }
+
+// ── DEBUG: log init state so we can see what's in storage ──
+(function debugInit() {
+  const fe = JSON.parse(localStorage.getItem('foodEntries') || '{}');
+  const ml = JSON.parse(localStorage.getItem('macroLog') || '{}');
+  const tk = todayKey();
+  const rr = document.getElementById('ringsRow');
+  const fl = document.getElementById('foodLogList');
+  console.log('[INIT DEBUG] todayKey:', tk);
+  console.log('[INIT DEBUG] foodEntries keys:', Object.keys(fe));
+  console.log('[INIT DEBUG] todayEntries:', (fe[tk]||[]).length, 'entries');
+  console.log('[INIT DEBUG] macroLog today:', ml[tk]);
+  console.log('[INIT DEBUG] ringsRow in DOM:', !!rr, 'foodLogList in DOM:', !!fl);
+  console.log('[INIT DEBUG] selectedDateKey at init:', selectedDateKey);
+})();
 
 safeCall(migrateShoePhotos, 'migrateShoePhotos');
 safeCall(migrateBloodKeys, 'migrateBloodKeys');
@@ -8534,6 +8553,16 @@ safeCall(renderStreakCard, 'renderStreakCard');
 safeCall(renderProteinPace, 'renderProteinPace');
 safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner');
 setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
+
+// ── DEBUG: check what was rendered ──
+setTimeout(() => {
+  const rr = document.getElementById('ringsRow');
+  const fl = document.getElementById('foodLogList');
+  console.log('[POST-INIT DEBUG] ringsRow innerHTML length:', rr ? rr.innerHTML.length : 'null');
+  console.log('[POST-INIT DEBUG] foodLogList innerHTML length:', fl ? fl.innerHTML.length : 'null');
+  console.log('[POST-INIT DEBUG] selectedDateKey after init:', selectedDateKey);
+  console.log('[POST-INIT DEBUG] todayKey after init:', todayKey());
+}, 100);
 safeCall(loadDailyQuote, 'loadDailyQuote');
 safeCall(renderRecipeList, 'renderRecipeList');
 safeCall(updateHeaderDate, 'updateHeaderDate');
