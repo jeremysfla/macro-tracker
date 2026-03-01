@@ -3358,22 +3358,25 @@ function ufConfirm(i) {
 // Yesterday banner uses index into _ufYesterday array
 function quickAddUsual(yi) {
   if (!window._ufYesterday || !window._ufYesterday[yi]) return;
-  const e        = window._ufYesterday[yi];
-  const servings = e.servings || 1;
-  const base     = e.baseMacros || {
-    calories: (e.calories || 0) / servings,
-    protein:  (e.protein  || 0) / servings,
-    carbs:    (e.carbs    || 0) / servings,
-    fat:      (e.fat      || 0) / servings,
+  const e    = window._ufYesterday[yi];
+  const prev = e.servings || 1;
+  const base = e.baseMacros || {
+    calories: (e.calories || 0) / prev,
+    protein:  (e.protein  || 0) / prev,
+    carbs:    (e.carbs    || 0) / prev,
+    fat:      (e.fat      || 0) / prev,
   };
-  addFoodEntry({
-    name:     e.name,
-    icon:     e.icon || '🍽️',
-    calories: Math.round(base.calories * servings),
-    protein:  Math.round(base.protein  * servings * 10) / 10,
-    carbs:    Math.round(base.carbs    * servings * 10) / 10,
-    fat:      Math.round(base.fat      * servings * 10) / 10,
-    servings
+  showServingsPrompt(e.name, prev, function(s) {
+    s = s || 1;
+    addFoodEntry({
+      name:     e.name,
+      icon:     e.icon || '🍽️',
+      calories: Math.round(base.calories * s),
+      protein:  Math.round(base.protein  * s * 10) / 10,
+      carbs:    Math.round(base.carbs    * s * 10) / 10,
+      fat:      Math.round(base.fat      * s * 10) / 10,
+      servings: s
+    });
   });
 }
 
@@ -3402,12 +3405,59 @@ function renderQuickRecs() {
   }).join('');
 }
 
+
+function showServingsPrompt(foodName, defaultServings, callback) {
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:#1e293b;border-radius:16px;padding:24px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+      <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px">${foodName}</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:16px">How many servings?</div>
+      <input id="_srvInput" type="number" min="0.25" max="20" step="0.25" value="${defaultServings}"
+        style="width:100%;background:#0f172a;border:1.5px solid #334155;border-radius:10px;padding:12px;color:#fff;font-size:20px;font-weight:700;text-align:center;outline:none;font-family:inherit;box-sizing:border-box"/>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="document.getElementById('_srvInput').value=Math.max(0.25,(parseFloat(document.getElementById('_srvInput').value)||1)-0.5)"
+          style="flex:1;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#fff;font-size:20px;padding:8px;cursor:pointer">−</button>
+        <button onclick="document.getElementById('_srvInput').value=(parseFloat(document.getElementById('_srvInput').value)||1)+0.5"
+          style="flex:1;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#fff;font-size:20px;padding:8px;cursor:pointer">+</button>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button id="_srvCancel" style="flex:1;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#94a3b8;font-size:14px;font-weight:600;padding:12px;cursor:pointer;font-family:inherit">Cancel</button>
+        <button id="_srvConfirm" style="flex:1;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;padding:12px;cursor:pointer;font-family:inherit">Add</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('_srvInput').focus(), 50);
+  document.getElementById('_srvCancel').onclick = () => document.body.removeChild(overlay);
+  document.getElementById('_srvConfirm').onclick = () => {
+    const val = parseFloat(document.getElementById('_srvInput').value) || 1;
+    document.body.removeChild(overlay);
+    callback(val);
+  };
+  overlay.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('_srvConfirm').click();
+    if (e.key === 'Escape') document.getElementById('_srvCancel').click();
+  });
+}
+
 function quickAddFood(idx) {
   const saved = getStorage('savedFoods', []);
   const f = saved[idx];
   if (!f) return;
-  addFoodEntry({ name: f.name, calories: f.calories||0, protein: f.protein||0, carbs: f.carbs||0, fat: f.fat||0, icon: '⚡' });
-  showToast(`✅ ${f.name} added!`);
+  showServingsPrompt(f.name, 1, function(servings) {
+    const s = servings || 1;
+    addFoodEntry({
+      name: f.name,
+      calories: Math.round((f.calories||0) * s),
+      protein:  Math.round((f.protein||0)  * s * 10) / 10,
+      carbs:    Math.round((f.carbs||0)    * s * 10) / 10,
+      fat:      Math.round((f.fat||0)      * s * 10) / 10,
+      servings: s,
+      icon: '⚡'
+    });
+    showToast(`✅ ${f.name} added!`);
+  });
 }
 
 function deleteSavedFood(idx) {
