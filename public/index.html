@@ -50,6 +50,58 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
   .card-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; color: var(--text2); }
 
+
+  /* Jeremy Avatar */
+  #jeremyAvatarContainer {
+    position: fixed;
+    bottom: 72px;
+    right: 12px;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  #jeremyAvatarContainer.visible { display: flex; }
+  #jeremyAvatarWrap {
+    width: 90px;
+    height: 99px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid #22c55e;
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
+    background: #0d1520;
+    transition: box-shadow 0.3s;
+    cursor: pointer;
+  }
+  #jeremyAvatarWrap.talking {
+    animation: avatarPulse 0.6s ease-in-out infinite alternate;
+  }
+  #jeremyAvatarWrap.idle {
+    animation: avatarBreath 3s ease-in-out infinite;
+  }
+  @keyframes avatarPulse {
+    from { box-shadow: 0 0 0 2px rgba(34,197,94,0.4); transform: scale(1); }
+    to   { box-shadow: 0 0 0 8px rgba(34,197,94,0.1); transform: scale(1.03); }
+  }
+  @keyframes avatarBreath {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.015); }
+  }
+  @keyframes avatarBlink {
+    0%,94%,100% { transform: scaleY(1); }
+    96%,98%     { transform: scaleY(0.08); }
+  }
+  #jeremyAvatarSVG { animation: avatarBlink 4s ease-in-out infinite; transform-origin: center 76px; }
+  #avatarLabel {
+    font-size: 9px;
+    color: #22c55e;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
   .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
@@ -168,48 +220,36 @@
 
   /* Blood work cards */
   /* ── Blood Work ─────────────────────────────────── */
-  /* Panel cards */
-  .blood-panel-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:0; margin-bottom:12px; overflow:hidden; }
+  .blood-panel-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px; }
   .blood-panel-card.has-bad  { border-color:#ef444444; }
   .blood-panel-card.has-warn { border-color:#f59e0b44; }
-  .blood-panel-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; user-select:none; -webkit-user-select:none; }
-  .blood-panel-header-left { display:flex; align-items:center; gap:8px; }
-  .blood-panel-title { font-size:13px; font-weight:700; color:var(--text); }
-  .blood-panel-badge { font-size:10px; padding:3px 9px; border-radius:20px; font-weight:700; }
-  .blood-panel-badge.bad { background:#450a0a; color:#ef4444; }
-  .blood-panel-badge.warn { background:#422006; color:#f59e0b; }
-  .blood-panel-badge.ok { background:#0d2d1a; color:#22c55e; }
-  .blood-panel-chevron { color:var(--text3); font-size:14px; transition:transform 0.2s; }
-  .blood-panel-chevron.collapsed { transform:rotate(-90deg); }
-  .blood-panel-body { border-top:1px solid var(--border); }
+  .blood-panel-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; }
 
   /* Marker rows */
-  .blood-marker-row { padding:12px 16px; border-bottom:1px solid var(--border); }
+  .blood-marker-row { padding:10px 0; border-bottom:1px solid var(--border); }
   .blood-marker-row:last-child { border-bottom:none; }
-  .blood-marker-row.status-bad  { border-left:3px solid #ef4444; background:linear-gradient(90deg,#ef444406 0%,transparent 40%); }
-  .blood-marker-row.status-warn { border-left:3px solid #f59e0b; background:linear-gradient(90deg,#f59e0b06 0%,transparent 40%); }
-  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; }
-  .blood-marker-name { font-size:12px; color:var(--text2); font-weight:500; flex:1; }
+  .blood-marker-row.status-bad  { background:linear-gradient(90deg,#ef444408 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #ef4444; }
+  .blood-marker-row.status-warn { background:linear-gradient(90deg,#f59e0b08 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #f59e0b; }
+  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .blood-marker-name { font-size:13px; color:var(--text2); font-weight:500; flex:1; }
   .blood-marker-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .blood-marker-val  { font-size:15px; font-weight:800; }
   .blood-marker-val.status-ok   { color:#22c55e; }
   .blood-marker-val.status-warn { color:#f59e0b; }
   .blood-marker-val.status-bad  { color:#ef4444; }
-  .blood-marker-unit { font-size:10px; font-weight:400; color:var(--text3); margin-left:2px; }
   .blood-marker-flag { font-size:9px; font-weight:800; padding:2px 6px; border-radius:20px; }
   .blood-marker-flag.H, .blood-marker-flag.HH { background:#450a0a; color:#ef4444; }
   .blood-marker-flag.L, .blood-marker-flag.LL { background:#0c1a4e; color:#60a5fa; }
-  .blood-marker-trend { font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
+  .blood-marker-trend { font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
   .blood-marker-trend.good { background:#0d2d1a; color:#22c55e; }
-  .blood-marker-trend.bad  { background:#2d0d0d; color:#ef4444; }
+  .blood-marker-trend.bad  { background:#450a0a; color:#ef4444; }
   .blood-marker-trend.neut { background:var(--surface2); color:var(--text3); }
-  .blood-marker-refs { font-size:9px; color:var(--text3); margin-top:4px; display:flex; gap:10px; }
-  .blood-marker-refs .opt { color:#22c55e80; }
 
   /* Range bar */
-  .blood-range-bar { height:6px; background:var(--surface2); border-radius:3px; position:relative; margin-top:6px; overflow:visible; }
-  .blood-range-zone { position:absolute; top:0; height:100%; }
-  .blood-range-dot  { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--surface); z-index:2; box-shadow:0 0 6px rgba(0,0,0,0.5); }
+  .blood-range-bar { height:6px; background:var(--surface2); border-radius:3px; position:relative; margin-top:4px; overflow:visible; }
+  .blood-range-zone { position:absolute; top:0; height:6px; background:#22c55e22; border-radius:3px; }
+  .blood-range-dot  { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--bg); z-index:2; }
+  .blood-range-labels { display:flex; justify-content:space-between; font-size:9px; color:var(--text3); margin-top:3px; }
 
   /* Summary dashboard */
   .blood-summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
@@ -217,43 +257,11 @@
   .blood-summary-num  { font-size:24px; font-weight:800; line-height:1; }
   .blood-summary-lbl  { font-size:10px; color:var(--text3); margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
 
-  /* Needs Attention section */
-  .blood-attn-header {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:12px 16px; border-radius:16px;
-    background:linear-gradient(135deg, #1a0a0a, #1a1020);
-    border:1px solid #ef444430; cursor:pointer; user-select:none; -webkit-user-select:none;
-    margin-bottom:0;
-  }
-  .blood-attn-header.expanded { border-radius:16px 16px 0 0; border-bottom:none; }
-  .blood-attn-header-left { display:flex; align-items:center; gap:8px; }
-  .blood-attn-count { font-size:12px; font-weight:800; color:#ef4444; background:#ef444420; padding:3px 10px; border-radius:20px; }
-  .blood-attn-title { font-size:13px; font-weight:700; color:#ef4444; }
-  .blood-attn-chevron { color:#ef4444; font-size:14px; transition:transform 0.2s; }
-  .blood-attn-chevron.collapsed { transform:rotate(-90deg); }
-  .blood-attn-body {
-    background:var(--surface); border:1px solid #ef444430; border-top:none;
-    border-radius:0 0 16px 16px; overflow:hidden; margin-bottom:16px;
-  }
-  /* Attention card (each flagged marker) */
-  .blood-attn-card { padding:14px 16px; border-bottom:1px solid var(--border); }
-  .blood-attn-card:last-child { border-bottom:none; }
-  .blood-attn-card.severity-bad { border-left:3px solid #ef4444; }
-  .blood-attn-card.severity-warn { border-left:3px solid #f59e0b; }
-  .blood-attn-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
-  .blood-attn-name { font-size:14px; font-weight:700; }
-  .blood-attn-name.bad { color:#ef4444; }
-  .blood-attn-name.warn { color:#f59e0b; }
-  .blood-attn-panel-tag { font-size:9px; color:var(--text3); margin-top:2px; }
-  .blood-attn-value-block { text-align:right; flex-shrink:0; }
-  .blood-attn-value { font-size:20px; font-weight:800; line-height:1; }
-  .blood-attn-value.bad { color:#ef4444; }
-  .blood-attn-value.warn { color:#f59e0b; }
-  .blood-attn-unit { font-size:10px; color:var(--text3); font-weight:500; }
-  .blood-attn-ref-row { display:flex; gap:8px; margin-top:6px; font-size:10px; }
-  .blood-attn-ref-tag { padding:2px 8px; border-radius:8px; font-weight:600; }
-  .blood-attn-ref-tag.opt { background:#22c55e15; color:#22c55e; }
-  .blood-attn-ref-tag.std { background:var(--surface2); color:var(--text3); }
+  /* Out of range strip */
+  .blood-oob-strip { background:#450a0a; border:1px solid #ef444430; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+  .blood-oob-strip-title { font-size:11px; font-weight:800; color:#ef4444; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+  .blood-oob-item { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid #ef444418; }
+  .blood-oob-item:last-child { border-bottom:none; }
 
   /* Trend chart v2 */
   .btchart-wrap { background:var(--surface2); border-radius:14px; padding:12px; margin-bottom:10px; }
@@ -1663,6 +1671,181 @@ PROMISE ERROR:
           <div style="text-align:center;color:#334155;font-size:13px;margin-top:20px">Ask me anything about your fitness, nutrition, or training.</div>
         </div>
 
+        <!-- Jeremy Avatar Float -->
+        <div id="jeremyAvatarContainer">
+          <div id="jeremyAvatarWrap" onclick="toggleAvatarSize()" title="Your AI Coach">
+<svg id="jeremyAvatarSVG" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" width="90" height="99">
+  <defs>
+    <radialGradient id="skinGrad" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#c8956a"/>
+      <stop offset="100%" stop-color="#a0704a"/>
+    </radialGradient>
+    <radialGradient id="headTopGrad" cx="50%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#b87040"/>
+      <stop offset="100%" stop-color="#9a5e30"/>
+    </radialGradient>
+    <radialGradient id="shirtGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#8ecc44"/>
+      <stop offset="100%" stop-color="#5a9e1a"/>
+    </radialGradient>
+    <clipPath id="headClip">
+      <ellipse cx="100" cy="88" rx="54" ry="62"/>
+    </clipPath>
+    <filter id="softBlur">
+      <feGaussianBlur stdDeviation="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Neck -->
+  <rect x="82" y="148" width="36" height="30" rx="6" fill="#b87848"/>
+  <!-- Neck shadow -->
+  <rect x="82" y="155" width="36" height="8" fill="#9a6035" opacity="0.4"/>
+
+  <!-- Shirt / shoulders -->
+  <ellipse cx="100" cy="210" rx="72" ry="42" fill="url(#shirtGrad)"/>
+  <!-- Shirt collar detail -->
+  <path d="M82 175 Q100 185 118 175 L115 195 Q100 200 85 195 Z" fill="#7ab83a"/>
+  <!-- Shirt mesh texture hint -->
+  <rect x="28" y="175" width="144" height="45" rx="12" fill="url(#shirtGrad)"/>
+
+  <!-- Head base -->
+  <ellipse cx="100" cy="88" rx="54" ry="62" fill="url(#skinGrad)"/>
+
+  <!-- Very short hair on sides - salt & pepper stubble pattern -->
+  <!-- Right side hair -->
+  <path d="M148 75 Q155 65 152 50 Q148 38 140 30 Q128 20 116 18 Q108 16 100 16 Q92 16 84 18 Q72 20 60 30 Q52 38 48 50 Q45 65 52 75" fill="#5a5050" opacity="0.85"/>
+  <!-- Hair stippling for stubble texture on top -->
+  <ellipse cx="100" cy="28" rx="50" ry="18" fill="#5a5050" opacity="0.7"/>
+  <!-- Slight skin showing through on top (thinning) -->
+  <ellipse cx="100" cy="26" rx="34" ry="12" fill="#b07040" opacity="0.55"/>
+  <ellipse cx="100" cy="22" rx="22" ry="8" fill="#b07040" opacity="0.6"/>
+  <!-- Hair texture dots -->
+  <g fill="#3a3030" opacity="0.5" filter="url(#softBlur)">
+    <circle cx="72" cy="32" r="1.2"/><circle cx="78" cy="27" r="1"/><circle cx="85" cy="23" r="1.1"/>
+    <circle cx="92" cy="20" r="1"/><circle cx="100" cy="19" r="1.2"/><circle cx="108" cy="20" r="1"/>
+    <circle cx="115" cy="23" r="1.1"/><circle cx="122" cy="27" r="1"/><circle cx="128" cy="32" r="1.2"/>
+    <circle cx="68" cy="38" r="1"/><circle cx="74" cy="34" r="1.1"/><circle cx="126" cy="34" r="1.1"/>
+    <circle cx="132" cy="38" r="1"/>
+  </g>
+
+  <!-- Forehead -->
+  <ellipse cx="100" cy="55" rx="44" ry="22" fill="#c4906a" opacity="0.3"/>
+
+  <!-- Eyebrows - dark, defined -->
+  <path d="M68 65 Q78 61 88 63" stroke="#3a2e28" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path d="M112 63 Q122 61 132 65" stroke="#3a2e28" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <!-- Brow shadow -->
+  <path d="M68 67 Q78 63 88 65" stroke="#8a6040" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <path d="M112 65 Q122 63 132 67" stroke="#8a6040" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Eyes -->
+  <!-- Left eye white -->
+  <ellipse cx="79" cy="76" rx="10" ry="7" fill="white"/>
+  <!-- Left iris -->
+  <ellipse cx="79" cy="76" rx="6.5" ry="6.5" fill="#5c3d20"/>
+  <!-- Left pupil -->
+  <ellipse cx="79" cy="76" rx="3.5" ry="3.5" fill="#1a0e08"/>
+  <!-- Left eye shine -->
+  <ellipse cx="81" cy="74" rx="1.5" ry="1.2" fill="white" opacity="0.8"/>
+  <!-- Left eyelid top -->
+  <path d="M69 73 Q79 69 89 73" stroke="#3a2e28" stroke-width="1.8" fill="none"/>
+  <!-- Left eyelid bottom -->
+  <path d="M69 79 Q79 83 89 79" stroke="#8a6040" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- Left eye crinkle -->
+  <path d="M67 72 Q66 76 67 80" stroke="#9a7050" stroke-width="0.8" fill="none" opacity="0.6"/>
+
+  <!-- Right eye white -->
+  <ellipse cx="121" cy="76" rx="10" ry="7" fill="white"/>
+  <!-- Right iris -->
+  <ellipse cx="121" cy="76" rx="6.5" ry="6.5" fill="#5c3d20"/>
+  <!-- Right pupil -->
+  <ellipse cx="121" cy="76" rx="3.5" ry="3.5" fill="#1a0e08"/>
+  <!-- Right eye shine -->
+  <ellipse cx="123" cy="74" rx="1.5" ry="1.2" fill="white" opacity="0.8"/>
+  <!-- Right eyelid top -->
+  <path d="M111 73 Q121 69 131 73" stroke="#3a2e28" stroke-width="1.8" fill="none"/>
+  <!-- Right eyelid bottom -->
+  <path d="M111 79 Q121 83 131 79" stroke="#8a6040" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- Right eye crinkle -->
+  <path d="M133 72 Q134 76 133 80" stroke="#9a7050" stroke-width="0.8" fill="none" opacity="0.6"/>
+
+  <!-- Nose -->
+  <path d="M100 80 L96 100 Q100 104 104 100 L100 80" fill="#a86840" opacity="0.5"/>
+  <path d="M96 100 Q92 103 91 101 Q93 99 96 100" fill="#a86840" opacity="0.7"/>
+  <path d="M104 100 Q107 103 109 101 Q107 99 104 100" fill="#a86840" opacity="0.7"/>
+  <!-- Nose bridge shadow -->
+  <path d="M97 82 Q96 90 96 98" stroke="#9a6035" stroke-width="0.8" fill="none" opacity="0.4"/>
+
+  <!-- MOUTH GROUP - animated for talking -->
+  <g id="avatarMouthGroup">
+    <!-- Lips closed (idle state) -->
+    <g id="mouthClosed">
+      <path d="M88 116 Q100 120 112 116" stroke="#8a5040" stroke-width="1.5" fill="none"/>
+      <!-- Upper lip -->
+      <path d="M88 116 Q94 113 100 114 Q106 113 112 116 Q106 119 100 120 Q94 119 88 116Z" fill="#b06858"/>
+      <!-- Lower lip -->
+      <path d="M88 116 Q100 122 112 116 Q106 124 100 125 Q94 124 88 116Z" fill="#c07868" opacity="0.8"/>
+    </g>
+    <!-- Mouth open (talking state) - hidden by default -->
+    <g id="mouthOpen" style="display:none">
+      <!-- Upper lip -->
+      <path d="M88 114 Q94 110 100 111 Q106 110 112 114 Q106 112 100 113 Q94 112 88 114Z" fill="#b06858"/>
+      <!-- Mouth opening -->
+      <ellipse cx="100" cy="120" rx="11" ry="7" fill="#2a0808"/>
+      <!-- Teeth top -->
+      <rect x="91" y="114" width="18" height="5" rx="2" fill="#f0ede8"/>
+      <!-- Teeth bottom -->
+      <rect x="92" y="122" width="16" height="4" rx="2" fill="#e8e5e0"/>
+      <!-- Lower lip -->
+      <path d="M88 114 Q100 130 112 114 Q106 128 100 129 Q94 128 88 114Z" fill="#c07868" opacity="0.8"/>
+    </g>
+  </g>
+
+  <!-- Beard / stubble - salt and pepper -->
+  <!-- Mustache area -->
+  <ellipse cx="100" cy="111" rx="13" ry="5" fill="#606060" opacity="0.35"/>
+  <!-- Chin beard -->
+  <ellipse cx="100" cy="128" rx="16" ry="9" fill="#606060" opacity="0.4"/>
+  <!-- Side beard left -->
+  <path d="M72 100 Q68 115 72 130 Q78 140 88 143 Q94 145 100 145" fill="#606060" opacity="0.38"/>
+  <!-- Side beard right -->
+  <path d="M128 100 Q132 115 128 130 Q122 140 112 143 Q106 145 100 145" fill="#606060" opacity="0.38"/>
+  <!-- Beard texture - lighter hairs -->
+  <g fill="#b0b0b0" opacity="0.25">
+    <circle cx="85" cy="108" r="1.5"/><circle cx="90" cy="112" r="1.3"/><circle cx="95" cy="109" r="1"/>
+    <circle cx="105" cy="109" r="1"/><circle cx="110" cy="112" r="1.3"/><circle cx="115" cy="108" r="1.5"/>
+    <circle cx="80" cy="118" r="1.3"/><circle cx="120" cy="118" r="1.3"/>
+    <circle cx="84" cy="128" r="1.5"/><circle cx="116" cy="128" r="1.5"/>
+    <circle cx="92" cy="135" r="1.3"/><circle cx="108" cy="135" r="1.3"/>
+    <circle cx="100" cy="138" r="1.5"/>
+  </g>
+  <!-- Beard stubble dark -->
+  <g fill="#2a2020" opacity="0.2">
+    <circle cx="88" cy="106" r="1"/><circle cx="94" cy="104" r="1"/><circle cx="106" cy="104" r="1"/>
+    <circle cx="112" cy="106" r="1"/><circle cx="78" cy="116" r="1"/><circle cx="122" cy="116" r="1"/>
+  </g>
+
+  <!-- Jaw definition -->
+  <path d="M56 100 Q52 118 58 135 Q68 152 100 158 Q132 152 142 135 Q148 118 144 100" fill="none" stroke="#9a6035" stroke-width="1" opacity="0.2"/>
+
+  <!-- Ear left -->
+  <ellipse cx="47" cy="90" rx="8" ry="12" fill="#b87848"/>
+  <path d="M50 83 Q47 90 50 97" stroke="#9a6035" stroke-width="1.5" fill="none"/>
+  <!-- Ear right -->
+  <ellipse cx="153" cy="90" rx="8" ry="12" fill="#b87848"/>
+  <path d="M150 83 Q153 90 150 97" stroke="#9a6035" stroke-width="1.5" fill="none"/>
+
+  <!-- Slight smile lines -->
+  <path d="M86 118 Q83 122 84 127" stroke="#9a6035" stroke-width="1" fill="none" opacity="0.4"/>
+  <path d="M114 118 Q117 122 116 127" stroke="#9a6035" stroke-width="1" fill="none" opacity="0.4"/>
+
+  <!-- Forehead slight lines -->
+  <path d="M78 58 Q100 55 122 58" stroke="#9a6035" stroke-width="0.8" fill="none" opacity="0.25"/>
+</svg>
+          </div>
+          <div id="avatarLabel">Coach</div>
+        </div>
+
         <!-- Input -->
         <div style="padding:12px 16px;border-top:1px solid #1e293b;flex-shrink:0;display:flex;gap:10px;align-items:flex-end">
           <textarea id="claudeInput" placeholder="Ask your AI coach..." rows="1" style="flex:1;background:#0f172a;border:1.5px solid #1e3a5f;border-radius:14px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px;overflow-y:auto;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
@@ -2774,6 +2957,7 @@ function switchTab(name, btn) {
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
+  if (name === 'claude') { showJeremyAvatar(); } else { hideJeremyAvatar(); }
   if (name === 'trends') renderTrendChart();
   if (name === 'shoes')  renderShoePage();
 }
@@ -6842,128 +7026,67 @@ function handleBloodFile(file) {
 function getBloodResults() { return getStorage('bloodResults', []); }
 function saveBloodResults(r) { setStorage('bloodResults', r); }
 
-// ── BLOOD REFERENCE RANGES (5-tier: Optimal DX / Ways2Well compatible) ──
-// Format: [optLo, optHi, stdLo, stdHi, unit, displayName, panel]
-// optLo-optHi = optimal/functional range (green)
-// stdLo-stdHi = standard/lab range (the wider acceptable range)
-// Values outside std = alarm/out of range
+// Known reference ranges [low, high, unit, display name]
 const BLOOD_REFS = {
-  // ── Blood Glucose ──────────────────────────────────
-  'glucose':           [75, 86, 65, 99, 'mg/dL', 'Glucose Fasting', 'blood_glucose'],
-  'hba1c':             [4.6, 5.3, 4.8, 5.6, '%', 'Hemoglobin A1C', 'blood_glucose'],
-  'eag':               [85, 105, 82, 154, 'mg/dL', 'eAG', 'blood_glucose'],
-  'insulin':           [2.6, 5.0, 2.6, 24.9, 'µIU/mL', 'Insulin - Fasting', 'blood_glucose'],
-
-  // ── Renal ──────────────────────────────────────────
-  'bun':               [10, 16, 6, 24, 'mg/dL', 'BUN', 'renal'],
-  'creatinine':        [0.8, 1.1, 0.76, 1.27, 'mg/dL', 'Creatinine', 'renal'],
-  'bun_creatinine_ratio':[10, 16, 9, 20, 'Ratio', 'BUN : Creatinine', 'renal'],
-  'egfr':              [90, 120, 59, 160, 'mL/min', 'eGFR', 'renal'],
-
-  // ── Prostate ───────────────────────────────────────
-  'psa':               [0, 2.0, 0, 4.0, 'ng/mL', 'PSA - Total', 'prostate'],
-
-  // ── Electrolytes ───────────────────────────────────
-  'sodium':            [137, 142, 134, 144, 'mEq/L', 'Sodium', 'electrolytes'],
-  'potassium':         [4.0, 5.0, 3.5, 5.2, 'mEq/L', 'Potassium', 'electrolytes'],
-  'chloride':          [100, 106, 96, 106, 'mEq/L', 'Chloride', 'electrolytes'],
-  'carbon_dioxide':    [25, 30, 20, 29, 'mEq/L', 'CO2', 'electrolytes'],
-
-  // ── Proteins ───────────────────────────────────────
-  'protein_total':     [6.9, 8.1, 6.0, 8.5, 'g/dL', 'Protein - Total', 'proteins'],
-  'albumin':           [4.5, 5.0, 3.8, 4.9, 'g/dL', 'Albumin', 'proteins'],
-  'globulin_total':    [2.4, 2.8, 1.5, 4.5, 'g/dL', 'Globulin - Total', 'proteins'],
-  'albumin_globulin':  [1.4, 2.1, 1.2, 2.2, 'ratio', 'Albumin : Globulin', 'proteins'],
-
-  // ── Minerals ───────────────────────────────────────
-  'calcium':           [8.9, 9.5, 8.7, 10.2, 'mg/dL', 'Calcium', 'minerals'],
-  'magnesium':         [2.2, 2.5, 1.6, 2.3, 'mg/dL', 'Magnesium - Serum', 'minerals'],
-
-  // ── Liver and GB ───────────────────────────────────
-  'alkaline_phosphatase':[45, 100, 39, 117, 'IU/L', 'Alk Phos', 'liver_gb'],
-  'ast':               [10, 26, 0, 40, 'IU/L', 'AST', 'liver_gb'],
-  'alt':               [10, 26, 0, 44, 'IU/L', 'ALT', 'liver_gb'],
-  'bilirubin':         [0.5, 0.9, 0, 1.2, 'mg/dL', 'Bilirubin - Total', 'liver_gb'],
-  'ggt':               [8, 61, 8, 61, 'U/L', 'GGT', 'liver_gb'],
-
-  // ── Iron Markers ───────────────────────────────────
-  'iron':              [85, 130, 38, 169, 'µg/dL', 'Iron - Serum', 'iron_markers'],
-  'ferritin':          [45, 79, 30, 400, 'ng/mL', 'Ferritin', 'iron_markers'],
-  'iron_tibc':         [250, 350, 250, 450, 'µg/dL', 'TIBC', 'iron_markers'],
-  'uibc':              [130, 300, 111, 343, 'µg/dL', 'UIBC', 'iron_markers'],
-  'transferrin_sat':   [24, 35, 15, 55, '%', '% Transferrin Saturation', 'iron_markers'],
+  // ── Metabolic ──────────────────────────────────────
+  'glucose':           [70, 99,   'mg/dL',    'Glucose',               'metabolic'],
+  'hba1c':             [4.0, 5.6, '%',         'HbA1c',                 'metabolic'],
+  'bun':               [6, 24,   'mg/dL',    'BUN',                   'metabolic'],
+  'creatinine':        [0.76, 1.27,'mg/dL',  'Creatinine',            'metabolic'],
+  'egfr':              [60, 999,  'mL/min',   'eGFR',                  'metabolic'],
+  'sodium':            [134, 144, 'mmol/L',   'Sodium',                'metabolic'],
+  'potassium':         [3.5, 5.2, 'mmol/L',   'Potassium',             'metabolic'],
+  'calcium':           [8.7, 10.2,'mg/dL',   'Calcium',               'metabolic'],
+  'uric_acid':         [3.4, 7.0, 'mg/dL',    'Uric Acid',             'metabolic'],
+  'magnesium':         [1.6, 2.3, 'mg/dL',    'Magnesium',             'metabolic'],
 
   // ── Lipids ─────────────────────────────────────────
-  'total_cholesterol': [160, 199, 100, 199, 'mg/dL', 'Cholesterol - Total', 'lipids'],
-  'triglycerides':     [70, 80, 0, 149, 'mg/dL', 'Triglycerides', 'lipids'],
-  'ldl':               [80, 99.99, 0, 99, 'mg/dL', 'LDL Cholesterol', 'lipids'],
-  'hdl':               [55, 93, 39, 100, 'mg/dL', 'HDL Cholesterol', 'lipids'],
-  'vldl':              [0, 15, 5, 40, 'mg/dL', 'VLDL Cholesterol', 'lipids'],
-  'non_hdl':           [0, 130, 0, 130, 'mg/dL', 'Non-HDL Cholesterol', 'lipids'],
-  't_chol_hdl_ratio':  [0, 3.0, 0, 4.4, 'Ratio', 'Cholesterol : HDL', 'lipids'],
-
-  // ── Lipoproteins ───────────────────────────────────
-  'lipoprotein_a':     [0, 18, 0, 74.99, 'nmol/L', 'Lipoprotein (a)', 'lipoproteins'],
-  'apolipoprotein_b':  [52, 80, 0, 90, 'mg/dL', 'Apolipoprotein B', 'lipoproteins'],
-
-  // ── Thyroid ────────────────────────────────────────
-  'tsh':               [1.0, 2.0, 0.45, 4.5, 'mIU/L', 'TSH', 'thyroid'],
-  't4_total':          [6.0, 11.9, 4.5, 12.0, 'µg/dL', 'T4 - Total', 'thyroid'],
-  't4_free':           [1.0, 1.5, 0.82, 1.77, 'ng/dL', 'T4 - Free', 'thyroid'],
-  'free_t3':           [3.0, 3.5, 2.0, 4.4, 'pg/mL', 'T3 - Free', 'thyroid'],
-  't3_uptake':         [27, 35, 24, 39, '%', 'T3 Uptake', 'thyroid'],
-  'free_thyroxine_index':[1.7, 4.6, 1.2, 4.9, 'Index', 'Free Thyroxine Index (T7)', 'thyroid'],
-  'thyroglobulin_abs': [0, 1.0, 0, 1.0, 'IU/mL', 'Thyroglobulin Abs', 'thyroid'],
-  'thyroglobulin':     [5.0, 14.0, 1.4, 29.2, 'ng/ml', 'Thyroglobulin', 'thyroid'],
-  'free_t3_free_t4':   [2.4, 2.7, 2.2, 2.9, 'Ratio', 'Free T3 : Free T4', 'thyroid'],
-
-  // ── Inflammation ───────────────────────────────────
-  'crp':               [0, 0.55, 0, 3.0, 'mg/L', 'Hs CRP', 'inflammation'],
-
-  // ── Vitamins ───────────────────────────────────────
-  'vitamin_d':         [50, 90, 30, 100, 'ng/mL', 'Vitamin D (25-OH)', 'vitamins'],
-  'vitamin_b12':       [545, 1100, 232, 1245, 'pg/mL', 'Vitamin B12', 'vitamins'],
-  'folate':            [15, 27, 3, 27, 'ng/mL', 'Folate - Serum', 'vitamins'],
+  'total_cholesterol': [0,   200, 'mg/dL',    'Total Cholesterol',     'lipids'],
+  'ldl':               [0,   100, 'mg/dL',    'LDL Cholesterol',       'lipids'],
+  'hdl':               [40,  999, 'mg/dL',    'HDL Cholesterol',       'lipids'],
+  'triglycerides':     [0,   150, 'mg/dL',    'Triglycerides',         'lipids'],
+  'non_hdl':           [0,   130, 'mg/dL',    'Non-HDL Cholesterol',   'lipids'],
+  'lipoprotein_a':     [0,   75,  'nmol/L',   'Lipoprotein(a)',         'lipids'],  // ⚠️ yours = 123 HIGH
+  'apolipoprotein_b':  [0,   90,  'mg/dL',    'Apolipoprotein B',      'lipids'],  // ⚠️ yours = 117 HIGH
+  'vldl':              [5,   40,  'mg/dL',    'VLDL Cholesterol',      'lipids'],
 
   // ── Hormones ───────────────────────────────────────
-  'dhea_s':            [350, 530.5, 164.3, 530.5, 'µg/dL', 'DHEA-S', 'hormones'],
-  'testosterone_total':[700, 1100, 264, 916, 'ng/dL', 'Testosterone Total', 'hormones'],
-  'testosterone_free': [150, 224, 46, 224, 'pg/mL', 'Testosterone Free', 'hormones'],
-  'testosterone_bio':  [375, 575, 110, 575, 'ng/dL', 'Testosterone Bioavailable', 'hormones'],
-  'shbg':              [40, 46, 19.3, 76.4, 'nmol/L', 'Sex Hormone Binding Globulin', 'hormones'],
-  'estradiol':         [24, 39, 7.6, 42.6, 'pg/mL', 'Estradiol', 'hormones'],
-  'prolactin':         [2.0, 10.0, 2.0, 18.0, 'ng/mL', 'Prolactin', 'hormones'],
-  'igf1':              [100, 170, 95, 290, 'ng/mL', 'IGF-1', 'hormones'],
-  'cortisol':          [10, 15, 6.2, 19.4, 'µg/dL', 'Cortisol - Total/AM', 'hormones'],
-  'pth':               [15, 32, 15, 65, 'pg/mL', 'Parathyroid Hormone - PTH', 'hormones'],
+  'testosterone_total':[264, 916, 'ng/dL',    'Testosterone (Total)',  'hormones'],
+  'testosterone_free': [30.3,183, 'pg/mL',    'Testosterone (Free)',   'hormones'],
+  'shbg':              [19.3,76.4,'nmol/L',   'SHBG',                  'hormones'],
+  'estradiol':         [7.6, 42.6,'pg/mL',    'Estradiol',             'hormones'],
+  'cortisol':          [6.2, 19.4,'mcg/dL',   'Cortisol (AM)',         'hormones'],
+  'tsh':               [0.45, 4.5,'uIU/mL',   'TSH',                   'hormones'],
+  't4_free':           [0.82,1.77,'ng/dL',    'Free T4',               'hormones'],
+  'free_t3':           [2.0, 4.4, 'pg/mL',    'Free T3',               'hormones'],
+  'insulin':           [2.6,24.9, 'uIU/mL',   'Insulin',               'hormones'],
+  'dhea_s':            [71.6,375, 'ug/dL',    'DHEA-S',                'hormones'],
+  'psa':               [0,   4.0, 'ng/mL',    'PSA',                   'hormones'],
 
   // ── CBC ────────────────────────────────────────────
-  'rbc':               [4.8, 5.5, 4.14, 5.8, 'M/cumm', 'RBC', 'cbc'],
-  'hemoglobin':        [14.0, 15.0, 13.0, 17.7, 'g/dL', 'Hemoglobin', 'cbc'],
-  'hematocrit':        [40, 48, 37.5, 51, '%', 'Hematocrit', 'cbc'],
-  'mcv':               [82, 89.9, 79, 97, 'fL', 'MCV', 'cbc'],
-  'mch':               [28, 31.9, 26.6, 33, 'pg', 'MCH', 'cbc'],
-  'mchc':              [34, 36, 31.5, 35.7, 'g/dL', 'MCHC', 'cbc'],
-  'platelets':         [190, 300, 150, 450, '10E3/uL', 'Platelets', 'cbc'],
-  'rdw':               [11, 12.6, 11.6, 15.4, '%', 'RDW', 'cbc'],
+  'wbc':               [3.4, 10.8,'x10E3/uL', 'WBC',                   'cbc'],
+  'rbc':               [4.14,5.80,'x10E6/uL', 'RBC',                   'cbc'],
+  'hemoglobin':        [13.0,17.7,'g/dL',     'Hemoglobin',            'cbc'],
+  'hematocrit':        [37.5,51.0,'%',         'Hematocrit',            'cbc'],
+  'platelets':         [150, 450, 'x10E3/uL', 'Platelets',             'cbc'],
+  'mcv':               [79,  97,  'fL',        'MCV',                   'cbc'],
+  'mchc':              [31.5,35.7,'g/dL',     'MCHC',                  'cbc'],
 
-  // ── WBCs ───────────────────────────────────────────
-  'wbc':               [3.8, 6.0, 3.4, 10.8, 'k/cumm', 'Total WBCs', 'wbcs'],
-  'neutrophils_pct':   [50, 60, 38, 74, '%', 'Neutrophils - %', 'wbcs'],
-  'immature_grans_pct':[0, 0.5, 0, 1.0, '%', 'Immature Granulocytes - %', 'wbcs'],
-  'lymphocytes_pct':   [30, 35, 14, 46, '%', 'Lymphocytes - %', 'wbcs'],
-  'monocytes_pct':     [4, 7, 4, 13, '%', 'Monocytes - %', 'wbcs'],
-  'eosinophils_pct':   [0, 3, 0, 3, '%', 'Eosinophils - %', 'wbcs'],
-  'basophils_pct':     [0, 1, 0, 1, '%', 'Basophils - %', 'wbcs'],
-  'neutrophils_abs':   [1.9, 4.2, 1.4, 7.0, 'k/cumm', 'Neutrophils - Absolute', 'wbcs'],
-  'immature_grans_abs':[0, 0.03, 0, 0.1, 'k/cumm', 'Immature Granulocytes - Abs', 'wbcs'],
-  'lymphocytes_abs':   [1.44, 2.54, 0.7, 3.1, 'k/cumm', 'Lymphocytes - Absolute', 'wbcs'],
-  'monocytes_abs':     [0.2, 0.4, 0.1, 0.9, 'k/cumm', 'Monocytes - Absolute', 'wbcs'],
-  'eosinophils_abs':   [0.03, 0.2, 0, 0.4, 'k/cumm', 'Eosinophils - Absolute', 'wbcs'],
-  'basophils_abs':     [0, 0.1, 0, 0.2, 'k/cumm', 'Basophils - Absolute', 'wbcs'],
+  // ── Vitamins ───────────────────────────────────────
+  'vitamin_d':         [40,  80,  'ng/mL',    'Vitamin D (25-OH)',     'vitamins'],  // optimal range
+  'vitamin_b12':       [400, 1000,'pg/mL',    'Vitamin B12',           'vitamins'],  // optimal
+  'folate':            [3.0, 20,  'ng/mL',    'Folate',                'vitamins'],
 
-  // ── Legacy/extra keys ──────────────────────────────
-  'uric_acid':         [3.4, 7.0, 3.4, 7.0, 'mg/dL', 'Uric Acid', 'renal'],
+  // ── Inflammation & Iron ────────────────────────────
+  'ferritin':          [30,  300, 'ng/mL',    'Ferritin',              'inflammation'],
+  'iron':              [38,  169, 'ug/dL',    'Iron',                  'inflammation'],
+  'crp':               [0,   1.0, 'mg/L',     'CRP Cardiac',           'inflammation'],
+
+  // ── Liver ──────────────────────────────────────────
+  'alt':               [7,   44,  'IU/L',     'ALT',                   'liver'],
+  'ast':               [0,   40,  'IU/L',     'AST',                   'liver'],
+  'alkaline_phosphatase':[44, 121,'IU/L',     'Alkaline Phosphatase',  'liver'],
+  'ggt':               [8,   61,  'U/L',      'GGT',                   'liver'],
 };
 
 
@@ -7045,26 +7168,6 @@ const KEY_ALIASES = {
   'gamma_glutamyl_transferase':'ggt','gamma_gt':'ggt',
   'bilirubin_total':'bilirubin','total_bilirubin':'bilirubin',
   'albumin_serum':'albumin','serum_albumin':'albumin',
-  // New aliases for Ways2Well markers
-  'estimated_average_glucose':'eag','estimated_avg_glucose':'eag',
-  'ag_ratio':'albumin_globulin','albumin_globulin_ratio':'albumin_globulin',
-  'a_g_ratio':'albumin_globulin','a_g':'albumin_globulin',
-  'magnesium_serum':'magnesium','serum_magnesium':'magnesium',
-  'unsaturated_iron_binding_capacity':'uibc',
-  'transferrin_saturation':'transferrin_sat','percent_transferrin_saturation':'transferrin_sat',
-  'iron_percent_saturation':'transferrin_sat',
-  'cholesterol_hdl_ratio':'t_chol_hdl_ratio','total_cholesterol_hdl_ratio':'t_chol_hdl_ratio',
-  'lp_a_nmol':'lipoprotein_a','lp_a_mass':'lipoprotein_a',
-  't4_total':'t4_total','thyroxine_total':'t4_total','total_t4':'t4_total',
-  'thyroglobulin_antibodies':'thyroglobulin_abs','tg_abs':'thyroglobulin_abs',
-  'thyroglobulin_ab':'thyroglobulin_abs',
-  'free_thyroxine_index':'free_thyroxine_index','t7':'free_thyroxine_index','fti':'free_thyroxine_index',
-  'free_t3_t4_ratio':'free_t3_free_t4','t3_t4_ratio':'free_t3_free_t4',
-  'igf_1':'igf1','insulin_like_growth_factor':'igf1','somatomedin_c':'igf1',
-  'parathyroid_hormone':'pth','intact_pth':'pth','parathyroid':'pth',
-  'bioavailable_testosterone':'testosterone_bio','testosterone_bioavailable':'testosterone_bio',
-  'mch':'mch','mean_corpuscular_hemoglobin':'mch',
-  'total_wbc':'wbc','total_wbcs':'wbc',
 };
 
 function normalizeBloodKey(key) {
@@ -7111,55 +7214,32 @@ function migrateBloodKeys() {
 }
 
 const PANEL_LABELS = {
-  blood_glucose: '🩸 Blood Glucose',
-  renal:         '🫘 Renal',
-  prostate:      '🔬 Prostate',
-  electrolytes:  '⚡ Electrolytes',
-  proteins:      '🧬 Proteins',
-  minerals:      '💎 Minerals',
-  liver_gb:      '🫀 Liver & GB',
-  iron_markers:  '🔴 Iron Markers',
-  lipids:        '❤️ Lipids',
-  lipoproteins:  '💔 Lipoproteins',
-  thyroid:       '🦋 Thyroid',
-  inflammation:  '🔥 Inflammation',
-  vitamins:      '💊 Vitamins',
-  hormones:      '⚡ Hormones',
-  cbc:           '🩺 CBC',
-  wbcs:          '🛡️ WBCs',
+  metabolic:    '🔬 Metabolic',
+  lipids:       '❤️ Lipids',
+  hormones:     '⚡ Hormones',
+  cbc:          '🩺 CBC',
+  vitamins:     '💊 Vitamins',
+  inflammation: '🔥 Inflammation',
+  liver:        '🫀 Liver',
 };
 
 // Markers where LOWER is better (used for trend direction color)
 const LOWER_BETTER = new Set(['ldl','triglycerides','total_cholesterol','glucose','crp','uric_acid',
-  'hba1c','cortisol','insulin','lipoprotein_a','apolipoprotein_b','non_hdl','vldl','bun','psa',
-  'eag','bun_creatinine_ratio','t_chol_hdl_ratio','ferritin','transferrin_sat']);
+  'hba1c','cortisol','insulin','lipoprotein_a','apolipoprotein_b','non_hdl','vldl','bun','psa']);
 
 // Markers where HIGHER is better
 const HIGHER_BETTER = new Set(['hdl','egfr','vitamin_d','vitamin_b12','testosterone_total',
-  'testosterone_free','testosterone_bio','ferritin','rbc','hemoglobin','hematocrit','dhea_s','free_t3','folate',
-  'albumin','protein_total']);
+  'testosterone_free','ferritin','rbc','hemoglobin','hematocrit','dhea_s','free_t3','folate']);
 
-// 5-tier status: ok (optimal), above_opt, below_opt, high (out of standard), low (out of standard)
-// Returns simplified: ok, warn, bad
 function bloodStatus(key, value) {
   const ref = BLOOD_REFS[key];
   if (!ref) return 'ok';
-  const [optLo, optHi, stdLo, stdHi] = ref;
-  if (value < stdLo || value > stdHi) return 'bad';        // outside standard range
-  if (value >= optLo && value <= optHi) return 'ok';         // optimal
-  return 'warn';                                              // between standard & optimal
-}
-
-// Detailed 5-tier status for range bar coloring
-function bloodStatus5(key, value) {
-  const ref = BLOOD_REFS[key];
-  if (!ref) return 'optimal';
-  const [optLo, optHi, stdLo, stdHi] = ref;
-  if (value < stdLo) return 'alarm_low';
-  if (value > stdHi) return 'alarm_high';
-  if (value < optLo) return 'below_optimal';
-  if (value > optHi) return 'above_optimal';
-  return 'optimal';
+  const [lo, hi] = ref;
+  // For HDL, eGFR — only low side matters
+  if (hi >= 999) return value < lo ? (value < lo * 0.85 ? 'bad' : 'warn') : 'ok';
+  if (value < lo * 0.85 || value > hi * 1.15) return 'bad';
+  if (value < lo || value > hi) return 'warn';
+  return 'ok';
 }
 
 
@@ -7172,17 +7252,16 @@ function buildBloodParsePrompt() {
     'ref_low and ref_high must be numbers. If only one bound exists use null for the other.',
     'flag must be exactly H, L, or null (JSON null not the string null).',
     'key must be lowercase snake_case. Use EXACTLY these canonical keys (pick the closest match):',
-    'glucose hba1c eag bun creatinine egfr bun_creatinine_ratio sodium potassium chloride carbon_dioxide calcium magnesium',
-    'protein_total albumin globulin_total albumin_globulin',
+    'glucose hba1c bun creatinine egfr bun_creatinine_ratio sodium potassium chloride carbon_dioxide calcium',
     'total_cholesterol ldl hdl triglycerides vldl non_hdl t_chol_hdl_ratio lipoprotein_a apolipoprotein_b',
-    'testosterone_total testosterone_free testosterone_bio shbg estradiol cortisol dhea_s psa igf1 insulin prolactin pth',
-    'tsh t4_free t4_total free_t3 t3_uptake free_thyroxine_index thyroglobulin_abs thyroglobulin free_t3_free_t4',
+    'testosterone_total testosterone_free shbg estradiol cortisol dhea_s psa igf1 insulin',
+    'tsh t4_free free_t3 t3_uptake',
     'wbc rbc hemoglobin hematocrit mcv mch mchc rdw platelets',
     'neutrophils_pct lymphocytes_pct monocytes_pct eosinophils_pct basophils_pct',
     'neutrophils_abs lymphocytes_abs monocytes_abs eosinophils_abs basophils_abs',
     'immature_grans_pct immature_grans_abs',
-    'alt ast alkaline_phosphatase ggt bilirubin albumin protein_total globulin_total albumin_globulin',
-    'crp ferritin iron iron_tibc uibc transferrin_sat vitamin_d vitamin_b12 folate',
+    'alt ast alkaline_phosphatase ggt bilirubin albumin protein_total globulin_total',
+    'crp ferritin iron iron_tibc transferrin_sat vitamin_d vitamin_b12 folate',
     'OUTPUT FORMAT (return exactly this structure):',
     '{"test_date":"YYYY-MM-DD","lab_name":"string","markers":[{"name":"string","key":"canonical_key","value":0,"unit":"string","ref_low":0,"ref_high":0,"flag":null}]}',
     'Extract every single marker. Do not skip any. Do not add any text outside the JSON.',
@@ -7402,38 +7481,36 @@ function setBloodView(view) {
 function rangeBar(key, value) {
   const ref = BLOOD_REFS[key];
   if (!ref) return '';
-  const [optLo, optHi, stdLo, stdHi] = ref;
+  const [lo, hi] = ref;
+  // Handle one-sided ranges
+  const isHighOnly = hi >= 900;
+  const isLowOnly = lo <= 0;
 
-  // Display range with padding beyond standard
-  const stdRange = stdHi - stdLo || 1;
-  const pad = stdRange * 0.15;
-  const dispLo = Math.max(0, stdLo - pad);
-  const dispHi = stdHi + pad;
-  const dispRange = dispHi - dispLo || 1;
+  // Display range: show 50% below lo and 50% above hi
+  const pad = (hi - lo) * 0.6;
+  const dispLo = Math.max(0, lo - pad);
+  const dispHi = isHighOnly ? lo * 2.5 : hi + pad;
+  const dispRange = dispHi - dispLo;
 
-  const toPct = v => Math.max(0, Math.min(100, ((v - dispLo) / dispRange * 100)));
-
-  // Zone positions
-  const stdLoPct = toPct(stdLo);
-  const optLoPct = toPct(optLo);
-  const optHiPct = toPct(optHi);
-  const stdHiPct = toPct(stdHi);
+  // Zone positions (optimal range)
+  const zoneLPct = ((lo - dispLo) / dispRange * 100).toFixed(1);
+  const zoneWPct = isHighOnly ? (100 - parseFloat(zoneLPct)).toFixed(1) :
+                   ((hi - lo) / dispRange * 100).toFixed(1);
 
   // Dot position
   const clampedVal = Math.max(dispLo, Math.min(dispHi, value));
-  const dotPct = toPct(clampedVal);
+  const dotPct = ((clampedVal - dispLo) / dispRange * 100).toFixed(1);
   const status = bloodStatus(key, value);
   const dotColor = {ok:'#22c55e',warn:'#f59e0b',bad:'#ef4444'}[status];
 
-  // 5-zone gradient bar
+  const loLbl = isHighOnly ? '' : lo;
+  const hiLbl = isHighOnly ? lo + '+' : hi;
+
   return `<div class="blood-range-bar">
-    <div class="blood-range-zone" style="left:0;width:${stdLoPct}%;background:#ef4444;opacity:0.15;border-radius:3px 0 0 3px"></div>
-    <div class="blood-range-zone" style="left:${stdLoPct}%;width:${Math.max(0,optLoPct-stdLoPct)}%;background:#f59e0b;opacity:0.2"></div>
-    <div class="blood-range-zone" style="left:${optLoPct}%;width:${Math.max(0,optHiPct-optLoPct)}%;background:#22c55e;opacity:0.25"></div>
-    <div class="blood-range-zone" style="left:${optHiPct}%;width:${Math.max(0,stdHiPct-optHiPct)}%;background:#f59e0b;opacity:0.2"></div>
-    <div class="blood-range-zone" style="left:${stdHiPct}%;width:${100-stdHiPct}%;background:#ef4444;opacity:0.15;border-radius:0 3px 3px 0"></div>
+    <div class="blood-range-zone" style="left:${zoneLPct}%;width:${zoneWPct}%"></div>
     <div class="blood-range-dot" style="left:${dotPct}%;background:${dotColor}"></div>
-  </div>`;
+  </div>
+  <div class="blood-range-labels"><span>${dispLo.toFixed(dispRange>10?0:1)}</span><span style="color:#22c55e;font-weight:700">${loLbl}–${hiLbl}</span><span>${dispHi.toFixed(dispRange>10?0:1)}</span></div>`;
 }
 
 function trendBadge(key, hist, currentVal) {
@@ -7468,43 +7545,28 @@ function renderBloodPanels(idx) {
   const view = window._bloodView || 'panels';
 
   // ── SUMMARY BAR ─────────────────────────────────────
-  const allStatuses5 = entry.markers.map(m => bloodStatus5(m.key, m.value));
-  const alarmLow  = allStatuses5.filter(s => s === 'alarm_low').length;
-  const belowOpt  = allStatuses5.filter(s => s === 'below_optimal').length;
-  const optimal   = allStatuses5.filter(s => s === 'optimal').length;
-  const aboveOpt  = allStatuses5.filter(s => s === 'above_optimal').length;
-  const alarmHigh = allStatuses5.filter(s => s === 'alarm_high').length;
-  const totalM    = entry.markers.length;
+  const allStatuses = entry.markers.map(m => bloodStatus(m.key, m.value));
+  const badCount  = allStatuses.filter(s => s === 'bad').length;
+  const warnCount = allStatuses.filter(s => s === 'warn').length;
+  const okCount   = allStatuses.filter(s => s === 'ok').length;
   const summaryEl = document.getElementById('bloodSummaryBar');
   if (summaryEl) summaryEl.innerHTML = `
-    <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmLow}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Low</div>
+    <div class="blood-summary-grid" style="margin-bottom:12px">
+      <div class="blood-summary-tile" style="border:1.5px solid #ef444430">
+        <div class="blood-summary-num" style="color:#ef4444">${badCount}</div>
+        <div class="blood-summary-lbl">Out of Range</div>
       </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #60a5fa30">
-        <div class="blood-summary-num" style="color:#60a5fa;font-size:18px">${belowOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Below Opt</div>
+      <div class="blood-summary-tile" style="border:1.5px solid #f59e0b30">
+        <div class="blood-summary-num" style="color:#f59e0b">${warnCount}</div>
+        <div class="blood-summary-lbl">Borderline</div>
       </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #22c55e30">
-        <div class="blood-summary-num" style="color:#22c55e;font-size:18px">${optimal}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Optimal</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #f59e0b30">
-        <div class="blood-summary-num" style="color:#f59e0b;font-size:18px">${aboveOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Above Opt</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmHigh}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">High</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid var(--border)">
-        <div class="blood-summary-num" style="color:var(--text);font-size:18px">${totalM}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Total</div>
+      <div class="blood-summary-tile" style="border:1.5px solid #22c55e30">
+        <div class="blood-summary-num" style="color:#22c55e">${okCount}</div>
+        <div class="blood-summary-lbl">Optimal</div>
       </div>
     </div>`;
 
-  // ── NEEDS ATTENTION (Collapsible) ────────────────────
+  // ── OUT OF RANGE STRIP ───────────────────────────────
   const oobEl = document.getElementById('bloodOOBStrip');
   const flagged = entry.markers.filter(m => {
     const s = bloodStatus(m.key, m.value);
@@ -7517,51 +7579,30 @@ function renderBloodPanels(idx) {
   });
 
   if (oobEl && flagged.length > 0) {
-    const attnCards = flagged.map(m => {
-      const status = bloodStatus(m.key, m.value);
-      const ref = BLOOD_REFS[m.key];
-      const name = ref?.[5] || m.name;
-      const unit = m.unit || ref?.[4] || '';
-      const sevClass = status === 'bad' ? 'severity-bad' : 'severity-warn';
-      const nameClass = status === 'bad' ? 'bad' : 'warn';
-      const valClass = nameClass;
-      const panelKey = ref ? ref[6] : 'other';
-      const panelName = PANEL_LABELS[panelKey] || 'Other';
-      const trend = trendBadge(m.key, history[m.key], m.value);
-      const bar = ref ? rangeBar(m.key, m.value) : '';
-      const optText = ref ? `Optimal: ${ref[0]}–${ref[1]}` : '';
-      const stdText = ref ? `Standard: ${ref[2]}–${ref[3]}` : '';
-      return `<div class="blood-attn-card ${sevClass}">
-        <div class="blood-attn-top">
+    oobEl.innerHTML = `<div class="blood-oob-strip" style="margin-bottom:12px">
+      <div class="blood-oob-strip-title">⚠️ ${flagged.length} Markers Need Attention</div>
+      ${flagged.map(m => {
+        const status = bloodStatus(m.key, m.value);
+        const ref = BLOOD_REFS[m.key];
+        const name = ref?.[3] || m.name;
+        const unit = m.unit || ref?.[2] || '';
+        const color = status === 'bad' ? '#ef4444' : '#f59e0b';
+        const trend = trendBadge(m.key, history[m.key], m.value);
+        const refText = ref ? (ref[1] >= 900 ? '>' + ref[0] : ref[0] + '–' + ref[1]) + ' ' + ref[2] : '';
+        return `<div class="blood-oob-item">
           <div>
-            <div class="blood-attn-name ${nameClass}">${name}</div>
-            <div class="blood-attn-panel-tag">${panelName.replace(/^.+\s/,'')}</div>
+            <span style="font-size:12px;font-weight:700;color:${color}">${name}</span>
+            <span style="font-size:10px;color:var(--text3);margin-left:6px">${refText}</span>
           </div>
-          <div class="blood-attn-value-block">
-            <div class="blood-attn-value ${valClass}">${m.value}</div>
-            <div class="blood-attn-unit">${unit}</div>
-            ${trend ? `<div style="margin-top:4px">${trend}</div>` : ''}
+          <div style="display:flex;align-items:center;gap:6px">
+            ${trend}
+            <span style="font-size:14px;font-weight:800;color:${color}">${m.value} ${unit}</span>
           </div>
-        </div>
-        ${bar}
-        <div class="blood-attn-ref-row">
-          ${optText ? `<span class="blood-attn-ref-tag opt">${optText}</span>` : ''}
-          ${stdText ? `<span class="blood-attn-ref-tag std">${stdText}</span>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-
-    oobEl.innerHTML = `
-      <div class="blood-attn-header expanded" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.classList.toggle('expanded',!open);el.querySelector('.blood-attn-chevron').classList.toggle('collapsed',open)})(this)">
-        <div class="blood-attn-header-left">
-          <span class="blood-attn-count">${flagged.length}</span>
-          <span class="blood-attn-title">Needs Attention</span>
-        </div>
-        <span class="blood-attn-chevron">▼</span>
-      </div>
-      <div class="blood-attn-body">${attnCards}</div>`;
+        </div>`;
+      }).join('')}
+    </div>`;
   } else if (oobEl) {
-    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within optimal range</div>`;
+    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within normal range</div>`;
   }
 
   // ── PANELS VIEW ──────────────────────────────────────
@@ -7577,62 +7618,58 @@ function renderBloodPanels(idx) {
     const panels = {};
     entry.markers.forEach(m => {
       const ref = BLOOD_REFS[m.key];
-      const panel = ref ? ref[6] : 'other';
+      const panel = ref ? ref[4] : 'other';
       if (!panels[panel]) panels[panel] = [];
       panels[panel].push(m);
     });
 
-    const panelOrder = ['blood_glucose','renal','prostate','electrolytes','proteins','minerals','liver_gb','iron_markers','lipids','lipoproteins','thyroid','inflammation','vitamins','hormones','cbc','wbcs','other'];
+    const panelOrder = ['lipids','metabolic','hormones','cbc','vitamins','inflammation','liver','other'];
     panelsEl.innerHTML = panelOrder.filter(p => panels[p]).map(panel => {
       const markers = panels[panel];
       const bad  = markers.filter(m => bloodStatus(m.key, m.value) === 'bad').length;
       const warn = markers.filter(m => bloodStatus(m.key, m.value) === 'warn').length;
       const panelClass = bad > 0 ? 'blood-panel-card has-bad' : warn > 0 ? 'blood-panel-card has-warn' : 'blood-panel-card';
-      const hasIssues = bad > 0 || warn > 0;
-      const startOpen = hasIssues;
 
-      const badgeClass = bad > 0 ? 'bad' : warn > 0 ? 'warn' : 'ok';
-      const badgeText = bad > 0
-        ? `${bad} out of range`
+      const badge = bad > 0
+        ? `<span style="font-size:10px;background:#450a0a;color:#ef4444;padding:3px 9px;border-radius:20px;font-weight:700">${bad} out of range</span>`
         : warn > 0
-        ? `${warn} borderline`
-        : '✓ All optimal';
+        ? `<span style="font-size:10px;background:#422006;color:#f59e0b;padding:3px 9px;border-radius:20px;font-weight:700">${warn} borderline</span>`
+        : `<span style="font-size:10px;background:#0d2d1a;color:#22c55e;padding:3px 9px;border-radius:20px;font-weight:700">✓ All optimal</span>`;
 
       const rows = markers.map(m => {
         const ref = BLOOD_REFS[m.key];
         const status = bloodStatus(m.key, m.value);
-        const name = ref?.[5] || m.name;
-        const unit = m.unit || ref?.[4] || '';
+        const name = ref?.[3] || m.name;
+        const unit = m.unit || ref?.[2] || '';
+        const refText = ref
+          ? (ref[1] >= 900 ? '>' + ref[0] + ' ' + ref[2] : ref[0] + '–' + ref[1] + ' ' + ref[2])
+          : '';
         const trend = trendBadge(m.key, history[m.key], m.value);
+        const flagHtml = m.flag
+          ? `<span class="blood-marker-flag ${m.flag}">${m.flag}</span>`
+          : '';
         const bar = ref ? rangeBar(m.key, m.value) : '';
-        const optText = ref ? `Optimal: ${ref[0]}–${ref[1]}` : '';
-        const stdText = ref ? `Std: ${ref[2]}–${ref[3]}` : '';
 
         return `<div class="blood-marker-row status-${status}">
           <div class="blood-marker-top">
             <div class="blood-marker-name">${name}</div>
             <div class="blood-marker-right">
               ${trend}
-              <div class="blood-marker-val status-${status}">${m.value}<span class="blood-marker-unit">${unit}</span></div>
+              ${flagHtml}
+              <div class="blood-marker-val status-${status}">${m.value} <span style="font-size:10px;font-weight:500;color:var(--text3)">${unit}</span></div>
             </div>
           </div>
           ${bar}
-          <div class="blood-marker-refs"><span class="opt">${optText}</span><span>${stdText}</span></div>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Normal: ${refText || 'see report'}</div>
         </div>`;
       }).join('');
 
-      const panelId = 'bpanel_' + panel;
       return `<div class="${panelClass}">
-        <div class="blood-panel-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-panel-chevron').classList.toggle('collapsed',open)})(this)">
-          <div class="blood-panel-header-left">
-            <span class="blood-panel-title">${PANEL_LABELS[panel] || '🔬 Other'}</span>
-            <span class="blood-panel-badge ${badgeClass}">${badgeText}</span>
-          </div>
-          <span class="blood-panel-chevron${startOpen ? '' : ' collapsed'}">▼</span>
+        <div class="blood-panel-title">
+          <span>${PANEL_LABELS[panel] || '🔬 Other'}</span>
+          ${badge}
         </div>
-        <div class="blood-panel-body" style="${startOpen ? '' : 'display:none'}">
-          ${rows}
-        </div>
+        ${rows}
       </div>`;
     }).join('');
   }
@@ -7658,12 +7695,12 @@ function renderBloodPanels(idx) {
         ${trendMarkers.map(([key, vals]) => {
           const ref = BLOOD_REFS[key];
           const sorted = [...vals].sort((a,b) => a.date.localeCompare(b.date));
-          const name = ref?.[5] || key;
-          const unit = ref?.[4] || '';
+          const name = ref?.[3] || key;
+          const unit = ref?.[2] || '';
           const refLo = ref?.[0], refHi = ref?.[1];
           const allVals = sorted.map(v => v.value);
           const minV = Math.min(...allVals, refLo || Infinity);
-          const maxV = Math.max(...allVals, refHi || 0);
+          const maxV = Math.max(...allVals, refHi < 900 ? refHi : 0);
           const pad = (maxV - minV) * 0.2 || 1;
           const chartMin = Math.max(0, minV - pad);
           const chartMax = maxV + pad;
@@ -7674,14 +7711,16 @@ function renderBloodPanels(idx) {
           const toX = i => sorted.length === 1 ? W/2 : (i / (sorted.length-1)) * W;
 
           // Reference band
-          const refBand = (refLo !== undefined && refHi !== undefined)
-            ? `<rect x="0" y="${toY(refHi).toFixed(1)}" width="${W}" height="${Math.max(0,(toY(refLo)-toY(refHi))).toFixed(1)}" fill="#22c55e15" rx="2"/>`
+          const refBand = (refLo !== undefined && refHi !== undefined && refHi < 900)
+            ? `<rect x="0" y="${toY(refHi).toFixed(1)}" width="${W}" height="${(toY(refLo)-toY(refHi)).toFixed(1)}" fill="#22c55e15" rx="2"/>`
+            : refLo !== undefined
+            ? `<rect x="0" y="0" width="${W}" height="${toY(refLo).toFixed(1)}" fill="#ef444410" rx="2"/>`
             : '';
 
           // Ref lines
           const refLines = [];
           if (refLo !== undefined) refLines.push(`<line x1="0" y1="${toY(refLo).toFixed(1)}" x2="${W}" y2="${toY(refLo).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
-          if (refHi !== undefined) refLines.push(`<line x1="0" y1="${toY(refHi).toFixed(1)}" x2="${W}" y2="${toY(refHi).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
+          if (refHi !== undefined && refHi < 900) refLines.push(`<line x1="0" y1="${toY(refHi).toFixed(1)}" x2="${W}" y2="${toY(refHi).toFixed(1)}" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,2" opacity="0.6"/>`);
 
           // Polyline
           const points = sorted.map((v,i) => `${toX(i).toFixed(1)},${toY(v.value).toFixed(1)}`).join(' ');
@@ -7752,8 +7791,8 @@ function renderBloodPanels(idx) {
 
     const rows = sortedKeys.map(key => {
       const ref = BLOOD_REFS[key];
-      const name = ref?.[5] || key;
-      const unit = ref?.[4] || '';
+      const name = ref?.[3] || key;
+      const unit = ref?.[2] || '';
       const latestMarker = entry.markers.find(m => m.key === key);
       const latestStatus = latestMarker ? bloodStatus(key, latestMarker.value) : 'ok';
       const rowClass = latestStatus === 'bad' ? 'row-bad' : latestStatus === 'warn' ? 'row-warn' : '';
@@ -7787,30 +7826,25 @@ function renderBloodPanels(idx) {
         return `<td style="text-align:right"><span style="font-size:13px;font-weight:700;color:${col}">${m.value}</span>${trendHtml}</td>`;
       }).join('');
 
-      const refText = ref ? `${ref[0]}–${ref[1]}` : '–';
-      const stdText = ref ? `${ref[2]}–${ref[3]}` : '–';
+      const refText = ref ? (ref[1]>=900 ? '>'+ref[0] : ref[0]+'–'+ref[1]) : '–';
 
       return `<tr class="${rowClass}">
         <td style="font-size:11px;font-weight:600;color:var(--text)">
           <span class="bcomp-dot" style="background:${dotCol}"></span>${name}
-          <div style="font-size:9px;color:var(--text3);margin-top:1px;padding-left:12px">${unit}</div>
+          <div style="font-size:9px;color:var(--text3);margin-top:1px;padding-left:12px">${refText} ${unit}</div>
         </td>
         ${cells}
-        <td style="text-align:center;font-size:10px;color:#22c55e;white-space:nowrap">${refText}</td>
-        <td style="text-align:center;font-size:10px;color:var(--text3);white-space:nowrap">${stdText}</td>
       </tr>`;
     }).join('');
 
     tableEl.innerHTML = `<div class="card">
-      <div class="card-label" style="color:#3b82f6">📊 Blood Test Comparative</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Side-by-side results with optimal & standard ranges. Matches Ways2Well / Optimal DX report format.</div>
+      <div class="card-label" style="color:#3b82f6">📊 Side-by-Side Comparison</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">All markers across every lab result. Red/yellow rows = currently out of range. ↑↓ shows change from prior draw.</div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="bcomp-table">
           <thead><tr>
             <th>Marker</th>
             ${dateHeaders}
-            <th style="text-align:center;color:#22c55e;font-size:10px">Optimal</th>
-            <th style="text-align:center;color:var(--text3);font-size:10px">Standard</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -7842,7 +7876,7 @@ async function generateBloodAIInsights(entry) {
   const markerLines = entry.markers.map(m => {
     const ref = BLOOD_REFS[m.key];
     const status = ref ? bloodStatus(m.key, m.value) : 'ok';
-    const mname = ref ? ref[5] : m.name;
+    const mname = ref ? ref[3] : m.name;
     const flag = status !== 'ok' ? ' (' + status.toUpperCase() + ')' : '';
     return mname + ': ' + m.value + ' ' + (m.unit || '') + flag;
   }).join('\n');
@@ -8126,6 +8160,74 @@ function parseMicronutrients(foodNutrients, scale) {
     }
   });
   return micros;
+}
+
+
+// ── Jeremy Avatar ──────────────────────────────────────────
+var _avatarTalkInterval = null;
+var _avatarIdleInterval = null;
+
+function showJeremyAvatar() {
+  var el = document.getElementById('jeremyAvatarContainer');
+  if (el) el.classList.add('visible');
+  startAvatarIdle();
+}
+
+function hideJeremyAvatar() {
+  var el = document.getElementById('jeremyAvatarContainer');
+  if (el) el.classList.remove('visible');
+  stopAvatarTalking();
+}
+
+function startAvatarTalking() {
+  stopAvatarIdle();
+  var wrap = document.getElementById('jeremyAvatarWrap');
+  var closed = document.getElementById('mouthClosed');
+  var open = document.getElementById('mouthOpen');
+  if (!wrap) return;
+  wrap.classList.remove('idle');
+  wrap.classList.add('talking');
+  var isOpen = false;
+  _avatarTalkInterval = setInterval(function() {
+    isOpen = !isOpen;
+    if (closed) closed.style.display = isOpen ? 'none' : '';
+    if (open) open.style.display = isOpen ? '' : 'none';
+  }, 180);
+}
+
+function stopAvatarTalking() {
+  if (_avatarTalkInterval) { clearInterval(_avatarTalkInterval); _avatarTalkInterval = null; }
+  var wrap = document.getElementById('jeremyAvatarWrap');
+  var closed = document.getElementById('mouthClosed');
+  var open = document.getElementById('mouthOpen');
+  if (wrap) { wrap.classList.remove('talking'); }
+  if (closed) closed.style.display = '';
+  if (open) open.style.display = 'none';
+  startAvatarIdle();
+}
+
+function startAvatarIdle() {
+  var wrap = document.getElementById('jeremyAvatarWrap');
+  if (wrap) wrap.classList.add('idle');
+}
+
+function stopAvatarIdle() {
+  var wrap = document.getElementById('jeremyAvatarWrap');
+  if (wrap) wrap.classList.remove('idle');
+}
+
+
+function toggleAvatarSize() {
+  var wrap = document.getElementById('jeremyAvatarWrap');
+  if (!wrap) return;
+  var big = wrap.getAttribute('data-big') === '1';
+  if (big) {
+    wrap.style.width = '90px'; wrap.style.height = '99px';
+    wrap.setAttribute('data-big', '0');
+  } else {
+    wrap.style.width = '160px'; wrap.style.height = '176px';
+    wrap.setAttribute('data-big', '1');
+  }
 }
 
 // ── Init ──
