@@ -51,57 +51,6 @@
   .card-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; color: var(--text2); }
 
 
-  /* Jeremy Avatar */
-  #jeremyAvatarContainer {
-    position: fixed;
-    bottom: 72px;
-    right: 12px;
-    z-index: 200;
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  #jeremyAvatarContainer.visible { display: flex; }
-  #jeremyAvatarWrap {
-    width: 90px;
-    height: 99px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid #22c55e;
-    box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
-    background: #0d1520;
-    transition: box-shadow 0.3s;
-    cursor: pointer;
-  }
-  #jeremyAvatarWrap.talking {
-    animation: avatarPulse 0.6s ease-in-out infinite alternate;
-  }
-  #jeremyAvatarWrap.idle {
-    animation: avatarBreath 3s ease-in-out infinite;
-  }
-  @keyframes avatarPulse {
-    from { box-shadow: 0 0 0 2px rgba(34,197,94,0.4); transform: scale(1); }
-    to   { box-shadow: 0 0 0 8px rgba(34,197,94,0.1); transform: scale(1.03); }
-  }
-  @keyframes avatarBreath {
-    0%,100% { transform: scale(1); }
-    50%      { transform: scale(1.015); }
-  }
-  @keyframes avatarBlink {
-    0%,94%,100% { transform: scaleY(1); }
-    96%,98%     { transform: scaleY(0.08); }
-  }
-  #jeremyAvatarSVG { animation: avatarBlink 4s ease-in-out infinite; transform-origin: center 76px; }
-  #avatarLabel {
-    font-size: 9px;
-    color: #22c55e;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    opacity: 0.8;
-  }
-
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
   .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
@@ -1650,232 +1599,47 @@ PROMISE ERROR:
 
     <!-- CLAUDE AI PAGE -->
     <div id="page-claude" class="page">
-      <div style="display:flex;flex-direction:column;height:calc(100vh - 120px)">
-        <!-- Header -->
-        <div style="padding:16px 16px 8px;border-bottom:1px solid #1e293b;flex-shrink:0">
-          <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:2px">🤖 Jeremy's AI Coach</div>
-          <div style="font-size:11px;color:#64748b">Powered by Claude · Full access to your data</div>
-        </div>
+      <div style="display:flex;flex-direction:column;height:calc(100vh - 56px);position:relative;overflow:hidden">
 
-        <!-- Quick prompts -->
-        <div style="padding:10px 16px;display:flex;gap:8px;overflow-x:auto;flex-shrink:0;scrollbar-width:none">
-          <button onclick="claudeQuickPrompt('What should I eat to hit my remaining macros today?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🥗 Meal suggestion</button>
-          <button onclick="claudeQuickPrompt('Analyze my nutrition this week and give me insights.')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📊 Weekly analysis</button>
-          <button onclick="claudeQuickPrompt('Should I run today based on my workout schedule and recovery?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🏃 Run today?</button>
-          <button onclick="claudeQuickPrompt('How am I tracking toward my weight loss goal?')" style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⚖️ Weight progress</button>
-          <button onclick="triggerAppImprovement()" style="white-space:nowrap;background:#0f172a;border:1px solid #7c3aed;color:#a78bfa;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">💡 Improve my app</button>
-        </div>
-
-        <!-- Chat messages -->
-        <div id="claudeChatMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
-          <div style="text-align:center;color:#334155;font-size:13px;margin-top:20px">Ask me anything about your fitness, nutrition, or training.</div>
-        </div>
-
-        <!-- Jeremy Avatar Float -->
-        <div id="jeremyAvatarContainer">
-          <div id="jeremyAvatarWrap" onclick="toggleAvatarSize()" title="Your AI Coach">
-<svg id="jeremyAvatarSVG" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" width="90" height="99">
-  <defs>
-    <radialGradient id="skinGrad" cx="50%" cy="40%" r="55%">
-      <stop offset="0%" stop-color="#c8956a"/>
-      <stop offset="100%" stop-color="#a0704a"/>
-    </radialGradient>
-    <radialGradient id="headTopGrad" cx="50%" cy="30%" r="60%">
-      <stop offset="0%" stop-color="#b87040"/>
-      <stop offset="100%" stop-color="#9a5e30"/>
-    </radialGradient>
-    <radialGradient id="shirtGrad" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#8ecc44"/>
-      <stop offset="100%" stop-color="#5a9e1a"/>
-    </radialGradient>
-    <clipPath id="headClip">
-      <ellipse cx="100" cy="88" rx="54" ry="62"/>
-    </clipPath>
-    <filter id="softBlur">
-      <feGaussianBlur stdDeviation="0.4"/>
-    </filter>
-  </defs>
-
-  <!-- Neck -->
-  <rect x="82" y="148" width="36" height="30" rx="6" fill="#b87848"/>
-  <!-- Neck shadow -->
-  <rect x="82" y="155" width="36" height="8" fill="#9a6035" opacity="0.4"/>
-
-  <!-- Shirt / shoulders -->
-  <ellipse cx="100" cy="210" rx="72" ry="42" fill="url(#shirtGrad)"/>
-  <!-- Shirt collar detail -->
-  <path d="M82 175 Q100 185 118 175 L115 195 Q100 200 85 195 Z" fill="#7ab83a"/>
-  <!-- Shirt mesh texture hint -->
-  <rect x="28" y="175" width="144" height="45" rx="12" fill="url(#shirtGrad)"/>
-
-  <!-- Head base -->
-  <ellipse cx="100" cy="88" rx="54" ry="62" fill="url(#skinGrad)"/>
-
-  <!-- Very short hair on sides - salt & pepper stubble pattern -->
-  <!-- Right side hair -->
-  <path d="M148 75 Q155 65 152 50 Q148 38 140 30 Q128 20 116 18 Q108 16 100 16 Q92 16 84 18 Q72 20 60 30 Q52 38 48 50 Q45 65 52 75" fill="#5a5050" opacity="0.85"/>
-  <!-- Hair stippling for stubble texture on top -->
-  <ellipse cx="100" cy="28" rx="50" ry="18" fill="#5a5050" opacity="0.7"/>
-  <!-- Slight skin showing through on top (thinning) -->
-  <ellipse cx="100" cy="26" rx="34" ry="12" fill="#b07040" opacity="0.55"/>
-  <ellipse cx="100" cy="22" rx="22" ry="8" fill="#b07040" opacity="0.6"/>
-  <!-- Hair texture dots -->
-  <g fill="#3a3030" opacity="0.5" filter="url(#softBlur)">
-    <circle cx="72" cy="32" r="1.2"/><circle cx="78" cy="27" r="1"/><circle cx="85" cy="23" r="1.1"/>
-    <circle cx="92" cy="20" r="1"/><circle cx="100" cy="19" r="1.2"/><circle cx="108" cy="20" r="1"/>
-    <circle cx="115" cy="23" r="1.1"/><circle cx="122" cy="27" r="1"/><circle cx="128" cy="32" r="1.2"/>
-    <circle cx="68" cy="38" r="1"/><circle cx="74" cy="34" r="1.1"/><circle cx="126" cy="34" r="1.1"/>
-    <circle cx="132" cy="38" r="1"/>
-  </g>
-
-  <!-- Forehead -->
-  <ellipse cx="100" cy="55" rx="44" ry="22" fill="#c4906a" opacity="0.3"/>
-
-  <!-- Eyebrows - dark, defined -->
-  <path d="M68 65 Q78 61 88 63" stroke="#3a2e28" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <path d="M112 63 Q122 61 132 65" stroke="#3a2e28" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <!-- Brow shadow -->
-  <path d="M68 67 Q78 63 88 65" stroke="#8a6040" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/>
-  <path d="M112 65 Q122 63 132 67" stroke="#8a6040" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.4"/>
-
-  <!-- Eyes -->
-  <!-- Left eye white -->
-  <ellipse cx="79" cy="76" rx="10" ry="7" fill="white"/>
-  <!-- Left iris -->
-  <ellipse cx="79" cy="76" rx="6.5" ry="6.5" fill="#5c3d20"/>
-  <!-- Left pupil -->
-  <ellipse cx="79" cy="76" rx="3.5" ry="3.5" fill="#1a0e08"/>
-  <!-- Left eye shine -->
-  <ellipse cx="81" cy="74" rx="1.5" ry="1.2" fill="white" opacity="0.8"/>
-  <!-- Left eyelid top -->
-  <path d="M69 73 Q79 69 89 73" stroke="#3a2e28" stroke-width="1.8" fill="none"/>
-  <!-- Left eyelid bottom -->
-  <path d="M69 79 Q79 83 89 79" stroke="#8a6040" stroke-width="1" fill="none" opacity="0.5"/>
-  <!-- Left eye crinkle -->
-  <path d="M67 72 Q66 76 67 80" stroke="#9a7050" stroke-width="0.8" fill="none" opacity="0.6"/>
-
-  <!-- Right eye white -->
-  <ellipse cx="121" cy="76" rx="10" ry="7" fill="white"/>
-  <!-- Right iris -->
-  <ellipse cx="121" cy="76" rx="6.5" ry="6.5" fill="#5c3d20"/>
-  <!-- Right pupil -->
-  <ellipse cx="121" cy="76" rx="3.5" ry="3.5" fill="#1a0e08"/>
-  <!-- Right eye shine -->
-  <ellipse cx="123" cy="74" rx="1.5" ry="1.2" fill="white" opacity="0.8"/>
-  <!-- Right eyelid top -->
-  <path d="M111 73 Q121 69 131 73" stroke="#3a2e28" stroke-width="1.8" fill="none"/>
-  <!-- Right eyelid bottom -->
-  <path d="M111 79 Q121 83 131 79" stroke="#8a6040" stroke-width="1" fill="none" opacity="0.5"/>
-  <!-- Right eye crinkle -->
-  <path d="M133 72 Q134 76 133 80" stroke="#9a7050" stroke-width="0.8" fill="none" opacity="0.6"/>
-
-  <!-- Nose -->
-  <path d="M100 80 L96 100 Q100 104 104 100 L100 80" fill="#a86840" opacity="0.5"/>
-  <path d="M96 100 Q92 103 91 101 Q93 99 96 100" fill="#a86840" opacity="0.7"/>
-  <path d="M104 100 Q107 103 109 101 Q107 99 104 100" fill="#a86840" opacity="0.7"/>
-  <!-- Nose bridge shadow -->
-  <path d="M97 82 Q96 90 96 98" stroke="#9a6035" stroke-width="0.8" fill="none" opacity="0.4"/>
-
-  <!-- MOUTH GROUP - animated for talking -->
-  <g id="avatarMouthGroup">
-    <!-- Lips closed (idle state) -->
-    <g id="mouthClosed">
-      <path d="M88 116 Q100 120 112 116" stroke="#8a5040" stroke-width="1.5" fill="none"/>
-      <!-- Upper lip -->
-      <path d="M88 116 Q94 113 100 114 Q106 113 112 116 Q106 119 100 120 Q94 119 88 116Z" fill="#b06858"/>
-      <!-- Lower lip -->
-      <path d="M88 116 Q100 122 112 116 Q106 124 100 125 Q94 124 88 116Z" fill="#c07868" opacity="0.8"/>
-    </g>
-    <!-- Mouth open (talking state) - hidden by default -->
-    <g id="mouthOpen" style="display:none">
-      <!-- Upper lip -->
-      <path d="M88 114 Q94 110 100 111 Q106 110 112 114 Q106 112 100 113 Q94 112 88 114Z" fill="#b06858"/>
-      <!-- Mouth opening -->
-      <ellipse cx="100" cy="120" rx="11" ry="7" fill="#2a0808"/>
-      <!-- Teeth top -->
-      <rect x="91" y="114" width="18" height="5" rx="2" fill="#f0ede8"/>
-      <!-- Teeth bottom -->
-      <rect x="92" y="122" width="16" height="4" rx="2" fill="#e8e5e0"/>
-      <!-- Lower lip -->
-      <path d="M88 114 Q100 130 112 114 Q106 128 100 129 Q94 128 88 114Z" fill="#c07868" opacity="0.8"/>
-    </g>
-  </g>
-
-  <!-- Beard / stubble - salt and pepper -->
-  <!-- Mustache area -->
-  <ellipse cx="100" cy="111" rx="13" ry="5" fill="#606060" opacity="0.35"/>
-  <!-- Chin beard -->
-  <ellipse cx="100" cy="128" rx="16" ry="9" fill="#606060" opacity="0.4"/>
-  <!-- Side beard left -->
-  <path d="M72 100 Q68 115 72 130 Q78 140 88 143 Q94 145 100 145" fill="#606060" opacity="0.38"/>
-  <!-- Side beard right -->
-  <path d="M128 100 Q132 115 128 130 Q122 140 112 143 Q106 145 100 145" fill="#606060" opacity="0.38"/>
-  <!-- Beard texture - lighter hairs -->
-  <g fill="#b0b0b0" opacity="0.25">
-    <circle cx="85" cy="108" r="1.5"/><circle cx="90" cy="112" r="1.3"/><circle cx="95" cy="109" r="1"/>
-    <circle cx="105" cy="109" r="1"/><circle cx="110" cy="112" r="1.3"/><circle cx="115" cy="108" r="1.5"/>
-    <circle cx="80" cy="118" r="1.3"/><circle cx="120" cy="118" r="1.3"/>
-    <circle cx="84" cy="128" r="1.5"/><circle cx="116" cy="128" r="1.5"/>
-    <circle cx="92" cy="135" r="1.3"/><circle cx="108" cy="135" r="1.3"/>
-    <circle cx="100" cy="138" r="1.5"/>
-  </g>
-  <!-- Beard stubble dark -->
-  <g fill="#2a2020" opacity="0.2">
-    <circle cx="88" cy="106" r="1"/><circle cx="94" cy="104" r="1"/><circle cx="106" cy="104" r="1"/>
-    <circle cx="112" cy="106" r="1"/><circle cx="78" cy="116" r="1"/><circle cx="122" cy="116" r="1"/>
-  </g>
-
-  <!-- Jaw definition -->
-  <path d="M56 100 Q52 118 58 135 Q68 152 100 158 Q132 152 142 135 Q148 118 144 100" fill="none" stroke="#9a6035" stroke-width="1" opacity="0.2"/>
-
-  <!-- Ear left -->
-  <ellipse cx="47" cy="90" rx="8" ry="12" fill="#b87848"/>
-  <path d="M50 83 Q47 90 50 97" stroke="#9a6035" stroke-width="1.5" fill="none"/>
-  <!-- Ear right -->
-  <ellipse cx="153" cy="90" rx="8" ry="12" fill="#b87848"/>
-  <path d="M150 83 Q153 90 150 97" stroke="#9a6035" stroke-width="1.5" fill="none"/>
-
-  <!-- Slight smile lines -->
-  <path d="M86 118 Q83 122 84 127" stroke="#9a6035" stroke-width="1" fill="none" opacity="0.4"/>
-  <path d="M114 118 Q117 122 116 127" stroke="#9a6035" stroke-width="1" fill="none" opacity="0.4"/>
-
-  <!-- Forehead slight lines -->
-  <path d="M78 58 Q100 55 122 58" stroke="#9a6035" stroke-width="0.8" fill="none" opacity="0.25"/>
-</svg>
+        <!-- INPUT BAR - TOP (most important - first thing visible) -->
+        <div style="padding:10px 12px 8px;background:#0a0f1a;border-bottom:1px solid #1e293b;flex-shrink:0">
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <textarea id="claudeInput" placeholder="Ask your AI coach..." rows="1"
+              style="flex:1;background:#111827;border:1.5px solid #1e3a5f;border-radius:14px;padding:10px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:100px;overflow-y:auto;line-height:1.4"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}"
+              oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+            <button onclick="sendClaudeMessage()"
+              style="background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:12px;width:42px;height:42px;color:white;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
           </div>
-          <div id="avatarLabel">Coach</div>
+
+          <!-- Quick prompts - horizontal scroll, compact -->
+          <div style="display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none;-webkit-overflow-scrolling:touch">
+            <button onclick="claudeQuickPrompt('What should I eat to hit my remaining macros today?')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">🥗 Meals</button>
+            <button onclick="claudeQuickPrompt('Analyze my nutrition this week and give me insights.')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">📊 Weekly</button>
+            <button onclick="claudeQuickPrompt('Should I run today based on my workout schedule and recovery?')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">🏃 Run?</button>
+            <button onclick="claudeQuickPrompt('How am I tracking toward my weight loss goal?')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">⚖️ Weight</button>
+            <button onclick="claudeQuickPrompt('Give me a summary of my latest blood work results and what to focus on.')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">🩸 Blood</button>
+            <button onclick="claudeQuickPrompt('What should my workout be today?')"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #1e3a5f;color:#60a5fa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">💪 Workout</button>
+            <button onclick="triggerAppImprovement()"
+              style="white-space:nowrap;background:#0f172a;border:1px solid #7c3aed;color:#a78bfa;border-radius:16px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">💡 Improve</button>
+          </div>
         </div>
 
-        <!-- Input -->
-        <div style="padding:12px 16px;border-top:1px solid #1e293b;flex-shrink:0;display:flex;gap:10px;align-items:flex-end">
-          <textarea id="claudeInput" placeholder="Ask your AI coach..." rows="1" style="flex:1;background:#0f172a;border:1.5px solid #1e3a5f;border-radius:14px;padding:12px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px;overflow-y:auto;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
-          <button id="claudeVoiceBtn" onclick="toggleVoiceDictation()" style="background:#1e3a5f;border:none;border-radius:12px;width:44px;height:44px;color:#fff;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">🎤</button>
-          <button onclick="sendClaudeMessage()" id="claudeSendBtn" style="background:#3b82f6;border:none;border-radius:12px;width:44px;height:44px;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
+        <!-- CHAT MESSAGES -->
+        <div id="claudeChatMessages" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+          <div style="text-align:center;color:#334155;font-size:12px;margin-top:12px">Ask me anything about your fitness, nutrition, or training.</div>
         </div>
+
+
+
       </div>
     </div>
-
-<!-- 🚀 Hidden Deploy Modal — tap header 5x to open -->
-<div id="deployModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:32px;width:90%;max-width:420px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <div style="font-size:18px;font-weight:700">🚀 Deploy Update</div>
-      <button onclick="document.getElementById('deployModal').style.display='none'" style="background:none;border:none;color:#666;font-size:20px;cursor:pointer">✕</button>
-    </div>
-    <div style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">GitHub Token</div>
-    <input id="deployToken" type="password" placeholder="ghp_..." style="width:100%;background:#111;border:1.5px solid #2a2a2a;border-radius:10px;padding:12px;color:#fff;font-size:14px;margin-bottom:6px;outline:none;font-family:inherit">
-    <div id="deployTokenSaved" style="font-size:11px;color:#22c55e;margin-bottom:16px;display:none">✓ Token saved</div>
-    <div style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">New index.html</div>
-    <div id="deployDrop" style="border:2px dashed #2a2a2a;border-radius:14px;padding:30px;text-align:center;cursor:pointer;margin-bottom:16px;transition:all 0.2s">
-      <div style="font-size:28px;margin-bottom:8px">📄</div>
-      <div style="font-size:13px;color:#666">Drag file here or <span style="color:#3b82f6">tap to browse</span></div>
-      <div id="deployFileName" style="font-size:12px;color:#22c55e;margin-top:6px;font-weight:600"></div>
-      <input type="file" id="deployFileInput" accept=".html" style="display:none">
-    </div>
-    <button id="deploySubmitBtn" onclick="runDeploy()" disabled style="width:100%;background:#3b82f6;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;opacity:0.4">Deploy to Cloudflare</button>
-    <div id="deployStatus" style="margin-top:14px;font-size:13px;font-weight:600;text-align:center;display:none"></div>
-  </div>
-</div>
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
@@ -2957,7 +2721,6 @@ function switchTab(name, btn) {
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
-  if (name === 'claude') { showJeremyAvatar(); } else { hideJeremyAvatar(); }
   if (name === 'trends') renderTrendChart();
   if (name === 'shoes')  renderShoePage();
 }
@@ -8162,73 +7925,6 @@ function parseMicronutrients(foodNutrients, scale) {
   return micros;
 }
 
-
-// ── Jeremy Avatar ──────────────────────────────────────────
-var _avatarTalkInterval = null;
-var _avatarIdleInterval = null;
-
-function showJeremyAvatar() {
-  var el = document.getElementById('jeremyAvatarContainer');
-  if (el) el.classList.add('visible');
-  startAvatarIdle();
-}
-
-function hideJeremyAvatar() {
-  var el = document.getElementById('jeremyAvatarContainer');
-  if (el) el.classList.remove('visible');
-  stopAvatarTalking();
-}
-
-function startAvatarTalking() {
-  stopAvatarIdle();
-  var wrap = document.getElementById('jeremyAvatarWrap');
-  var closed = document.getElementById('mouthClosed');
-  var open = document.getElementById('mouthOpen');
-  if (!wrap) return;
-  wrap.classList.remove('idle');
-  wrap.classList.add('talking');
-  var isOpen = false;
-  _avatarTalkInterval = setInterval(function() {
-    isOpen = !isOpen;
-    if (closed) closed.style.display = isOpen ? 'none' : '';
-    if (open) open.style.display = isOpen ? '' : 'none';
-  }, 180);
-}
-
-function stopAvatarTalking() {
-  if (_avatarTalkInterval) { clearInterval(_avatarTalkInterval); _avatarTalkInterval = null; }
-  var wrap = document.getElementById('jeremyAvatarWrap');
-  var closed = document.getElementById('mouthClosed');
-  var open = document.getElementById('mouthOpen');
-  if (wrap) { wrap.classList.remove('talking'); }
-  if (closed) closed.style.display = '';
-  if (open) open.style.display = 'none';
-  startAvatarIdle();
-}
-
-function startAvatarIdle() {
-  var wrap = document.getElementById('jeremyAvatarWrap');
-  if (wrap) wrap.classList.add('idle');
-}
-
-function stopAvatarIdle() {
-  var wrap = document.getElementById('jeremyAvatarWrap');
-  if (wrap) wrap.classList.remove('idle');
-}
-
-
-function toggleAvatarSize() {
-  var wrap = document.getElementById('jeremyAvatarWrap');
-  if (!wrap) return;
-  var big = wrap.getAttribute('data-big') === '1';
-  if (big) {
-    wrap.style.width = '90px'; wrap.style.height = '99px';
-    wrap.setAttribute('data-big', '0');
-  } else {
-    wrap.style.width = '160px'; wrap.style.height = '176px';
-    wrap.setAttribute('data-big', '1');
-  }
-}
 
 // ── Init ──
 // Each call is isolated so one failure can't white-screen the app
