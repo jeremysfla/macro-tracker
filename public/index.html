@@ -9598,103 +9598,113 @@ function safeCall(fn, label) {
   try { fn(); } catch(e) { console.error('[safeCall] ' + (label||fn.name||'?') + ':', e); }
 }
 
-safeCall(migrateShoePhotos, 'migrateShoePhotos');
-safeCall(migrateBloodKeys, 'migrateBloodKeys');
-safeCall(renderWeekStrip, 'renderWeekStrip');
+function _initApp() {
+  console.log('[init] _initApp started, readyState:', document.readyState);
+  safeCall(migrateShoePhotos, 'migrateShoePhotos');
+  safeCall(migrateBloodKeys, 'migrateBloodKeys');
+  safeCall(renderWeekStrip, 'renderWeekStrip');
 
-// Restore today's calorie burn adjustment on reload
-try {
-  const burnLog = getStorage('burnLog', {});
-  const burn = burnLog[todayKey()];
-  if (burn > 0) {
-    const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
-    const extraCals  = Math.round(burn * 0.6);
-    const extraCarbs = Math.round(extraCals * 0.65 / 4);
-    const adjusted = { calories: base.calories + extraCals, carbs: base.carbs + extraCarbs, protein: base.protein, fat: base.fat };
-    setStorage('garminAdjustedMacros', adjusted);
-    setTimeout(() => {
-      const banner = document.getElementById('garminMacroBanner');
-      const text   = document.getElementById('garminMacroText');
-      if (banner && text) {
-        banner.style.display = 'flex';
-        text.textContent = `🟠 Run detected! +${extraCals} kcal → ${adjusted.calories} kcal target, ${adjusted.carbs}g carbs`;
-      }
-    }, 100);
-  }
-} catch(e) {}
+  // Restore today's calorie burn adjustment on reload
+  try {
+    const burnLog = getStorage('burnLog', {});
+    const burn = burnLog[todayKey()];
+    if (burn > 0) {
+      const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
+      const extraCals  = Math.round(burn * 0.6);
+      const extraCarbs = Math.round(extraCals * 0.65 / 4);
+      const adjusted = { calories: base.calories + extraCals, carbs: base.carbs + extraCarbs, protein: base.protein, fat: base.fat };
+      setStorage('garminAdjustedMacros', adjusted);
+      setTimeout(() => {
+        const banner = document.getElementById('garminMacroBanner');
+        const text   = document.getElementById('garminMacroText');
+        if (banner && text) {
+          banner.style.display = 'flex';
+          text.textContent = `🟠 Run detected! +${extraCals} kcal → ${adjusted.calories} kcal target, ${adjusted.carbs}g carbs`;
+        }
+      }, 100);
+    }
+  } catch(e) {}
 
-// Sync macroLog from foodEntries for today to ensure rings are accurate
-try {
-  const todayEntries = getFoodEntries(todayKey());
-  if (todayEntries && todayEntries.length > 0) {
-    const totals = todayEntries.reduce((acc, e) => ({
-      calories: acc.calories + (e.calories || 0),
-      protein:  acc.protein  + (e.protein  || 0),
-      carbs:    acc.carbs    + (e.carbs    || 0),
-      fat:      acc.fat      + (e.fat      || 0),
-    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-    const macroLog = getStorage('macroLog', {});
-    macroLog[todayKey()] = totals;
-    setStorage('macroLog', macroLog);
-  }
-} catch(e) { console.warn('macroLog sync failed:', e); }
+  // Sync macroLog from foodEntries for today to ensure rings are accurate
+  try {
+    const todayEntries = getFoodEntries(todayKey());
+    if (todayEntries && todayEntries.length > 0) {
+      const totals = todayEntries.reduce((acc, e) => ({
+        calories: acc.calories + (e.calories || 0),
+        protein:  acc.protein  + (e.protein  || 0),
+        carbs:    acc.carbs    + (e.carbs    || 0),
+        fat:      acc.fat      + (e.fat      || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+      const macroLog = getStorage('macroLog', {});
+      macroLog[todayKey()] = totals;
+      setStorage('macroLog', macroLog);
+    }
+  } catch(e) { console.warn('macroLog sync failed:', e); }
 
-safeCall(renderRings, 'renderRings');
-safeCall(renderQuickRecs, 'renderQuickRecs');
-safeCall(renderUsualFoods, 'renderUsualFoods');
-safeCall(renderFoodLog, 'renderFoodLog');
-safeCall(renderWeightTrend, 'renderWeightTrend');
-safeCall(checkCopyYesterday, 'checkCopyYesterday');
-safeCall(checkAdaptiveMacros, 'checkAdaptiveMacros');
-safeCall(renderProgramPage, 'renderProgramPage');
-safeCall(renderEventList, 'renderEventList');
-safeCall(renderEventCountdowns, 'renderEventCountdowns');
+  safeCall(renderRings, 'renderRings');
+  safeCall(renderQuickRecs, 'renderQuickRecs');
+  safeCall(renderUsualFoods, 'renderUsualFoods');
+  safeCall(renderFoodLog, 'renderFoodLog');
+  safeCall(renderWeightTrend, 'renderWeightTrend');
+  safeCall(checkCopyYesterday, 'checkCopyYesterday');
+  safeCall(checkAdaptiveMacros, 'checkAdaptiveMacros');
+  safeCall(renderProgramPage, 'renderProgramPage');
+  safeCall(renderEventList, 'renderEventList');
+  safeCall(renderEventCountdowns, 'renderEventCountdowns');
 
-// Pre-seed events if none exist yet
-try {
-  if (!getEvents().length) {
-    saveEvents([
-      { id: Date.now(), name: "Grandma's Marathon", date: "2026-06-20", type: "race" },
-      { id: Date.now() + 1, name: "Weight Goal", date: "2026-03-23", type: "weight", weightTarget: 163 }
-    ]);
-    safeCall(renderEventList, 'renderEventList');
-    safeCall(renderEventCountdowns, 'renderEventCountdowns');
-  }
-} catch(e) {}
+  // Pre-seed events if none exist yet
+  try {
+    if (!getEvents().length) {
+      saveEvents([
+        { id: Date.now(), name: "Grandma's Marathon", date: "2026-06-20", type: "race" },
+        { id: Date.now() + 1, name: "Weight Goal", date: "2026-03-23", type: "weight", weightTarget: 163 }
+      ]);
+      safeCall(renderEventList, 'renderEventList');
+      safeCall(renderEventCountdowns, 'renderEventCountdowns');
+    }
+  } catch(e) {}
 
-safeCall(updateStravaSettingsUI, 'updateStravaSettingsUI');
-safeCall(renderWeeklyBalance, 'renderWeeklyBalance');
-safeCall(renderStreakCard, 'renderStreakCard');
-safeCall(renderProteinPace, 'renderProteinPace');
-safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner');
-setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
-setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
+  safeCall(updateStravaSettingsUI, 'updateStravaSettingsUI');
+  safeCall(renderWeeklyBalance, 'renderWeeklyBalance');
+  safeCall(renderStreakCard, 'renderStreakCard');
+  safeCall(renderProteinPace, 'renderProteinPace');
+  safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner');
+  setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
+  setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
 
-safeCall(loadDailyQuote, 'loadDailyQuote');
-safeCall(renderRecipeList, 'renderRecipeList');
-safeCall(updateHeaderDate, 'updateHeaderDate');
-safeCall(updateDateNavBar, 'updateDateNavBar');
-safeCall(scheduleMidnightRefresh, 'scheduleMidnightRefresh');
-setTimeout(renderShoePage, 0);
+  safeCall(loadDailyQuote, 'loadDailyQuote');
+  safeCall(renderRecipeList, 'renderRecipeList');
+  safeCall(updateHeaderDate, 'updateHeaderDate');
+  safeCall(updateDateNavBar, 'updateDateNavBar');
+  safeCall(scheduleMidnightRefresh, 'scheduleMidnightRefresh');
+  setTimeout(renderShoePage, 0);
 
-// Safety net: re-render Today page components after browser has fully painted.
-// This fixes the bug where data exists in localStorage but doesn't display until
-// the user switches tabs and comes back.
-requestAnimationFrame(() => {
-  setTimeout(() => {
-    safeCall(renderRings, 'renderRings-deferred');
-    safeCall(renderFoodLog, 'renderFoodLog-deferred');
-    safeCall(renderWeekStrip, 'renderWeekStrip-deferred');
-    safeCall(renderWeeklyBalance, 'renderWeeklyBalance-deferred');
-    safeCall(renderStreakCard, 'renderStreakCard-deferred');
-    safeCall(renderProteinPace, 'renderProteinPace-deferred');
-    safeCall(renderEventCountdowns, 'renderEventCountdowns-deferred');
-    safeCall(renderWeightTrend, 'renderWeightTrend-deferred');
-    safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner-deferred');
-    safeCall(renderQuickRecs, 'renderQuickRecs-deferred');
-    safeCall(renderUsualFoods, 'renderUsualFoods-deferred');
-  }, 50);
-});
+  // Safety net: re-render Today page after browser has fully painted.
+  // Catches any edge case where initial renders wrote to elements before layout.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      safeCall(renderRings, 'renderRings-paint');
+      safeCall(renderFoodLog, 'renderFoodLog-paint');
+      safeCall(renderWeekStrip, 'renderWeekStrip-paint');
+      safeCall(renderWeeklyBalance, 'renderWeeklyBalance-paint');
+      safeCall(renderStreakCard, 'renderStreakCard-paint');
+      safeCall(renderProteinPace, 'renderProteinPace-paint');
+      safeCall(renderEventCountdowns, 'renderEventCountdowns-paint');
+      safeCall(renderWeightTrend, 'renderWeightTrend-paint');
+      safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner-paint');
+      safeCall(renderQuickRecs, 'renderQuickRecs-paint');
+      safeCall(renderUsualFoods, 'renderUsualFoods-paint');
+    });
+  });
+}
+
+// Ensure init runs after DOM is fully ready — fixes data not showing on initial load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initApp);
+} else {
+  // DOM already parsed (e.g. script is at bottom of body), run immediately
+  _initApp();
+}
 
 // Mobile resume fix — when app comes back from background, check if day changed
 document.addEventListener('visibilitychange', () => {
