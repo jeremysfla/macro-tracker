@@ -1,4 +1,8 @@
-<!DOCTYPE html>
+
+  .blood-marker-refs-row { display:flex; gap:5px; margin-top:5px; flex-wrap:wrap; }
+  .bref-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+  .bref-tag.opt { background:#22c55e18; color:#4ade80; }
+  .bref-tag.std { background:#ffffff0d; color:var(--text3); }<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -179,10 +183,10 @@
   .blood-marker-row:last-child { border-bottom:none; }
   .blood-marker-row.status-bad  { background:linear-gradient(90deg,#ef444408 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #ef4444; }
   .blood-marker-row.status-warn { background:linear-gradient(90deg,#f59e0b08 0%,transparent 100%); margin:0 -16px; padding:10px 16px; border-left:3px solid #f59e0b; }
-  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
-  .blood-marker-name { font-size:13px; color:var(--text2); font-weight:500; flex:1; }
+  .blood-marker-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px; }
+  .blood-marker-name { font-size:13px; color:var(--text); font-weight:600; line-height:1.2; }
   .blood-marker-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
-  .blood-marker-val  { font-size:15px; font-weight:800; }
+  .blood-marker-val  { font-size:17px; font-weight:800; line-height:1; }
   .blood-marker-val.status-ok   { color:#22c55e; }
   .blood-marker-val.status-warn { color:#f59e0b; }
   .blood-marker-val.status-bad  { color:#ef4444; }
@@ -8926,16 +8930,28 @@ function renderBloodPanels(idx) {
         const optText = ref ? `Optimal: ${ref[0]}–${ref[1]}` : '';
         const stdText = ref ? `Std: ${ref[2]}–${ref[3]}` : '';
 
+        const status5 = bloodStatus5(m.key, m.value);
+        const statusLabel = {optimal:'Optimal',below_optimal:'Below Opt',above_optimal:'Above Opt',alarm_low:'⬇ Low',alarm_high:'⬆ High'}[status5] || '';
+        const statusColor = {optimal:'#22c55e',below_optimal:'#60a5fa',above_optimal:'#f59e0b',alarm_low:'#ef4444',alarm_high:'#ef4444'}[status5] || 'var(--text3)';
         return `<div class="blood-marker-row status-${status}">
           <div class="blood-marker-top">
-            <div class="blood-marker-name">${name}</div>
-            <div class="blood-marker-right">
+            <div style="flex:1;min-width:0">
+              <div class="blood-marker-name">${name}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:1px">${ref ? (ref[4]||unit) : unit}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
               ${trend}
-              <div class="blood-marker-val status-${status}">${m.value}<span class="blood-marker-unit">${unit}</span></div>
+              <div style="text-align:right">
+                <div class="blood-marker-val status-${status}">${m.value}</div>
+                <div style="font-size:9px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</div>
+              </div>
             </div>
           </div>
           ${bar}
-          <div class="blood-marker-refs"><span class="opt">${optText}</span><span>${stdText}</span></div>
+          <div class="blood-marker-refs-row">
+            <span class="bref-tag opt">Opt: ${ref ? ref[0]+'–'+ref[1] : '–'}</span>
+            <span class="bref-tag std">Std: ${ref ? ref[2]+'–'+ref[3] : '–'}</span>
+          </div>
         </div>`;
       }).join('');
 
