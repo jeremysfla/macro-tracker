@@ -4222,99 +4222,140 @@ async function analyzePhotoWithDB() {
   document.getElementById('photoStep1').style.display = 'none';
   document.getElementById('photoStep2').style.display = 'block';
 
-  let msgIdx = 0;
   const msgEl = document.getElementById('aiLoadingMsg');
-  const msgs = ['Identifying foods in photo…','Searching nutrition databases…','Cross-referencing USDA SR28…','Calculating accurate macros…','Verifying against databases…','Almost done…'];
-  const msgInt = setInterval(() => { msgIdx=(msgIdx+1)%msgs.length; msgEl.textContent=msgs[msgIdx]; }, 1800);
   const hint = document.getElementById('photoHint').value.trim();
+  msgEl.textContent = 'Identifying foods in photo\u2026';
 
   try {
-    // Phase 1: Vision identification
-    const visionPrompt = `You are a precise food identification expert. Analyze this food photo.
-${hint?`User note: "${hint}"`:''}
-
-Identify each distinct food item. For each, estimate the grams of the EXACT portion visible in the photo.
-
-Return ONLY valid JSON, no markdown:
-{"meal_name":"Short meal name","items":[{"food":"exact searchable name (e.g. grilled chicken breast, white rice cooked)","display_name":"human-readable name","grams_in_photo":100,"confidence":"high"}],"notes":"any context"}`;
+    // Phase 1: Vision ID — Sonnet is fast and has excellent vision
+    const visionPrompt = `Analyze this food photo. Identify each distinct food item and estimate grams of the exact portion visible.
+${hint ? `Note: "${hint}"` : ''}
+Return ONLY JSON (no markdown):
+{"meal_name":"Short name","items":[{"food":"searchable name e.g. grilled chicken breast","display_name":"human name","grams_in_photo":100}]}`;
 
     const visionResp = await callClaudeAPI({
-      model:'claude-opus-4-6', max_tokens:1024,
-      messages:[{role:'user',content:[
-        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:photoBase64}},
-        {type:'text',text:visionPrompt}
+      model: 'claude-sonnet-4-6', max_tokens: 512,
+      messages: [{role:'user', content:[
+        {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
+        {type:'text', text:visionPrompt}
       ]}]
     });
-    const visionText = visionResp.content?.find(b=>b.type==='text')?.text||'';
-    const visionJSON = JSON.parse(visionText.replace(/```json|```/g,'').trim());
+
+    const visionText = visionResp.content?.find(b=>b.type==='text')?.text || '';
+    let visionJSON;
+    try { visionJSON = JSON.parse(visionText.replace(/```json|```/g,'').trim()); }
+    catch(e) { visionJSON = {meal_name:'Meal', items:[]}; }
     const items = visionJSON.items || [];
 
-    // Phase 2: DB lookup per item
-    msgEl.textContent = 'Scanning nutrition databases…';
-    const dbResults = await Promise.all(items.map(async item => {
+    // Phase 2: USDA lookup per item — parallel with 4s timeout each
+    if (items.length > 0) {
+      msgEl.textContent = `Looking up ${items.length} item${items.length>1?'s':''} in USDA database\u2026`;
+    }
+
+    const usdaLookup = async (foodName, grams) => {
+      const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(foodName)}&dataType=Foundation,SR%20Legacy&pageSize=1&api_key=DEMO_KEY`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
       try {
-        const results = await searchFoodMultiDB(item.food);
-        const best = results[0];
-        if (!best) return null;
-        const dbG = extractServingGrams(best.servingSize);
-        const scale = dbG > 0 ? item.grams_in_photo / dbG : 1;
+        const resp = await fetch(url, {signal: ctrl.signal});
+        clearTimeout(timer);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const f = data.foods?.[0];
+        if (!f) return null;
+        const getNut = (id) => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
+        const cal100 = getNut(1008);
+        if (!cal100) return null;
+        const scale = grams / 100;
         return {
-          display_name: item.display_name, grams: item.grams_in_photo,
-          db_source: best.source, confidence: item.confidence,
-          calories: Math.round(best.calories*scale),
-          protein:  Math.round(best.protein*scale*10)/10,
-          carbs:    Math.round(best.carbs*scale*10)/10,
-          fat:      Math.round(best.fat*scale*10)/10,
+          calories: Math.round(getNut(1008) * scale),
+          protein:  Math.round(getNut(1003) * scale * 10) / 10,
+          carbs:    Math.round(getNut(1005) * scale * 10) / 10,
+          fat:      Math.round(getNut(1004) * scale * 10) / 10,
         };
-      } catch(e) { return null; }
-    }));
+      } catch(e) { clearTimeout(timer); return null; }
+    };
 
-    const valid = dbResults.filter(Boolean);
+    const dbResults = await Promise.all(
+      items.map(item => usdaLookup(item.food, item.grams_in_photo))
+    );
 
-    if (valid.length > 0) {
-      const totals = valid.reduce((a,r)=>({calories:a.calories+r.calories,protein:a.protein+r.protein,carbs:a.carbs+r.carbs,fat:a.fat+r.fat}),{calories:0,protein:0,carbs:0,fat:0});
-      const sources = [...new Set(valid.map(r=>r.db_source))].join(', ');
-      clearInterval(msgInt);
+    const valid = dbResults.map((r, i) => r ? {...r, display_name: items[i].display_name, grams: items[i].grams_in_photo, db_source:'USDA'} : null).filter(Boolean);
+    const gaps  = items.filter((_, i) => !dbResults[i]);
+    const dbCoverage = items.length > 0 ? valid.length / items.length : 0;
+
+    let gapItems = [];
+    if (gaps.length > 0 && dbCoverage > 0) {
+      // Haiku estimates gaps (text only — cheap & fast)
+      try {
+        const gapPrompt = `Estimate macros using USDA SR28 values. Return ONLY a JSON array:
+[{"food":"name","calories":0,"protein":0,"carbs":0,"fat":0}]
+Items: ${gaps.map(g => `${g.display_name} (${g.grams_in_photo}g)`).join(', ')}`;
+        const gapResp = await callClaudeAPI({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 300,
+          messages: [{role:'user', content: gapPrompt}]
+        });
+        const gapText = gapResp.content?.find(b=>b.type==='text')?.text || '';
+        const parsed = JSON.parse(gapText.replace(/```json|```/g,'').trim());
+        gapItems = parsed.map((g, i) => ({
+          display_name: gaps[i]?.display_name || g.food, grams: gaps[i]?.grams_in_photo || 100,
+          db_source: 'AI Est',
+          calories: Math.round(g.calories||0), protein: Math.round((g.protein||0)*10)/10,
+          carbs: Math.round((g.carbs||0)*10)/10, fat: Math.round((g.fat||0)*10)/10,
+        }));
+      } catch(e) { /* optional */ }
+    }
+
+    if (valid.length > 0 || gapItems.length > 0) {
+      const allItems = [...valid, ...gapItems];
+      const totals = allItems.reduce((a,r) => ({
+        calories: a.calories+r.calories, protein: a.protein+r.protein,
+        carbs: a.carbs+r.carbs, fat: a.fat+r.fat
+      }), {calories:0,protein:0,carbs:0,fat:0});
+
       aiProduct = {
-        name: visionJSON.meal_name||'Meal',
-        description: valid.map(r=>`${r.display_name} (~${r.grams}g): ${r.calories}cal P:${r.protein}g C:${r.carbs}g F:${r.fat}g [${r.db_source}]`).join('\n') + `\n\nSources: ${sources}`,
-        calories: totals.calories, protein: totals.protein, carbs: totals.carbs, fat: totals.fat,
-        confidence:'high', db_verified:true,
+        name: visionJSON.meal_name || 'Meal',
+        description: allItems.map(r => `${r.display_name} (~${r.grams}g): ${r.calories}cal P:${r.protein}g C:${r.carbs}g F:${r.fat}g [${r.db_source}]`).join('\n'),
+        calories: totals.calories, protein: totals.protein,
+        carbs: totals.carbs, fat: totals.fat,
+        confidence: dbCoverage >= 0.5 ? 'high' : 'medium', db_verified: true,
       };
+
     } else {
-      // Fallback: direct estimation with DB knowledge
-      msgEl.textContent = 'Estimating with nutrition database knowledge…';
+      // Full fallback: Sonnet estimates from vision data — NO second image call
+      msgEl.textContent = 'Calculating macros\u2026';
+      const estPrompt = buildNutritionKnowledgePrompt(hint, visionJSON);
       const estResp = await callClaudeAPI({
-        model:'claude-opus-4-6', max_tokens:1024,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:photoBase64}},
-          {type:'text',text:buildNutritionKnowledgePrompt(hint,visionJSON)}
-        ]}]
+        model: 'claude-sonnet-4-6', max_tokens: 512,
+        messages: [{role:'user', content: estPrompt}]
       });
-      const estText = estResp.content?.find(b=>b.type==='text')?.text||'';
-      const estJSON = JSON.parse(estText.replace(/```json|```/g,'').trim());
-      clearInterval(msgInt);
+      const estText = estResp.content?.find(b=>b.type==='text')?.text || '';
+      let estJSON;
+      try { estJSON = JSON.parse(estText.replace(/```json|```/g,'').trim()); }
+      catch(e) { estJSON = {meal_name: visionJSON.meal_name||'Meal', calories:0, protein:0, carbs:0, fat:0}; }
+
       aiProduct = {
-        name:estJSON.meal_name||visionJSON.meal_name||'Meal',
-        description:estJSON.description||'',
-        calories:Math.round(estJSON.calories||0),
-        protein:Math.round((estJSON.protein||0)*10)/10,
-        carbs:Math.round((estJSON.carbs||0)*10)/10,
-        fat:Math.round((estJSON.fat||0)*10)/10,
-        confidence:estJSON.confidence||'medium', db_verified:false,
+        name: estJSON.meal_name || visionJSON.meal_name || 'Meal',
+        description: estJSON.description || '',
+        calories: Math.round(estJSON.calories||0),
+        protein:  Math.round((estJSON.protein||0)*10)/10,
+        carbs:    Math.round((estJSON.carbs||0)*10)/10,
+        fat:      Math.round((estJSON.fat||0)*10)/10,
+        confidence: estJSON.confidence || 'medium', db_verified: false,
       };
     }
 
-    aiServings=1; renderAIResult();
+    aiServings = 1;
+    renderAIResult();
+
   } catch(err) {
-    clearInterval(msgInt);
-    document.getElementById('photoStep2').style.display='none';
-    document.getElementById('photoStep1').style.display='block';
-    document.getElementById('photoPreviewWrap').style.display='block';
-    document.getElementById('photoPlaceholder').style.display='none';
-    document.getElementById('analyzeBtn').disabled=false;
-    document.getElementById('analyzeBtn').style.opacity='1';
-    showToast('❌ Error: '+(err.message||'Try again'));
+    document.getElementById('photoStep2').style.display = 'none';
+    document.getElementById('photoStep1').style.display = 'block';
+    document.getElementById('photoPreviewWrap').style.display = 'block';
+    document.getElementById('photoPlaceholder').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+    document.getElementById('analyzeBtn').style.opacity = '1';
+    showToast('\u274c Error: ' + (err.message || 'Try again'));
   }
 }
 
