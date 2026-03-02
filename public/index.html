@@ -1497,6 +1497,33 @@ PROMISE ERROR:
       </div>
     </div>
 
+    <!-- Nutrition Databases Section -->
+    <div class="settings-section">
+      <div class="settings-section-title">🗄️ Nutrition Databases</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7">
+        The app uses <strong>Open Food Facts</strong> (free, no key needed) and <strong>USDA FoodData Central</strong> (free, no key needed) automatically.<br><br>
+        Add <strong>Nutritionix</strong> keys for restaurant foods, branded items, and natural language search. Get free keys at <a href="https://developer.nutritionix.com" target="_blank" style="color:#a78bfa">developer.nutritionix.com</a> (500 queries/day free).
+      </div>
+      <div class="key-input-group">
+        <div class="key-input-label">NUTRITIONIX APP ID</div>
+        <input type="text" id="nutritionixAppIdInput" placeholder="e.g. a1b2c3d4" />
+      </div>
+      <div class="key-input-group" style="margin-top:8px">
+        <div class="key-input-label">NUTRITIONIX APP KEY</div>
+        <input type="text" id="nutritionixAppKeyInput" placeholder="Paste App Key…" />
+      </div>
+      <button class="btn-green" style="margin-top:10px" onclick="saveNutritionixKeys()">💾 Save Keys</button>
+      <div id="nutritionixStatus" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
+      <div style="margin-top:14px;font-size:11px;color:var(--text3);line-height:1.7">
+        <strong style="color:var(--text2)">Databases used for lookups:</strong><br>
+        ✅ Open Food Facts (world + US) — free<br>
+        ✅ USDA FoodData Central (SR28, Foundation, Branded UPC) — free<br>
+        ✅ Nutritionix — requires free API key above<br>
+        ✅ UPC ItemDB — free, broad product coverage<br>
+        📖 Photo AI uses: NCCDB, SR28, CNF, CoFID, NEVO, NUTTAB reference knowledge
+      </div>
+    </div>
+
     <!-- Strava Section -->
     <div class="settings-section">
       <div class="settings-section-title">🟠 Strava</div>
@@ -3868,330 +3895,468 @@ function startQuagga() {
 function startDecoding() { /* legacy stub — not used with Quagga */ }
 function beginScan() { /* legacy stub — not used with Quagga */ }
 
+async // ══════════════════════════════════════════════════════════════════
+// ── MULTI-DATABASE FOOD LOOKUP ENGINE ─────────────────────────────
+// Covers: USDA FoodData Central (SR28/Foundation/Branded/UPC),
+//         Open Food Facts (world + US), Nutritionix (branded + NLP),
+//         UPC ItemDB (broad product coverage)
+//
+// For photo AI: two-phase approach
+//   Phase 1 — Vision: Claude identifies each food + estimated portion
+//   Phase 2 — DB lookup: query USDA/Nutritionix for each identified food
+//             and replace estimated values with database-accurate macros
+// ══════════════════════════════════════════════════════════════════
+
+// ── API Keys (editable in Settings) ──
+function getNutritionixKeys() {
+  return {
+    appId:  getStorage('nutritionixAppId',  ''),
+    appKey: getStorage('nutritionixAppKey', ''),
+  };
+}
+
+// ── Sanity-check a parsed product ──
+function isSaneProduct(p) {
+  if (!p || !p.name) return false;
+  if (p.calories < 0 || p.calories > 3000) return false;
+  if (p.protein  < 0 || p.protein  > 250)  return false;
+  if (p.carbs    < 0 || p.carbs    > 400)  return false;
+  if (p.fat      < 0 || p.fat      > 200)  return false;
+  // Macro-calorie cross-check (within 40% tolerance)
+  const calc = p.protein * 4 + p.carbs * 4 + p.fat * 9;
+  if (p.calories > 15 && calc > 0 && (calc / p.calories < 0.5 || calc / p.calories > 2.2)) return false;
+  return true;
+}
+
+// ── Parse Open Food Facts product ──
+function parseOFProduct(p) {
+  const n = p.nutriments || {};
+  const servingQty = parseFloat(p.serving_quantity) || parseFloat(p.serving_size) || 0;
+  const scale = servingQty > 0 ? servingQty / 100 : 1;
+
+  function get(base) {
+    const alts = [base, base.replace('-','_'), base.replace('_','-')];
+    for (const b of alts) {
+      const sv = n[`${b}_serving`];
+      if (sv != null && sv !== '' && !isNaN(+sv)) return +sv;
+    }
+    for (const b of alts) {
+      const v = n[`${b}_100g`];
+      if (v != null && v !== '' && !isNaN(+v)) return +v * scale;
+    }
+    return 0;
+  }
+
+  let cals = get('energy-kcal');
+  if (cals === 0) { const kj = get('energy'); if (kj > 0) cals = kj / 4.184; }
+
+  // Detect and fix per-100g values masquerading as per-serving
+  if (cals > 800 && servingQty > 0 && servingQty < 60) cals *= servingQty / 100;
+
+  return {
+    name:        p.product_name_en || p.product_name || p.abbreviated_product_name || '',
+    brand:       p.brands || '',
+    calories:    Math.round(cals),
+    protein:     Math.round(get('proteins') * 10) / 10,
+    carbs:       Math.round(get('carbohydrates') * 10) / 10,
+    fat:         Math.round(get('fat') * 10) / 10,
+    servingSize: p.serving_size || (servingQty > 0 ? `${servingQty}g` : '1 serving'),
+    source:      'Open Food Facts',
+  };
+}
+
+// ── Parse USDA FoodData Central product (search result) ──
+function parseUSDAProduct(f) {
+  const nutr = id => {
+    const hit = (f.foodNutrients||[]).find(x =>
+      x.nutrientId===id || x.nutrientNumber===String(id) || x.nutrientId===String(id));
+    return hit?.value ?? 0;
+  };
+  let servingG = parseFloat(f.servingSize) || 0;
+  const unit = (f.servingSizeUnit||'g').toLowerCase();
+  if (unit==='oz') servingG *= 28.3495;
+  else if (unit==='lb') servingG *= 453.592;
+  const scale = servingG > 0 ? servingG / 100 : 1;
+  const cal100  = nutr(1008)||nutr(208);
+  const prot100 = nutr(1003)||nutr(203);
+  const carb100 = nutr(1005)||nutr(205);
+  const fat100  = nutr(1004)||nutr(204);
+  const micros  = parseMicronutrients ? parseMicronutrients(f.foodNutrients, scale) : {};
+  return {
+    name:        f.description || '',
+    brand:       f.brandOwner || f.brandName || '',
+    calories:    Math.round(cal100  * scale),
+    protein:     Math.round(prot100 * scale * 10)/10,
+    carbs:       Math.round(carb100 * scale * 10)/10,
+    fat:         Math.round(fat100  * scale * 10)/10,
+    servingSize: servingG > 0 ? `${f.servingSize}${f.servingSizeUnit||'g'}` : '100g',
+    source:      'USDA FDC',
+    micros,
+  };
+}
+
+// ── Parse Nutritionix branded item ──
+function parseNutritionixItem(item) {
+  const s = item.serving_qty || 1;
+  return {
+    name:        item.food_name || '',
+    brand:       item.brand_name || item.nf_brand_name || '',
+    calories:    Math.round(item.nf_calories || 0),
+    protein:     Math.round((item.nf_protein||0)*10)/10,
+    carbs:       Math.round((item.nf_total_carbohydrate||0)*10)/10,
+    fat:         Math.round((item.nf_total_fat||0)*10)/10,
+    servingSize: `${s} ${item.serving_unit||'serving'}`,
+    source:      'Nutritionix',
+  };
+}
+
+// ── Barcode lookup: sequential cascade across all databases ──
 async function lookupBarcode(barcode) {
-  document.getElementById('scanStatus').textContent = `⏳ Looking up barcode ${barcode}…`;
+  document.getElementById('scanStatus').textContent = `⏳ Looking up ${barcode}…`;
   document.getElementById('cameraView').style.display = 'none';
   stopCamera();
 
-  // ══════════════════════════════════════════════════════════
-  // parseOFF — correctly handles Open Food Facts nutriment data
-  // OFFs always stores nutrients per 100g in _100g fields AND
-  // per-serving in _serving fields. We ALWAYS prefer _serving.
-  // If _serving is missing, we scale from _100g using serving_quantity.
-  // ══════════════════════════════════════════════════════════
-  function parseOFF(p) {
-    const n = p.nutriments || {};
-
-    // Get per-serving value first, fall back to per-100g × scale
-    const servingQty = parseFloat(p.serving_quantity) || parseFloat(p.serving_size) || 0;
-    const scale100g  = servingQty > 0 ? servingQty / 100 : 1;
-
-    function getPerServing(base) {
-      // Key variants for the nutrient name
-      const bases = [base, base.replace('-','_')];
-      for (const b of bases) {
-        // 1. Explicit per-serving field
-        const sv = n[`${b}_serving`];
-        if (sv !== undefined && sv !== null && sv !== '' && !isNaN(parseFloat(sv))) {
-          return parseFloat(sv);
-        }
-      }
-      // 2. Per-100g field × serving scale
-      for (const b of bases) {
-        const v100 = n[`${b}_100g`];
-        if (v100 !== undefined && v100 !== null && v100 !== '' && !isNaN(parseFloat(v100))) {
-          return parseFloat(v100) * scale100g;
-        }
-      }
-      // 3. Raw field (assume per-serving if nutrition_data_per === 'serving', else scale)
-      for (const b of bases) {
-        const raw = n[b];
-        if (raw !== undefined && raw !== null && raw !== '' && !isNaN(parseFloat(raw))) {
-          const dataPer = p.nutrition_data_per || '100g';
-          return dataPer === 'serving' ? parseFloat(raw) : parseFloat(raw) * scale100g;
-        }
-      }
-      return 0;
-    }
-
-    // Calories: prefer energy-kcal, fall back to energy (kJ) ÷ 4.184
-    let calories = getPerServing('energy-kcal');
-    if (calories === 0) {
-      const kj = getPerServing('energy');
-      if (kj > 0) calories = kj / 4.184;
-    }
-
-    // Sanity check: if calories per serving look like per-100g (>800 for most foods)
-    // AND we have a real serving size that's much smaller, flag a scaling issue
-    // and force-scale down
-    if (calories > 800 && servingQty > 0 && servingQty < 60) {
-      // Likely 100g data without proper _serving fields — scale it
-      calories   = calories   * (servingQty / 100);
-    }
-
-    const protein = getPerServing('proteins');
-    const carbs   = getPerServing('carbohydrates');
-    const fat     = getPerServing('fat');
-
-    // Build serving size label
-    const servingLabel = p.serving_size
-      ? p.serving_size
-      : servingQty > 0 ? `${servingQty}g` : '1 serving';
-
-    return {
-      name:        p.product_name_en || p.product_name || p.abbreviated_product_name || '',
-      brand:       p.brands || '',
-      calories:    Math.round(calories),
-      protein:     Math.round(protein  * 10) / 10,
-      carbs:       Math.round(carbs    * 10) / 10,
-      fat:         Math.round(fat      * 10) / 10,
-      servingSize: servingLabel,
-      source:      'Open Food Facts',
-    };
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // parseUSDAFood — extract macros from USDA FoodData item.
-  // USDA branded foods store nutrients per 100g by default.
-  // servingSize is in servingSizeUnit (g, oz, etc).
-  // We must scale 100g values to the actual serving size.
-  // ══════════════════════════════════════════════════════════
-  function parseUSDAFood(f) {
-    const nutr = id => {
-      const found = (f.foodNutrients || []).find(x =>
-        x.nutrientId === id || x.nutrientNumber === String(id) ||
-        x.nutrientId === String(id)
-      );
-      return found?.value ?? 0;
-    };
-
-    // Raw values are per 100g
-    const cal100   = nutr(1008) || nutr(208);
-    const prot100  = nutr(1003) || nutr(203);
-    const carbs100 = nutr(1005) || nutr(205);
-    const fat100   = nutr(1004) || nutr(204);
-
-    // Convert serving to grams for scaling
-    let servingG = parseFloat(f.servingSize) || 0;
-    const unit   = (f.servingSizeUnit || 'g').toLowerCase();
-    if (unit === 'oz')      servingG *= 28.3495;
-    else if (unit === 'ml') servingG *= 1;   // assume 1g/ml for liquids
-    else if (unit === 'lb') servingG *= 453.592;
-
-    // If no serving size in grams, values are already per 100g — use as-is
-    const scale = servingG > 0 ? servingG / 100 : 1;
-
-    const servingLabel = f.servingSize
-      ? `${f.servingSize}${f.servingSizeUnit || 'g'}`
-      : '100g';
-
-    // Extract full micronutrient profile
-    const micros = parseMicronutrients(f.foodNutrients, scale);
-
-    return {
-      name:        f.description || '',
-      brand:       f.brandOwner || f.brandName || '',
-      calories:    Math.round(cal100   * scale),
-      protein:     Math.round(prot100  * scale * 10) / 10,
-      carbs:       Math.round(carbs100 * scale * 10) / 10,
-      fat:         Math.round(fat100   * scale * 10) / 10,
-      servingSize: servingLabel,
-      source:      'USDA',
-      micros,
-    };
-  }
-
-  // ── Sanity check: flag implausible macros ──
-  function isSane(prod) {
-    if (!prod.name) return false;
-    if (prod.calories < 0 || prod.calories > 2000) return false;
-    if (prod.protein  < 0 || prod.protein  > 200)  return false;
-    if (prod.carbs    < 0 || prod.carbs    > 300)   return false;
-    if (prod.fat      < 0 || prod.fat      > 150)   return false;
-    // Calorie sanity: 4*P + 4*C + 9*F should roughly equal calories (±30%)
-    const calcCals = prod.protein * 4 + prod.carbs * 4 + prod.fat * 9;
-    if (prod.calories > 10 && calcCals > 0) {
-      const ratio = calcCals / prod.calories;
-      if (ratio < 0.5 || ratio > 2.0) return false; // macros don't add up — bad data
-    }
-    return true;
-  }
-
-  // ── DB 1: Open Food Facts — exact UPC/EAN lookup ──────────
   try {
-    document.getElementById('scanStatus').textContent = '⏳ Searching Open Food Facts…';
-    const res  = await fetch(
+    const prod = await lookupBarcodeMultiDB(barcode);
+    if (prod) {
+      scannedProduct = prod;
+      servings = 1;
+      renderFoodResult();
+      if (prod.incomplete) {
+        document.getElementById('scanStatus').textContent = `⚠️ Found: "${prod.name}" — no nutrition data available. Enter manually.`;
+      }
+      return;
+    }
+    // All databases failed
+    document.getElementById('scanStatus').textContent = `❌ Barcode ${barcode} not found in any database. Try manual entry or AI Search.`;
+    document.getElementById('cameraView').style.display = 'block';
+    openScannerCamera();
+  } catch(e) {
+    document.getElementById('scanStatus').textContent = '❌ Lookup error — check connection';
+    document.getElementById('cameraView').style.display = 'block';
+    openScannerCamera();
+    console.error('lookupBarcode error:', e);
+  }
+}
+
+function extractServingGrams(servingStr) {
+  if (!servingStr) return 0;
+  const ozMatch  = servingStr.match(/([\d.]+)\s*oz/i);
+  if (ozMatch) return parseFloat(ozMatch[1]) * 28.3495;
+  const gMatch   = servingStr.match(/([\d.]+)\s*g/i);
+  if (gMatch) return parseFloat(gMatch[1]);
+  const mlMatch  = servingStr.match(/([\d.]+)\s*ml/i);
+  if (mlMatch) return parseFloat(mlMatch[1]); // assume 1g/ml
+  const cupMatch = servingStr.match(/([\d.]+)\s*cup/i);
+  if (cupMatch) return parseFloat(cupMatch[1]) * 240;
+  const tbspMatch = servingStr.match(/([\d.]+)\s*tbsp/i);
+  if (tbspMatch) return parseFloat(tbspMatch[1]) * 15;
+  return 0;
+}
+
+// ── Enhanced AI nutrition prompt with multi-database knowledge ──
+// ── Barcode lookup: cascade across all databases ──
+async function lookupBarcodeMultiDB(barcode) {
+  const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
+  const nix = getNutritionixKeys();
+
+  // 1. Open Food Facts (world endpoint)
+  try {
+    log(`⏳ Searching Open Food Facts…`);
+    const r = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${barcode}` +
       `?fields=product_name,product_name_en,abbreviated_product_name,brands,` +
-      `serving_size,serving_quantity,nutriments,nutrition_data_per,nutriscore_data`
+      `serving_size,serving_quantity,nutriments,nutrition_data_per`
     );
-    const data = await res.json();
-    if (data.status === 1 && data.product) {
-      const prod = parseOFF(data.product);
-      if (isSane(prod)) {
-        scannedProduct = prod;
-        servings = 1;
-        renderFoodResult();
-        document.getElementById('scanStatus').textContent = '✅ Found — Open Food Facts';
-        return;
-      } else if (prod.name) {
-        // Found product but macros are bad — show with warning
-        // Still use it but warn user
-        scannedProduct = prod;
-        servings = 1;
-        renderFoodResult();
-        document.getElementById('scanStatus').textContent = '⚠️ Found but nutrition data may be incomplete — verify against label';
-        return;
-      }
+    const d = await r.json();
+    if (d.status === 1 && d.product) {
+      const p = parseOFProduct(d.product);
+      if (isSaneProduct(p) && p.calories > 0) { log('✅ Found — Open Food Facts'); return p; }
     }
-  } catch(e) { console.warn('OFF lookup failed:', e); }
+  } catch(e) { console.warn('OFF world:', e); }
 
-  // ── DB 2: USDA FoodData Central — direct UPC gtinUpc lookup ──
+  // 2. USDA FoodData Central — gtinUpc lookup
   try {
-    document.getElementById('scanStatus').textContent = '⏳ Searching USDA (by UPC)…';
-    // USDA supports direct gtinUpc search which is exact
-    const res  = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search` +
-      `?query=${barcode}&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`
+    log(`⏳ Searching USDA Food Data Central…`);
+    const r = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${barcode}` +
+      `&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`
     );
-    const data = await res.json();
-    // Find exact gtinUpc match first, then fall back to first result
-    const foods = data.foods || [];
-    const exact = foods.find(f => f.gtinUpc === barcode || f.gtinUpc === barcode.replace(/^0+/,''));
-    const f     = exact || foods[0];
-    if (f) {
-      const prod = parseUSDAFood(f);
-      if (isSane(prod)) {
-        scannedProduct = prod;
-        servings = 1;
-        renderFoodResult();
-        document.getElementById('scanStatus').textContent =
-          exact ? '✅ Found — USDA (exact UPC match)' : '✅ Found — USDA';
-        return;
-      }
+    const d = await r.json();
+    const foods = d.foods || [];
+    const exact = foods.find(f => f.gtinUpc===barcode || f.gtinUpc===barcode.replace(/^0+/,''));
+    const hit = exact || foods[0];
+    if (hit) {
+      const p = parseUSDAProduct(hit);
+      if (isSaneProduct(p)) { log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA FDC'); return p; }
     }
-  } catch(e) { console.warn('USDA UPC lookup failed:', e); }
+  } catch(e) { console.warn('USDA UPC:', e); }
 
-  // ── DB 3: Open Food Facts US store (fallback) ──────────────
-  // Try the US-specific endpoint in case world endpoint missed it
+  // 3. Nutritionix UPC lookup (if keys set)
+  if (nix.appId && nix.appKey) {
+    try {
+      log('⏳ Searching Nutritionix…');
+      const r = await fetch('https://trackapi.nutritionix.com/v2/search/item?upc=' + barcode, {
+        headers: { 'x-app-id': nix.appId, 'x-app-key': nix.appKey, 'x-remote-user-id': '0' }
+      });
+      const d = await r.json();
+      const item = (d.foods||[])[0];
+      if (item) {
+        const p = parseNutritionixItem(item);
+        if (isSaneProduct(p)) { log('✅ Found — Nutritionix'); return p; }
+      }
+    } catch(e) { console.warn('Nutritionix UPC:', e); }
+  }
+
+  // 4. Open Food Facts US endpoint
   try {
-    document.getElementById('scanStatus').textContent = '⏳ Searching Open Food Facts US…';
-    const res  = await fetch(
+    log('⏳ Searching Open Food Facts US…');
+    const r = await fetch(
       `https://us.openfoodfacts.org/api/v2/product/${barcode}` +
       `?fields=product_name,product_name_en,brands,serving_size,serving_quantity,nutriments,nutrition_data_per`
     );
-    const data = await res.json();
-    if (data.status === 1 && data.product) {
-      const prod = parseOFF(data.product);
-      if (prod.name && prod.calories > 0) {
-        scannedProduct = prod;
-        servings = 1;
-        renderFoodResult();
-        document.getElementById('scanStatus').textContent = '✅ Found — Open Food Facts US';
-        return;
+    const d = await r.json();
+    if (d.status===1 && d.product) {
+      const p = parseOFProduct(d.product);
+      if (p.name && p.calories > 0) { log('✅ Found — Open Food Facts US'); return p; }
+    }
+  } catch(e) { console.warn('OFF US:', e); }
+
+  // 5. UPC ItemDB — broad product catalog
+  try {
+    log('⏳ Searching UPC database…');
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+    const d = await r.json();
+    const item = (d.items||[])[0];
+    if (item && item.title) {
+      const name = item.title;
+      log(`⏳ Found "${name.slice(0,30)}" — looking up nutrition…`);
+      const usdaHit = await searchUSDAByName(name);
+      if (usdaHit) {
+        usdaHit.name  = name;
+        usdaHit.brand = item.brand || '';
+        log('✅ Found via UPC + USDA name match');
+        return usdaHit;
       }
+      return { name, brand:item.brand||'', calories:0, protein:0, carbs:0, fat:0, servingSize:'1 serving', source:'UPC ItemDB', incomplete:true };
     }
-  } catch(e) { console.warn('OFF US lookup failed:', e); }
+  } catch(e) { console.warn('UPC ItemDB:', e); }
 
-  // ── All databases failed — offer manual entry prompt ──────
-  document.getElementById('scanStatus').textContent =
-    `❌ Barcode ${barcode} not found. Try the manual search or enter nutrition facts manually.`;
-  document.getElementById('cameraView').style.display = 'block';
-  openScannerCamera();
+  return null;
 }
 
-function renderFoodResult() {
-  const p = scannedProduct;
-  document.getElementById('foodName').textContent = p.name;
+// ── USDA name search (used by UPC fallback) ──
+async function searchUSDAByName(name) {
+  try {
+    const r = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(name)}` +
+      `&dataType=Branded,Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`
+    );
+    const d = await r.json();
+    const hit = (d.foods||[])[0];
+    return hit ? parseUSDAProduct(hit) : null;
+  } catch(e) { return null; }
+}
 
-  // Brand + serving info + source badge
-  const sourceColor = p.source === 'USDA' ? '#60a5fa' : '#a78bfa';
-  const sourceBg    = p.source === 'USDA' ? '#0d1e3d' : '#1a1030';
-  document.getElementById('foodBrand').innerHTML =
-    `${p.brand ? `<strong>${p.brand}</strong> · ` : ''}` +
-    `Per serving: <strong>${p.servingSize}</strong>` +
-    `<span style="margin-left:8px;font-size:9px;background:${sourceBg};color:${sourceColor};padding:2px 7px;border-radius:8px;font-weight:700">${p.source || 'DB'}</span>`;
+// ── Multi-DB text search for AI Search modal ──
+async function searchFoodMultiDB(query) {
+  const nix = getNutritionixKeys();
+  const results = [];
+  const seen = new Set();
+  const dedup = p => { const k=p.name.toLowerCase().slice(0,25).trim(); if(seen.has(k))return false; seen.add(k);return true; };
 
-  document.getElementById('srvVal').textContent = servings % 1 === 0 ? servings : servings.toFixed(1);
+  // 1. USDA Foundation + SR Legacy (best micros)
+  try {
+    const r = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
+      `&dataType=Foundation,SR%20Legacy&pageSize=5&api_key=${USDA_API_KEY}`
+    );
+    const d = await r.json();
+    (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'full'}); });
+  } catch(e) {}
 
-  const cals  = Math.round(p.calories * servings);
-  const prot  = Math.round(p.protein  * servings * 10) / 10;
-  const carbs = Math.round(p.carbs    * servings * 10) / 10;
-  const fat   = Math.round(p.fat      * servings * 10) / 10;
+  // 2. USDA Branded
+  try {
+    const r = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
+      `&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`
+    );
+    const d = await r.json();
+    (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial'}); });
+  } catch(e) {}
 
-  // Calorie check: 4P + 4C + 9F should be close to label calories
-  const calcCals = Math.round(prot * 4 + carbs * 4 + fat * 9);
-  const calDiff  = Math.abs(calcCals - cals);
-  const showCalWarning = cals > 10 && calDiff > cals * 0.3; // >30% off
-
-  document.getElementById('foodMacros').innerHTML = [
-    { label: 'Calories', val: cals,  unit: 'kcal', color: '#f59e0b' },
-    { label: 'Protein',  val: prot,  unit: 'g',    color: '#22c55e' },
-    { label: 'Carbs',    val: carbs, unit: 'g',    color: '#3b82f6' },
-    { label: 'Fat',      val: fat,   unit: 'g',    color: '#ef4444' },
-  ].map(m => `
-    <div class="food-macro-chip">
-      <div class="food-macro-chip-val" style="color:${m.color}">${m.val}</div>
-      <div class="food-macro-chip-lbl">${m.label}</div>
-      <div style="font-size:9px;color:var(--text3)">${m.unit}</div>
-    </div>`).join('');
-
-  // Show warning if macros don't add up — tells user to verify label
-  const warnEl = document.getElementById('scanMacroWarning');
-  if (warnEl) {
-    if (showCalWarning) {
-      warnEl.style.display = 'block';
-      warnEl.textContent = `⚠️ Macro math (${calcCals} kcal calc'd) doesn't match calories (${cals} kcal). Verify against the nutrition label before logging.`;
-    } else {
-      warnEl.style.display = 'none';
-    }
+  // 3. Nutritionix natural language
+  if (nix.appId && nix.appKey) {
+    try {
+      const r = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-app-id':nix.appId,'x-app-key':nix.appKey,'x-remote-user-id':'0'},
+        body:JSON.stringify({query})
+      });
+      const d = await r.json();
+      (d.foods||[]).forEach(item => { const p=parseNutritionixItem(item); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial',source:'Nutritionix'}); });
+    } catch(e) {}
   }
 
-  document.getElementById('foodResult').style.display = 'block';
+  // 4. Open Food Facts text search
+  try {
+    const r = await fetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}` +
+      `&search_simple=1&action=process&json=1&page_size=4` +
+      `&fields=product_name,brands,serving_size,serving_quantity,nutriments`
+    );
+    const d = await r.json();
+    (d.products||[]).forEach(p => { const prod=parseOFProduct(p); if(isSaneProduct(prod)&&prod.calories>0&&dedup(prod)) results.push(prod); });
+  } catch(e) {}
+
+  return results.slice(0, 10);
 }
 
-function adjustServings(delta) {
-  servings = Math.max(0.5, Math.round((servings + delta) * 10) / 10);
-  renderFoodResult();
-}
+// ── Two-phase photo AI: Vision + DB lookup ──
+async function analyzePhotoWithDB() {
+  if (!photoBase64) return;
+  document.getElementById('photoStep1').style.display = 'none';
+  document.getElementById('photoStep2').style.display = 'block';
 
-function logScannedFood() {
-  if (!scannedProduct) return;
-  const p = scannedProduct;
-  // Scale micros by servings
-  const scaledMicros = {};
-  if (p.micros) {
-    Object.entries(p.micros).forEach(([k, v]) => {
-      scaledMicros[k] = Math.round(v * servings * 1000) / 1000;
+  let msgIdx = 0;
+  const msgEl = document.getElementById('aiLoadingMsg');
+  const msgs = ['Identifying foods in photo…','Searching nutrition databases…','Cross-referencing USDA SR28…','Calculating accurate macros…','Verifying against databases…','Almost done…'];
+  const msgInt = setInterval(() => { msgIdx=(msgIdx+1)%msgs.length; msgEl.textContent=msgs[msgIdx]; }, 1800);
+  const hint = document.getElementById('photoHint').value.trim();
+
+  try {
+    // Phase 1: Vision identification
+    const visionPrompt = `You are a precise food identification expert. Analyze this food photo.
+${hint?`User note: "${hint}"`:''}
+
+Identify each distinct food item. For each, estimate the grams of the EXACT portion visible in the photo.
+
+Return ONLY valid JSON, no markdown:
+{"meal_name":"Short meal name","items":[{"food":"exact searchable name (e.g. grilled chicken breast, white rice cooked)","display_name":"human-readable name","grams_in_photo":100,"confidence":"high"}],"notes":"any context"}`;
+
+    const visionResp = await callClaudeAPI({
+      model:'claude-opus-4-6', max_tokens:1024,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:photoBase64}},
+        {type:'text',text:visionPrompt}
+      ]}]
     });
+    const visionText = visionResp.content?.find(b=>b.type==='text')?.text||'';
+    const visionJSON = JSON.parse(visionText.replace(/```json|```/g,'').trim());
+    const items = visionJSON.items || [];
+
+    // Phase 2: DB lookup per item
+    msgEl.textContent = 'Scanning nutrition databases…';
+    const dbResults = await Promise.all(items.map(async item => {
+      try {
+        const results = await searchFoodMultiDB(item.food);
+        const best = results[0];
+        if (!best) return null;
+        const dbG = extractServingGrams(best.servingSize);
+        const scale = dbG > 0 ? item.grams_in_photo / dbG : 1;
+        return {
+          display_name: item.display_name, grams: item.grams_in_photo,
+          db_source: best.source, confidence: item.confidence,
+          calories: Math.round(best.calories*scale),
+          protein:  Math.round(best.protein*scale*10)/10,
+          carbs:    Math.round(best.carbs*scale*10)/10,
+          fat:      Math.round(best.fat*scale*10)/10,
+        };
+      } catch(e) { return null; }
+    }));
+
+    const valid = dbResults.filter(Boolean);
+
+    if (valid.length > 0) {
+      const totals = valid.reduce((a,r)=>({calories:a.calories+r.calories,protein:a.protein+r.protein,carbs:a.carbs+r.carbs,fat:a.fat+r.fat}),{calories:0,protein:0,carbs:0,fat:0});
+      const sources = [...new Set(valid.map(r=>r.db_source))].join(', ');
+      clearInterval(msgInt);
+      aiProduct = {
+        name: visionJSON.meal_name||'Meal',
+        description: valid.map(r=>`${r.display_name} (~${r.grams}g): ${r.calories}cal P:${r.protein}g C:${r.carbs}g F:${r.fat}g [${r.db_source}]`).join('\n') + `\n\nSources: ${sources}`,
+        calories: totals.calories, protein: totals.protein, carbs: totals.carbs, fat: totals.fat,
+        confidence:'high', db_verified:true,
+      };
+    } else {
+      // Fallback: direct estimation with DB knowledge
+      msgEl.textContent = 'Estimating with nutrition database knowledge…';
+      const estResp = await callClaudeAPI({
+        model:'claude-opus-4-6', max_tokens:1024,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:photoBase64}},
+          {type:'text',text:buildNutritionKnowledgePrompt(hint,visionJSON)}
+        ]}]
+      });
+      const estText = estResp.content?.find(b=>b.type==='text')?.text||'';
+      const estJSON = JSON.parse(estText.replace(/```json|```/g,'').trim());
+      clearInterval(msgInt);
+      aiProduct = {
+        name:estJSON.meal_name||visionJSON.meal_name||'Meal',
+        description:estJSON.description||'',
+        calories:Math.round(estJSON.calories||0),
+        protein:Math.round((estJSON.protein||0)*10)/10,
+        carbs:Math.round((estJSON.carbs||0)*10)/10,
+        fat:Math.round((estJSON.fat||0)*10)/10,
+        confidence:estJSON.confidence||'medium', db_verified:false,
+      };
+    }
+
+    aiServings=1; renderAIResult();
+  } catch(err) {
+    clearInterval(msgInt);
+    document.getElementById('photoStep2').style.display='none';
+    document.getElementById('photoStep1').style.display='block';
+    document.getElementById('photoPreviewWrap').style.display='block';
+    document.getElementById('photoPlaceholder').style.display='none';
+    document.getElementById('analyzeBtn').disabled=false;
+    document.getElementById('analyzeBtn').style.opacity='1';
+    showToast('❌ Error: '+(err.message||'Try again'));
   }
-  addFoodEntry({
-    name:     p.name,
-    calories: Math.round(p.calories * servings),
-    protein:  Math.round(p.protein  * servings * 10) / 10,
-    carbs:    Math.round(p.carbs    * servings * 10) / 10,
-    fat:      Math.round(p.fat      * servings * 10) / 10,
-    icon: '🏷️',
-    micros: Object.keys(scaledMicros).length ? scaledMicros : undefined,
-  });
-  if (selectedTimeSlot) {
-    saveFoodToSlot({ name: p.name, calories: Math.round(p.calories * servings), protein: Math.round(p.protein * servings * 10)/10, carbs: Math.round(p.carbs * servings * 10)/10, fat: Math.round(p.fat * servings * 10)/10 }, selectedTimeSlot);
-  }
-  closeScanner();
-  renderQuickRecs();
-  showToast(`✅ ${p.name} logged!`);
 }
 
-function stopCamera() {
-  try { if (window.Quagga) Quagga.stop(); } catch(e) {}
-  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
-  if (scannerInterval) { clearInterval(scannerInterval); scannerInterval = null; }
+
+function buildNutritionKnowledgePrompt(hint, visionData) {
+  return `You are a precision sports nutrition expert with deep knowledge of:
+- USDA FoodData Central / SR28 (gold standard US composition data)
+- NCCDB (Nutrition Coordinating Center Food & Nutrient Database)
+- Canadian Nutrient File (CNF 2015)
+- McCance & Widdowson's CoFID (UK food composition)
+- NEVO Dutch Food Composition Database
+- Australian Food Composition Database (NUTTAB)
+- Nutritionix branded and restaurant database
+- Open Food Facts global product database
+
+${hint ? `User note: "${hint}"` : ''}
+${visionData ? `Food items identified: ${(visionData.items||[]).map(i=>`${i.display_name} (~${i.grams_in_photo}g)`).join(', ')}` : ''}
+
+Using your cross-database nutritional knowledge, calculate the precise macros for this meal.
+
+Key reference values you should use:
+- Chicken breast (cooked): 165cal/100g, 31g protein, 0g carbs, 3.6g fat (USDA SR)
+- White rice (cooked): 130cal/100g, 2.7g protein, 28g carbs, 0.3g fat (USDA SR)
+- Brown rice (cooked): 123cal/100g, 2.7g protein, 26g carbs, 1g fat
+- Salmon (cooked): 208cal/100g, 20g protein, 0g carbs, 13g fat
+- Whole egg (large): 78cal, 6g protein, 0.6g carbs, 5g fat
+- Broccoli (steamed): 35cal/100g, 2.4g protein, 7g carbs, 0.4g fat
+- Sweet potato (baked): 90cal/100g, 2g protein, 21g carbs, 0.1g fat
+- Olive oil: 884cal/100g, 0g protein, 0g carbs, 100g fat
+- Ground beef 80/20 (cooked): 250cal/100g, 26g protein, 0g carbs, 17g fat
+- Oats (dry): 389cal/100g, 17g protein, 66g carbs, 7g fat
+- Greek yogurt (plain, 2%): 59cal/100g, 10g protein, 3.6g carbs, 0.4g fat
+
+Return ONLY JSON:
+{
+  "meal_name": "Descriptive name",
+  "description": "Breakdown per item with gram estimates and which database reference was used",
+  "calories": <integer>,
+  "protein": <number 1 decimal>,
+  "carbs": <number 1 decimal>,
+  "fat": <number 1 decimal>,
+  "confidence": "high" | "medium" | "low"
+}`;
 }
 
-function closeScanner() {
-  stopCamera();
-  document.getElementById('scannerModal').classList.remove('open');
-}
+
 
 async function openScannerCamera() {
   try { await startQuagga(); } catch(e) {}
@@ -4312,7 +4477,7 @@ async function runAISearch() {
   document.getElementById('aiSearchLoadingText').textContent = 'Searching USDA database…';
 
   try {
-    const foods = await searchUSDAFull(query);
+    const foods = await searchFoodMultiDB(query);
 
     if (foods.length > 0) {
       document.getElementById('aiSearchLoading').style.display = 'none';
@@ -4525,80 +4690,7 @@ const AI_LOADING_MSGS = [
 ];
 
 async function analyzePhoto() {
-  if (!photoBase64) return;
-
-  // Show loading step
-  document.getElementById('photoStep1').style.display = 'none';
-  document.getElementById('photoStep2').style.display = 'block';
-
-  // Cycle loading messages
-  let msgIdx = 0;
-  const msgEl = document.getElementById('aiLoadingMsg');
-  const msgInterval = setInterval(() => {
-    msgIdx = (msgIdx + 1) % AI_LOADING_MSGS.length;
-    msgEl.textContent = AI_LOADING_MSGS[msgIdx];
-  }, 1800);
-
-  const hint = document.getElementById('photoHint').value.trim();
-  const prompt = `You are a precise sports nutrition expert. Analyse this food photo and estimate the macros.
-${hint ? `The user says: "${hint}"` : ''}
-
-Identify every food item visible, estimate realistic portion sizes for a typical serving shown, and return ONLY a valid JSON object with NO extra text, markdown, or explanation:
-
-{
-  "meal_name": "Short descriptive name (e.g. Grilled Chicken & Rice Bowl)",
-  "description": "2-3 sentence breakdown of what you see, portion sizes, and any assumptions made",
-  "calories": <integer, total kcal>,
-  "protein": <number, grams, 1 decimal>,
-  "carbs": <number, grams, 1 decimal>,
-  "fat": <number, grams, 1 decimal>,
-  "confidence": "high" | "medium" | "low"
-}
-
-Be realistic. A chicken breast is ~30g protein. A cup of rice is ~45g carbs. Err toward accuracy over optimism.`;
-
-  try {
-    const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: photoBase64 } },
-          { type: 'text', text: prompt }
-        ]
-      }]
-    });
-
-    clearInterval(msgInterval);
-    const rawText = data.content.find(b => b.type === 'text')?.text || '';
-
-    // Parse JSON — strip any accidental markdown fences
-    const cleaned = rawText.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-
-    aiProduct = {
-      name: parsed.meal_name || 'Meal',
-      description: parsed.description || '',
-      calories: Math.round(parsed.calories || 0),
-      protein:  Math.round((parsed.protein  || 0) * 10) / 10,
-      carbs:    Math.round((parsed.carbs    || 0) * 10) / 10,
-      fat:      Math.round((parsed.fat      || 0) * 10) / 10,
-      confidence: parsed.confidence || 'medium',
-    };
-    aiServings = 1;
-    renderAIResult();
-
-  } catch (err) {
-    clearInterval(msgInterval);
-    document.getElementById('photoStep2').style.display = 'none';
-    document.getElementById('photoStep1').style.display = 'block';
-    document.getElementById('photoPreviewWrap').style.display = 'block';
-    document.getElementById('photoPlaceholder').style.display = 'none';
-    document.getElementById('analyzeBtn').disabled = false;
-    document.getElementById('analyzeBtn').style.opacity = '1';
-    showToast('❌ AI error: ' + (err.message || 'Try again'));
-  }
+  analyzePhotoWithDB();
 }
 
 function renderAIResult() {
@@ -4659,7 +4751,34 @@ function logAIFood() {
 }
 
 // ── Settings ──
+function saveNutritionixKeys() {
+  const id  = document.getElementById('nutritionixAppIdInput')?.value.trim();
+  const key = document.getElementById('nutritionixAppKeyInput')?.value.trim();
+  if (id)  setStorage('nutritionixAppId',  id);
+  if (key) setStorage('nutritionixAppKey', key);
+  const status = document.getElementById('nutritionixStatus');
+  if (status) {
+    status.textContent = (id && key) ? '✅ Nutritionix keys saved' : '⚠️ Enter both App ID and App Key';
+    status.style.color = (id && key) ? '#22c55e' : '#f59e0b';
+  }
+  showToast('✅ Nutritionix keys saved');
+}
+
+function loadNutritionixKeyInputs() {
+  const nix = getNutritionixKeys();
+  const idEl  = document.getElementById('nutritionixAppIdInput');
+  const keyEl = document.getElementById('nutritionixAppKeyInput');
+  if (idEl  && nix.appId)  idEl.value  = nix.appId;
+  if (keyEl && nix.appKey) keyEl.value = nix.appKey;
+  const status = document.getElementById('nutritionixStatus');
+  if (status && nix.appId && nix.appKey) {
+    status.textContent = '✅ Nutritionix connected';
+    status.style.color = '#22c55e';
+  }
+}
+
 function openSettings() {
+  loadNutritionixKeyInputs();
   document.getElementById('settingsModal').classList.add('open');
   const creds = getStorage('garminCreds', null);
   if (creds) {
