@@ -3994,35 +3994,75 @@ function isSaneProduct(p) {
 // ── Parse Open Food Facts product ──
 function parseOFProduct(p) {
   const n = p.nutriments || {};
-  const servingQty = parseFloat(p.serving_quantity) || parseFloat(p.serving_size) || 0;
-  const scale = servingQty > 0 ? servingQty / 100 : 1;
+  const servingQty = parseFloat(p.serving_quantity) || 0;
 
-  function get(base) {
+  // OFF sometimes stores values "per serving" in the _100g fields when nutrition_data_per='serving'
+  const dataPerServing = (p.nutrition_data_per === 'serving');
+
+  function getServing(base) {
     const alts = [base, base.replace('-','_'), base.replace('_','-')];
+
+    // 1. Always prefer explicit _serving field (most accurate — directly from label)
     for (const b of alts) {
       const sv = n[`${b}_serving`];
-      if (sv != null && sv !== '' && !isNaN(+sv)) return +sv;
+      if (sv != null && sv !== '' && !isNaN(+sv) && +sv > 0) return { val: +sv, source: 'serving' };
     }
+
+    // 2. _100g field — scale if nutrition is per 100g, use as-is if per serving
     for (const b of alts) {
       const v = n[`${b}_100g`];
-      if (v != null && v !== '' && !isNaN(+v)) return +v * scale;
+      if (v != null && v !== '' && !isNaN(+v) && +v > 0) {
+        if (dataPerServing) return { val: +v, source: '100g_as_serving' };
+        const scale = servingQty > 0 ? servingQty / 100 : 1;
+        return { val: +v * scale, source: '100g_scaled' };
+      }
     }
-    return 0;
+    return { val: 0, source: 'none' };
   }
 
-  let cals = get('energy-kcal');
-  if (cals === 0) { const kj = get('energy'); if (kj > 0) cals = kj / 4.184; }
+  const calResult  = getServing('energy-kcal');
+  let cals = calResult.val;
+  if (cals === 0) {
+    const kj = getServing('energy').val;
+    if (kj > 0) cals = kj / 4.184;
+  }
 
-  // Detect and fix per-100g values masquerading as per-serving
-  if (cals > 800 && servingQty > 0 && servingQty < 60) cals *= servingQty / 100;
+  const protResult  = getServing('proteins');
+  const carbResult  = getServing('carbohydrates');
+  const fatResult   = getServing('fat');
+
+  let finalP = protResult.val;
+  let finalC = carbResult.val;
+  let finalF = fatResult.val;
+
+  // Sanity check: OFF sometimes stores per-serving values in _100g fields (bad data).
+  // When this happens, scaling by serving size gives inflated results.
+  // Safe detection heuristic (validated against yogurt, chicken, hummus, chili):
+  //   - Only applies when we used _100g scaling (no _serving fields) AND scale > 1 (serving > 100g)
+  //   - Density of scaled result > 0.85 cal/g (implausibly dense for a large serving)
+  //   - Unscaled value <= 300 cal (if it were genuinely dense food, unscaled would be >300)
+  //   - Serving >= 100g (small servings are legitimately dense)
+  if (calResult.source === '100g_scaled' && servingQty >= 100) {
+    const scale = servingQty / 100;
+    if (scale > 1) {
+      const density = cals / servingQty;
+      const unscaledCals = cals / scale;
+      if (density > 0.85 && unscaledCals >= 10 && unscaledCals <= 300) {
+        cals   = unscaledCals;
+        finalP = finalP / scale;
+        finalC = finalC / scale;
+        finalF = finalF / scale;
+      }
+    }
+  }
 
   return {
     name:        p.product_name_en || p.product_name || p.abbreviated_product_name || '',
     brand:       p.brands || '',
     calories:    Math.round(cals),
-    protein:     Math.round(get('proteins') * 10) / 10,
-    carbs:       Math.round(get('carbohydrates') * 10) / 10,
-    fat:         Math.round(get('fat') * 10) / 10,
+    protein:     Math.round(finalP * 10) / 10,
+    carbs:       Math.round(finalC * 10) / 10,
+    fat:         Math.round(finalF * 10) / 10,
     servingSize: p.serving_size || (servingQty > 0 ? `${servingQty}g` : '1 serving'),
     source:      'Open Food Facts',
   };
