@@ -3815,6 +3815,8 @@ function showToast(msg, undoFn) {
 }
 
 
+const USDA_API_KEY = 'DEMO_KEY'; // free tier: 30 req/hr, 50/day
+
 // ── Barcode Scanner ──
 let scannerStream = null;
 let scannerInterval = null;
@@ -3900,6 +3902,61 @@ function startQuagga() {
 
 function startDecoding() { /* legacy stub — not used with Quagga */ }
 function beginScan() { /* legacy stub — not used with Quagga */ }
+
+function renderFoodResult() {
+  if (!scannedProduct) return;
+  const p = scannedProduct;
+  const s = servings;
+  document.getElementById('cameraView').style.display = 'none';
+  document.getElementById('foodResult').style.display = 'block';
+  document.getElementById('foodName').textContent = p.name || 'Unknown';
+  document.getElementById('foodBrand').textContent = p.brand || '';
+  document.getElementById('srvVal').textContent = s % 1 === 0 ? s : s.toFixed(1);
+  const cal   = Math.round((p.calories || 0) * s);
+  const prot  = Math.round((p.protein  || 0) * s * 10) / 10;
+  const carbs = Math.round((p.carbs    || 0) * s * 10) / 10;
+  const fat   = Math.round((p.fat      || 0) * s * 10) / 10;
+  document.getElementById('foodMacros').innerHTML =
+    `<span style="color:#ef4444">${cal} cal</span> &nbsp;
+     <span style="color:#3b82f6">P: ${prot}g</span> &nbsp;
+     <span style="color:#f59e0b">C: ${carbs}g</span> &nbsp;
+     <span style="color:#22c55e">F: ${fat}g</span>
+     <div style="font-size:10px;color:var(--text3);margin-top:4px">per serving · ${p.servingSize||''} · via ${p.source||'DB'}</div>`;
+  // Sanity warning if macros look off
+  const warn = document.getElementById('scanMacroWarning');
+  if (warn) warn.style.display = 'none';
+}
+
+function adjustServings(delta) {
+  if (!scannedProduct) return;
+  servings = Math.max(0.5, Math.round((servings + delta) * 2) / 2);
+  renderFoodResult();
+}
+
+function logScannedFood() {
+  if (!scannedProduct) return;
+  const p = scannedProduct;
+  const s = servings;
+  const entry = {
+    id: Date.now(),
+    name: p.name,
+    calories: Math.round((p.calories || 0) * s),
+    protein:  Math.round((p.protein  || 0) * s * 10) / 10,
+    carbs:    Math.round((p.carbs    || 0) * s * 10) / 10,
+    fat:      Math.round((p.fat      || 0) * s * 10) / 10,
+    servings: s,
+    source: 'barcode',
+    timeSlot: selectedTimeSlot || getTimeSlot(),
+  };
+  addFoodEntry(selectedDateKey || todayKey(), entry);
+  // Save to usual foods if a time slot was selected
+  if (selectedTimeSlot) saveToUsualFoods(entry, selectedTimeSlot);
+  closeScanner();
+  scheduleRender(renderRings);
+  scheduleRender(renderFoodLog);
+  scheduleRender(renderWeeklyBalance);
+  showToast(`✅ Added ${entry.name}`);
+}
 
 // ══════════════════════════════════════════════════════════════════
 // ── MULTI-DATABASE FOOD LOOKUP ENGINE ─────────────────────────────
@@ -4024,25 +4081,40 @@ async function lookupBarcode(barcode) {
 
   try {
     const prod = await lookupBarcodeMultiDB(barcode);
-    if (prod) {
+    if (prod && !prod.incomplete) {
       scannedProduct = prod;
       servings = 1;
       renderFoodResult();
-      if (prod.incomplete) {
-        document.getElementById('scanStatus').textContent = `⚠️ Found: "${prod.name}" — no nutrition data available. Enter manually.`;
-      }
+      document.getElementById('scanStatus').textContent = `✅ Found: ${prod.name}`;
       return;
     }
-    // All databases failed
-    document.getElementById('scanStatus').textContent = `❌ Barcode ${barcode} not found in any database. Try manual entry or AI Search.`;
-    document.getElementById('cameraView').style.display = 'block';
-    openScannerCamera();
+    if (prod && prod.incomplete) {
+      document.getElementById('scanStatus').textContent = `⚠️ "${prod.name}" found but no nutrition data. Try scanning again or close to enter manually.`;
+      // Show a rescan button
+      document.getElementById('cameraView').style.display = 'block';
+      document.getElementById('scanStatus').innerHTML =
+        `⚠️ No nutrition data found for barcode <b>${barcode}</b>.<br>
+         <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
+      return;
+    }
+    // Not found in any DB — stop camera, show friendly message with rescan option
+    document.getElementById('scanStatus').innerHTML =
+      `❌ Barcode <b>${barcode}</b> not found.<br>
+       <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
   } catch(e) {
-    document.getElementById('scanStatus').textContent = '❌ Lookup error — check connection';
-    document.getElementById('cameraView').style.display = 'block';
-    openScannerCamera();
+    document.getElementById('scanStatus').innerHTML =
+      `❌ Lookup error — check connection.<br>
+       <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
     console.error('lookupBarcode error:', e);
   }
+}
+
+function rescanBarcode() {
+  document.getElementById('cameraView').style.display = 'block';
+  document.getElementById('foodResult').style.display = 'none';
+  document.getElementById('scanStatus').textContent = '🔍 Scanning for barcode…';
+  scannedProduct = null;
+  openScannerCamera();
 }
 
 function extractServingGrams(servingStr) {
@@ -6019,7 +6091,6 @@ function renderWeeklyBalance() {
 // ═══════════════════════════════════════════════════════
 // ── USDA FoodData Central Search ──
 // ═══════════════════════════════════════════════════════
-const USDA_API_KEY = 'DEMO_KEY'; // free tier: 30 req/hr, 50/day
 
 // All Claude API calls route through the Cloudflare worker proxy at /api/claude
 // The actual API key lives in Cloudflare environment secrets (never in code)
