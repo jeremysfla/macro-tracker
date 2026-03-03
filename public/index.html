@@ -3938,24 +3938,18 @@ function logScannedFood() {
   const p = scannedProduct;
   const s = servings;
   const entry = {
-    id: Date.now(),
-    name: p.name,
+    name:     p.name,
     calories: Math.round((p.calories || 0) * s),
     protein:  Math.round((p.protein  || 0) * s * 10) / 10,
     carbs:    Math.round((p.carbs    || 0) * s * 10) / 10,
     fat:      Math.round((p.fat      || 0) * s * 10) / 10,
     servings: s,
-    source: 'barcode',
-    timeSlot: selectedTimeSlot || getTimeSlot(),
+    icon:     '🔍',
   };
-  addFoodEntry(selectedDateKey || todayKey(), entry);
-  // Save to usual foods if a time slot was selected
-  if (selectedTimeSlot) saveToUsualFoods(entry, selectedTimeSlot);
+  // Save to quick-add slot if selected
+  if (selectedTimeSlot) saveFoodToSlot(entry, selectedTimeSlot);
   closeScanner();
-  scheduleRender(renderRings);
-  scheduleRender(renderFoodLog);
-  scheduleRender(renderWeeklyBalance);
-  showToast(`✅ Added ${entry.name}`);
+  addFoodEntry(entry);
 }
 
 // ══════════════════════════════════════════════════════════════════
