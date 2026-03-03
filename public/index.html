@@ -1697,7 +1697,7 @@ PROMISE ERROR:
               style="flex:1;background:#111827;border:1.5px solid #1e3a5f;border-radius:14px;padding:10px 14px;color:#fff;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:100px;overflow-y:auto;line-height:1.4"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendClaudeMessage()}"
               oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
-            <button onclick="sendClaudeMessage()"
+            <button id="claudeSendBtn" onclick="sendClaudeMessage()"
               style="background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;border-radius:12px;width:42px;height:42px;color:white;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">➤</button>
           </div>
 
