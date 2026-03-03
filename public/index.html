@@ -4231,44 +4231,83 @@ function extractServingGrams(servingStr) {
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
   const nix = getNutritionixKeys();
-  const barcodeAlt = barcode.replace(/^0+/, '');
-  const barcodePad = barcode.length === 12 ? '0' + barcode : barcode;
 
-  // 1. Open Food Facts — try original + alt barcodes in parallel
+  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
+  const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
+  const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
+  const allCodes = [...new Set([barcode, ean13, upcA])];
+
+  // OFF requires User-Agent header to avoid bot-detection bans
+  const OFF_HDR = {
+    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
+    'Accept': 'application/json',
+  };
+  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per';
+
+  // Cache check
+  const cache = getStorage('barcodeCache', {});
+  for (const code of allCodes) {
+    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
+  }
+
+  function saveCache(product) {
+    allCodes.forEach(c => { cache[c] = product; });
+    setStorage('barcodeCache', cache);
+    return product;
+  }
+
+  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
   try {
     log('⏳ Searching Open Food Facts…');
-    const ofUrls = [...new Set([barcode, barcodeAlt, barcodePad])].map(b =>
-      `https://world.openfoodfacts.org/api/v2/product/${b}?fields=product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per`
-    );
-    const ofResults = await Promise.allSettled(ofUrls.map(u => fetch(u).then(r => r.json())));
-    for (const r of ofResults) {
-      if (r.status === 'fulfilled' && r.value?.status === 1 && r.value?.product) {
-        const p = parseOFProduct(r.value.product);
-        if (isSaneProduct(p) && p.calories > 0) { log('✅ Found — Open Food Facts'); return p; }
-      }
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next code */ }
     }
-  } catch(e) { console.warn('OFF:', e); }
+  } catch(e) { console.warn('OFF.net:', e); }
 
-  // 2. USDA FoodData Central — try original + alt in parallel
+  // 2. USDA FoodData Central — POST search for exact gtinUpc match
   try {
-    log('⏳ Searching USDA Food Data Central…');
-    const usdaQueries = [...new Set([barcode, barcodeAlt])];
-    const usdaResults = await Promise.allSettled(usdaQueries.map(q =>
-      fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${q}&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`).then(r => r.json())
-    ));
-    for (const r of usdaResults) {
-      if (r.status !== 'fulfilled') continue;
-      const foods = r.value?.foods || [];
-      const exact = foods.find(f => [barcode, barcodeAlt, barcodePad].includes(f.gtinUpc));
-      const hit = exact || foods[0];
-      if (hit) {
-        const p = parseUSDAProduct(hit);
-        if (isSaneProduct(p)) { log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA FDC'); return p; }
-      }
+    log('⏳ Searching USDA…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: code, dataType: ['Branded'], pageSize: 5 })
+          }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        const foods = d.foods || [];
+        const exact = foods.find(f => allCodes.includes(f.gtinUpc));
+        const hit   = exact || foods[0];
+        if (hit) {
+          const p = parseUSDAProduct(hit);
+          if (isSaneProduct(p)) {
+            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next code */ }
     }
-  } catch(e) { console.warn('USDA UPC:', e); }
+  } catch(e) { console.warn('USDA:', e); }
 
-  // 3. Nutritionix UPC lookup (if keys set)
+  // 3. Nutritionix (if user has keys)
   if (nix.appId && nix.appKey) {
     try {
       log('⏳ Searching Nutritionix…');
@@ -4276,66 +4315,74 @@ async function lookupBarcodeMultiDB(barcode) {
         headers: { 'x-app-id': nix.appId, 'x-app-key': nix.appKey, 'x-remote-user-id': '0' }
       });
       const d = await r.json();
-      const item = (d.foods||[])[0];
+      const item = (d.foods || [])[0];
       if (item) {
         const p = parseNutritionixItem(item);
-        if (isSaneProduct(p)) { log('✅ Found — Nutritionix'); return p; }
+        if (isSaneProduct(p)) { log('✅ Found — Nutritionix'); return saveCache(p); }
       }
-    } catch(e) { console.warn('Nutritionix UPC:', e); }
+    } catch(e) { console.warn('Nutritionix:', e); }
   }
 
-  // 4. Open Food Facts US endpoint
+  // 4. Open Food Facts .org (different CDN node, second chance)
   try {
-    log('⏳ Searching Open Food Facts US…');
-    const r = await fetch(
-      `https://us.openfoodfacts.org/api/v2/product/${barcode}` +
-      `?fields=product_name,product_name_en,brands,serving_size,serving_quantity,nutriments,nutrition_data_per`
-    );
-    const d = await r.json();
-    if (d.status===1 && d.product) {
-      const p = parseOFProduct(d.product);
-      if (p.name && p.calories > 0) { log('✅ Found — Open Food Facts US'); return p; }
+    log('⏳ Searching Open Food Facts (alt)…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next */ }
     }
-  } catch(e) { console.warn('OFF US:', e); }
+  } catch(e) { console.warn('OFF.org:', e); }
 
-  // 5. UPC ItemDB — broad product catalog
+  // 5. UPC ItemDB → USDA name lookup
   try {
     log('⏳ Searching UPC database…');
-    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
-    const d = await r.json();
-    const item = (d.items||[])[0];
-    if (item && item.title) {
-      const name = item.title;
-      log(`⏳ Found "${name.slice(0,30)}" — looking up nutrition…`);
-      const usdaHit = await searchUSDAByName(name);
-      if (usdaHit) {
-        usdaHit.name  = name;
-        usdaHit.brand = item.brand || '';
-        log('✅ Found via UPC + USDA name match');
-        return usdaHit;
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
+    if (r.ok) {
+      const d = await r.json();
+      const item = (d.items || [])[0];
+      if (item && item.title) {
+        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
+        const usdaHit = await searchUSDAByName(item.title);
+        if (usdaHit) {
+          usdaHit.name  = item.title;
+          usdaHit.brand = item.brand || '';
+          log('✅ Found via UPC + USDA');
+          return saveCache(usdaHit);
+        }
+        return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
-      return { name, brand:item.brand||'', calories:0, protein:0, carbs:0, fat:0, servingSize:'1 serving', source:'UPC ItemDB', incomplete:true };
     }
-  } catch(e) { console.warn('UPC ItemDB:', e); }
+  } catch(e) { console.warn('UPCItemDB:', e); }
 
-  // 6. AI fallback — Haiku estimates from barcode context
+  // 6. AI fallback
   try {
-    log('⏳ Not in databases — asking AI…');
+    log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode ${barcode} is a grocery product not found in Open Food Facts or USDA. ` +
-        `Can you identify it and estimate nutrition per serving? ` +
-        `Return ONLY JSON (no markdown): {"name":"product name","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
+        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
+        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
       }]
     });
-    const txt = aiResp.content?.find(b=>b.type==='text')?.text || '';
-    const parsed = JSON.parse(txt.replace(/```json|```/g,'').trim());
+    const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
+    const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
     if (parsed && parsed.name && parsed.calories > 0) {
       log('✅ AI identified product');
-      return { ...parsed, source: 'AI Est' };
+      return saveCache({ ...parsed, source: 'AI Est' });
     }
-  } catch(e) { /* AI fallback optional */ }
+  } catch(e) { /* optional */ }
 
   return null;
 }
