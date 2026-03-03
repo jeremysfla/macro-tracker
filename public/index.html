@@ -9975,7 +9975,7 @@ if (document.readyState === 'loading') {
   _initApp();
 }
 
-// Mobile resume fix — when app comes back from background, check if day changed
+// Mobile resume fix — when app comes back from background, check if day changed or run needs sync
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     const cached = getStorage('dailyQuote', null);
@@ -9989,6 +9989,22 @@ document.addEventListener('visibilitychange', () => {
       checkCopyYesterday();
       loadDailyQuote();
     }
+    // Re-check Strava/Garmin on resume — catches runs finished while app was in background
+    try {
+      const stravaTok = getStorage('stravaToken', null);
+      const garminTok = getStorage('garminToken', null);
+      if (stravaTok) {
+        const sc = getStorage('stravaToday', null);
+        const age = sc ? Date.now() - sc.fetched : Infinity;
+        const stale = !sc || (sc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
+        if (stale) fetchStravaToday();
+      } else if (garminTok) {
+        const gc = getStorage('garminToday', null);
+        const age = gc ? Date.now() - gc.fetched : Infinity;
+        const stale = !gc || (gc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
+        if (stale) fetchGarminToday();
+      }
+    } catch(e) {}
   }
 });
 
@@ -10008,11 +10024,20 @@ handleStravaCallback();
   const stravaTok = getStorage('stravaToken', null);
   const garminTok = getStorage('garminToken', null);
 
+  function shouldUseCached(cached) {
+    if (!cached) return false;
+    const age = Date.now() - cached.fetched;
+    // If cache has a real run (distance > 0), trust it for 30 min
+    if (cached.distance > 0) return age < 30 * 60 * 1000;
+    // If cache has NO run yet, only trust it for 5 min — run may not have uploaded yet
+    return age < 5 * 60 * 1000;
+  }
+
   if (stravaTok) {
     document.getElementById('garminCard').style.display = 'block';
     const cached = getStorage('stravaToday', null);
-    if (cached && (Date.now() - cached.fetched) < 30 * 60 * 1000) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.calories > 0 ? 1 : 0, 'strava');
+    if (shouldUseCached(cached)) {
+      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'strava');
       if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(cached.calories);
     } else {
       fetchStravaToday();
@@ -10020,8 +10045,8 @@ handleStravaCallback();
   } else if (garminTok) {
     document.getElementById('garminCard').style.display = 'block';
     const cached = getStorage('garminToday', null);
-    if (cached && (Date.now() - cached.fetched) < 30 * 60 * 1000) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.calories > 0 ? 1 : 0, 'garmin');
+    if (shouldUseCached(cached)) {
+      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'garmin');
       if (getStorage('garminAutoAdjust', true)) adjustMacrosForBurn(cached.calories);
     } else {
       fetchGarminToday();
