@@ -4104,26 +4104,110 @@ async function lookupBarcode(barcode) {
       document.getElementById('scanStatus').textContent = `✅ Found: ${prod.name}`;
       return;
     }
-    if (prod && prod.incomplete) {
-      document.getElementById('scanStatus').textContent = `⚠️ "${prod.name}" found but no nutrition data. Try scanning again or close to enter manually.`;
-      // Show a rescan button
-      document.getElementById('cameraView').style.display = 'block';
-      document.getElementById('scanStatus').innerHTML =
-        `⚠️ No nutrition data found for barcode <b>${barcode}</b>.<br>
-         <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
-      return;
-    }
-    // Not found in any DB — stop camera, show friendly message with rescan option
-    document.getElementById('scanStatus').innerHTML =
-      `❌ Barcode <b>${barcode}</b> not found.<br>
-       <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
+
+    // Not found or incomplete — show label scan option
+    const productName = prod?.name || '';
+    showBarcodeNotFound(barcode, productName);
+
   } catch(e) {
-    document.getElementById('scanStatus').innerHTML =
-      `❌ Lookup error — check connection.<br>
-       <button onclick="rescanBarcode()" style="margin-top:8px;background:#3b82f6;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Scan Again</button>`;
+    showBarcodeNotFound(barcode, '');
     console.error('lookupBarcode error:', e);
   }
 }
+
+function showBarcodeNotFound(barcode, productName) {
+  const nameHint = productName ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Identified: ${productName}</div>` : '';
+  document.getElementById('scanStatus').innerHTML = `
+    <div style="text-align:center;padding:4px 0">
+      ${nameHint}
+      <div style="font-size:13px;font-weight:600;color:#f59e0b;margin-bottom:12px">
+        ⚠️ Nutrition data not found for this barcode
+      </div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:14px">
+        Point camera at the <b style="color:#fff">Nutrition Facts label</b> to read it automatically
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="scanNutritionLabel('${barcode}','${productName.replace(/'/g,"\\\'")}')"
+          style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:12px;padding:12px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
+          📸 Scan Nutrition Label
+        </button>
+        <button onclick="rescanBarcode()"
+          style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:10px 16px;color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+          🔄 Try Barcode Again
+        </button>
+      </div>
+    </div>`;
+}
+
+function scanNutritionLabel(barcode, productName) {
+  // Open a camera input specifically for reading the nutrition label
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = async () => {
+    const file = input.files[0];
+    document.body.removeChild(input);
+    if (!file) return;
+
+    document.getElementById('scanStatus').textContent = '📸 Reading nutrition label…';
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      const base64  = dataUrl.split(',')[1];
+
+      document.getElementById('scanStatus').textContent = '🤖 Extracting nutrition data…';
+
+      try {
+        const resp = await callClaudeAPI({
+          model: 'claude-opus-4-6',
+          max_tokens: 512,
+          messages: [{role:'user', content:[
+            {type:'image', source:{type:'base64', media_type:'image/jpeg', data:base64}},
+            {type:'text', text: `This is a photo of a Nutrition Facts label${productName ? ` for "${productName}"` : ''}.
+Extract the nutrition information per serving.
+Return ONLY valid JSON:
+{"name":"${productName || 'Food Item'}","serving_size":"e.g. 1 cup (140g)","calories":0,"protein":0,"carbs":0,"fat":0}
+Use exact values from the label. If you cannot read a value clearly, use 0.`}
+          ]}]
+        });
+
+        const txt = resp.content?.find(b=>b.type==='text')?.text || '';
+        const data = JSON.parse(txt.replace(/```json|```/g,'').trim());
+
+        if (data && data.calories >= 0) {
+          scannedProduct = {
+            name:        data.name || productName || 'Food Item',
+            brand:       '',
+            calories:    Math.round(data.calories || 0),
+            protein:     Math.round((data.protein || 0) * 10) / 10,
+            carbs:       Math.round((data.carbs   || 0) * 10) / 10,
+            fat:         Math.round((data.fat     || 0) * 10) / 10,
+            servingSize: data.serving_size || '1 serving',
+            source:      'Label Scan',
+          };
+          servings = 1;
+          renderFoodResult();
+          document.getElementById('scanStatus').textContent = `✅ Label read: ${scannedProduct.name}`;
+        } else {
+          document.getElementById('scanStatus').textContent = '❌ Could not read label — try again with better lighting';
+          showBarcodeNotFound(barcode, productName);
+        }
+      } catch(err) {
+        document.getElementById('scanStatus').textContent = '❌ Error reading label';
+        showBarcodeNotFound(barcode, productName);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  input.click();
+}
+
 
 function rescanBarcode() {
   document.getElementById('cameraView').style.display = 'block';
@@ -4335,128 +4419,91 @@ async function analyzePhotoWithDB() {
   document.getElementById('photoStep1').style.display = 'none';
   document.getElementById('photoStep2').style.display = 'block';
 
-  const msgEl = document.getElementById('aiLoadingMsg');
-  const hint = document.getElementById('photoHint').value.trim();
-  msgEl.textContent = 'Identifying foods in photo\u2026';
+  const msgEl  = document.getElementById('aiLoadingMsg');
+  const hint   = document.getElementById('photoHint').value.trim();
+  msgEl.textContent = 'Analysing photo…';
 
   try {
-    // Phase 1: Vision ID — Sonnet is fast and has excellent vision
-    const visionPrompt = `Analyze this food photo. Identify each distinct food item and estimate grams of the exact portion visible.
-${hint ? `Note: "${hint}"` : ''}
-Return ONLY JSON (no markdown):
-{"meal_name":"Short name","items":[{"food":"searchable name e.g. grilled chicken breast","display_name":"human name","grams_in_photo":100}]}`;
+    // Single Opus call: identify food + estimate macros for EXACTLY what is visible
+    // Sending the image every time — no text-only fallback that can hallucinate
+    const prompt = `You are a registered dietitian and precise nutrition analyst.
+Look at this food photo carefully.
 
-    const visionResp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6', max_tokens: 512,
+CRITICAL RULES:
+1. Only measure what is VISIBLE in the photo — the actual portion shown, not a full container or package
+2. If you see a container/package, estimate only how much is inside or how much is being served
+3. Use USDA FoodData Central / SR28 reference values for accuracy
+4. Be conservative with portion sizes — people often underestimate
+${hint ? `5. User note: "${hint}"` : ''}
+
+For each distinct food item visible:
+- Identify the food precisely (e.g. "plain nonfat Greek yogurt" not just "yogurt")
+- Estimate the grams of THAT PORTION as it appears in the photo
+- Look at the container/bowl/plate size for scale
+
+Then calculate total macros by summing all items.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "meal_name": "concise descriptive name of what you see",
+  "items": [
+    {
+      "name": "precise food name",
+      "grams": 170,
+      "calories": 100,
+      "protein": 16,
+      "carbs": 9,
+      "fat": 0,
+      "notes": "e.g. estimated from container label visible, or typical serving"
+    }
+  ],
+  "total_calories": 100,
+  "total_protein": 16,
+  "total_carbs": 9,
+  "total_fat": 0,
+  "confidence": "high",
+  "portion_notes": "brief explanation of how you estimated the portion"
+}`;
+
+    msgEl.textContent = 'Identifying food and calculating macros…';
+
+    const resp = await callClaudeAPI({
+      model: 'claude-opus-4-6',
+      max_tokens: 1024,
       messages: [{role:'user', content:[
         {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
-        {type:'text', text:visionPrompt}
+        {type:'text', text:prompt}
       ]}]
     });
 
-    const visionText = visionResp.content?.find(b=>b.type==='text')?.text || '';
-    let visionJSON;
-    try { visionJSON = JSON.parse(visionText.replace(/```json|```/g,'').trim()); }
-    catch(e) { visionJSON = {meal_name:'Meal', items:[]}; }
-    const items = visionJSON.items || [];
-
-    // Phase 2: USDA lookup per item — parallel with 4s timeout each
-    if (items.length > 0) {
-      msgEl.textContent = `Looking up ${items.length} item${items.length>1?'s':''} in USDA database\u2026`;
+    const rawText = resp.content?.find(b=>b.type==='text')?.text || '';
+    let result;
+    try {
+      result = JSON.parse(rawText.replace(/```json|```/g,'').trim());
+    } catch(e) {
+      // Try to extract JSON from response
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+      else throw new Error('Could not parse AI response');
     }
 
-    const usdaLookup = async (foodName, grams) => {
-      const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(foodName)}&dataType=Foundation,SR%20Legacy&pageSize=1&api_key=DEMO_KEY`;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 4000);
-      try {
-        const resp = await fetch(url, {signal: ctrl.signal});
-        clearTimeout(timer);
-        if (!resp.ok) return null;
-        const data = await resp.json();
-        const f = data.foods?.[0];
-        if (!f) return null;
-        const getNut = (id) => f.foodNutrients?.find(n => n.nutrientId === id)?.value || 0;
-        const cal100 = getNut(1008);
-        if (!cal100) return null;
-        const scale = grams / 100;
-        return {
-          calories: Math.round(getNut(1008) * scale),
-          protein:  Math.round(getNut(1003) * scale * 10) / 10,
-          carbs:    Math.round(getNut(1005) * scale * 10) / 10,
-          fat:      Math.round(getNut(1004) * scale * 10) / 10,
-        };
-      } catch(e) { clearTimeout(timer); return null; }
+    // Build per-item description
+    const items = result.items || [];
+    const description = items.length > 0
+      ? items.map(it => `${it.name} (~${it.grams}g): ${it.calories}cal P:${it.protein}g C:${it.carbs}g F:${it.fat}g`).join('\n')
+        + (result.portion_notes ? `\n\n📐 ${result.portion_notes}` : '')
+      : result.portion_notes || '';
+
+    aiProduct = {
+      name:        result.meal_name || 'Meal',
+      description: description,
+      calories:    Math.round(result.total_calories || 0),
+      protein:     Math.round((result.total_protein || 0) * 10) / 10,
+      carbs:       Math.round((result.total_carbs   || 0) * 10) / 10,
+      fat:         Math.round((result.total_fat     || 0) * 10) / 10,
+      confidence:  result.confidence || 'medium',
+      db_verified: false,
     };
-
-    const dbResults = await Promise.all(
-      items.map(item => usdaLookup(item.food, item.grams_in_photo))
-    );
-
-    const valid = dbResults.map((r, i) => r ? {...r, display_name: items[i].display_name, grams: items[i].grams_in_photo, db_source:'USDA'} : null).filter(Boolean);
-    const gaps  = items.filter((_, i) => !dbResults[i]);
-    const dbCoverage = items.length > 0 ? valid.length / items.length : 0;
-
-    let gapItems = [];
-    if (gaps.length > 0 && dbCoverage > 0) {
-      // Haiku estimates gaps (text only — cheap & fast)
-      try {
-        const gapPrompt = `Estimate macros using USDA SR28 values. Return ONLY a JSON array:
-[{"food":"name","calories":0,"protein":0,"carbs":0,"fat":0}]
-Items: ${gaps.map(g => `${g.display_name} (${g.grams_in_photo}g)`).join(', ')}`;
-        const gapResp = await callClaudeAPI({
-          model: 'claude-haiku-4-5-20251001', max_tokens: 300,
-          messages: [{role:'user', content: gapPrompt}]
-        });
-        const gapText = gapResp.content?.find(b=>b.type==='text')?.text || '';
-        const parsed = JSON.parse(gapText.replace(/```json|```/g,'').trim());
-        gapItems = parsed.map((g, i) => ({
-          display_name: gaps[i]?.display_name || g.food, grams: gaps[i]?.grams_in_photo || 100,
-          db_source: 'AI Est',
-          calories: Math.round(g.calories||0), protein: Math.round((g.protein||0)*10)/10,
-          carbs: Math.round((g.carbs||0)*10)/10, fat: Math.round((g.fat||0)*10)/10,
-        }));
-      } catch(e) { /* optional */ }
-    }
-
-    if (valid.length > 0 || gapItems.length > 0) {
-      const allItems = [...valid, ...gapItems];
-      const totals = allItems.reduce((a,r) => ({
-        calories: a.calories+r.calories, protein: a.protein+r.protein,
-        carbs: a.carbs+r.carbs, fat: a.fat+r.fat
-      }), {calories:0,protein:0,carbs:0,fat:0});
-
-      aiProduct = {
-        name: visionJSON.meal_name || 'Meal',
-        description: allItems.map(r => `${r.display_name} (~${r.grams}g): ${r.calories}cal P:${r.protein}g C:${r.carbs}g F:${r.fat}g [${r.db_source}]`).join('\n'),
-        calories: totals.calories, protein: totals.protein,
-        carbs: totals.carbs, fat: totals.fat,
-        confidence: dbCoverage >= 0.5 ? 'high' : 'medium', db_verified: true,
-      };
-
-    } else {
-      // Full fallback: Sonnet estimates from vision data — NO second image call
-      msgEl.textContent = 'Calculating macros\u2026';
-      const estPrompt = buildNutritionKnowledgePrompt(hint, visionJSON);
-      const estResp = await callClaudeAPI({
-        model: 'claude-sonnet-4-6', max_tokens: 512,
-        messages: [{role:'user', content: estPrompt}]
-      });
-      const estText = estResp.content?.find(b=>b.type==='text')?.text || '';
-      let estJSON;
-      try { estJSON = JSON.parse(estText.replace(/```json|```/g,'').trim()); }
-      catch(e) { estJSON = {meal_name: visionJSON.meal_name||'Meal', calories:0, protein:0, carbs:0, fat:0}; }
-
-      aiProduct = {
-        name: estJSON.meal_name || visionJSON.meal_name || 'Meal',
-        description: estJSON.description || '',
-        calories: Math.round(estJSON.calories||0),
-        protein:  Math.round((estJSON.protein||0)*10)/10,
-        carbs:    Math.round((estJSON.carbs||0)*10)/10,
-        fat:      Math.round((estJSON.fat||0)*10)/10,
-        confidence: estJSON.confidence || 'medium', db_verified: false,
-      };
-    }
 
     aiServings = 1;
     renderAIResult();
