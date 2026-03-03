@@ -4409,6 +4409,31 @@ async function openScannerCamera() {
   try { await startQuagga(); } catch(e) {}
 }
 
+function stopCamera() {
+  try {
+    if (window.Quagga) Quagga.stop();
+  } catch(e) {}
+  try {
+    if (scannerStream) {
+      scannerStream.getTracks().forEach(t => t.stop());
+      scannerStream = null;
+    }
+  } catch(e) {}
+  // Stop any video elements in the scanner
+  document.querySelectorAll('#quagga-container video').forEach(v => {
+    try { v.srcObject?.getTracks().forEach(t => t.stop()); v.srcObject = null; } catch(e) {}
+  });
+}
+
+function closeScanner() {
+  stopCamera();
+  document.getElementById('scannerModal').classList.remove('open');
+  document.getElementById('foodResult').style.display = 'none';
+  document.getElementById('cameraView').style.display = 'block';
+  document.getElementById('scanStatus').textContent = '🔍 Scanning for barcode…';
+  scannedProduct = null;
+}
+
 // ── AI Food Search ──
 let aiSearchProduct  = null;
 let aiSearchServings = 1;
