@@ -1476,7 +1476,15 @@ PROMISE ERROR:
         </div>
       </div>
 
-      <!-- TDEE -->
+      <!-- Goal date -->
+      <div class="s-card" style="margin-bottom:12px">
+        <div class="s-label" style="color:#a78bfa">Goal Date</div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px">Target date to reach your goal weight. Used to calculate required weekly deficit.</div>
+        <input type="date" id="settingGoalDate" class="s-input" style="font-size:15px;font-weight:700" onchange="updateGoalDateHint()" />
+        <div id="goalDateHint" style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6"></div>
+      </div>
+
+
       <div class="s-card" style="margin-bottom:12px">
         <div class="s-label" style="color:#f59e0b">Maintenance Calories (TDEE)</div>
         <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px">
@@ -5106,6 +5114,10 @@ function openSettings() {
   const goals = getStorage('userGoals', {});
   if (goals.weight) document.getElementById('settingWeight').value     = goals.weight;
   if (goals.goal)   document.getElementById('settingGoalWeight').value = goals.goal;
+  if (goals.goalDate) {
+    document.getElementById('settingGoalDate').value = goals.goalDate;
+    updateGoalDateHint();
+  }
   // Populate macro fields
   const savedMacros = getStorage('userMacros', null) || MACROS;
   document.getElementById('settingCalories').value = savedMacros.calories;
@@ -5125,14 +5137,15 @@ function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
 }
 function saveGoalSettings() {
-  const w   = parseInt(document.getElementById('settingWeight').value)     || 165;
-  const g   = parseInt(document.getElementById('settingGoalWeight').value) || 163;
+  const w        = parseInt(document.getElementById('settingWeight').value)     || 165;
+  const g        = parseInt(document.getElementById('settingGoalWeight').value) || 163;
+  const goalDate = document.getElementById('settingGoalDate').value || '';
   const cal = parseInt(document.getElementById('settingCalories').value)   || MACROS.calories;
   const pro = parseInt(document.getElementById('settingProtein').value)    || MACROS.protein;
   const crb = parseInt(document.getElementById('settingCarbs').value)      || MACROS.carbs;
   const fat = parseInt(document.getElementById('settingFat').value)        || MACROS.fat;
   const tdee = parseInt(document.getElementById('settingTDEE').value)      || TDEE;
-  setStorage('userGoals',  { weight: w, goal: g });
+  setStorage('userGoals', { weight: w, goal: g, goalDate });
   setStorage('userMacros', { calories: cal, protein: pro, carbs: crb, fat: fat });
   setStorage('userTDEE',   tdee);
   // Clear adaptive overrides so new base targets are used immediately
@@ -5178,76 +5191,99 @@ function updateMacroTargetsRow() {
 
   // Tip box
   if (el('macroTipBox')) {
-    const lbsToLose = Math.max(0, (cw - gw)).toFixed(1);
-    const wksToGoal = deficit > 0 ? Math.round((lbsToLose * 3500) / (deficit * 7) * 10) / 10 : '?';
-    const src = garminAdj ? '🟠 Run day — extra fuel added' : adaptive ? '🧠 Adaptive macros active' : '🎯 Base cut targets';
-    el('macroTipBox').innerHTML = `💡 <span style=color:#4ade80>${src}.</span> Goal: ${cw} → ${gw} lbs (~${wksToGoal} wks at this deficit). Strava auto-adds carbs &amp; cals on run days.`;
+    const src2 = garminAdj ? '🟠 Run day — extra fuel added' : adaptive ? '🧠 Adaptive macros active' : '🎯 Base cut targets';
+    let tipTime = '';
+    if (goals.goalDate) {
+      const dl = Math.round((new Date(goals.goalDate + 'T00:00:00') - new Date()) / 86400000);
+      if (dl > 0) tipTime = ' · ' + dl + ' days to goal';
+    } else if (deficit > 0) {
+      tipTime = ' · ~' + (Math.round(((cw-gw)*3500)/(deficit*7)*10)/10) + ' wks at this deficit';
+    }
+    el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. Strava auto-adds carbs &amp; cals on run days.'
   }
+}
+
+function updateGoalDateHint() {
+  const hint    = document.getElementById('goalDateHint');
+  if (!hint) return;
+  const dateVal = document.getElementById('settingGoalDate').value;
+  const cw      = parseFloat(document.getElementById('settingWeight').value)     || 165;
+  const gw      = parseFloat(document.getElementById('settingGoalWeight').value) || 163;
+  if (!dateVal) { hint.textContent = ''; return; }
+  const today   = new Date();
+  const target  = new Date(dateVal + 'T00:00:00');
+  const days    = Math.round((target - today) / 86400000);
+  if (days <= 0) { hint.innerHTML = '<span style="color:#f87171">⚠️ Date must be in the future</span>'; return; }
+  const lbs     = Math.max(0, cw - gw);
+  const weeks   = days / 7;
+  const lbsWk   = weeks > 0 ? (lbs / weeks).toFixed(2) : '?';
+  const deficitDay = weeks > 0 ? Math.round((lbs * 3500) / days) : 0;
+  let color = '#4ade80';
+  let warning = '';
+  if (parseFloat(lbsWk) > 2)      { color = '#f87171'; warning = ' ⚠️ Very aggressive'; }
+  else if (parseFloat(lbsWk) > 1.5) { color = '#f59e0b'; warning = ' — moderate pace'; }
+  else                             { warning = ' — healthy pace'; }
+  hint.innerHTML = `<span style="color:${color}"><strong>${lbsWk} lbs/week</strong>${warning}</span><br>~${deficitDay} kcal/day deficit needed · ${days} days to go`;
 }
 
 function autoCalcTDEE() {
   const resultEl = document.getElementById('tdeeCalcResult');
-  // Need at least 7 days of both food log and weight entries
-  const macroLog     = getStorage('macroLog', {});
-  const weightEntries = getStorage('weightEntries', []).sort((a,b) => a.date > b.date ? 1 : -1);
-  const burnLog      = getStorage('burnLog', {});
+  const macroLog      = getStorage('macroLog', {});
+  const weightEntries = getWeightEntries(); // uses weightLog — correct key
 
   if (weightEntries.length < 2) {
     resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need at least 2 weight entries to calculate. Keep logging your weight daily and come back in a week.';
+    resultEl.innerHTML = '⚠️ Need at least 2 weight entries. Log your weight daily and come back in a few days.';
     return;
   }
 
-  // Use entries within last 30 days that have both food + weight data
+  // Use entries within last 30 days
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-  const recentWeights = weightEntries.filter(e => new Date(e.date) >= cutoff);
+  const cutoffKey = cutoff.toISOString().slice(0,10);
+  const recentWeights = weightEntries.filter(e => e.date >= cutoffKey);
   if (recentWeights.length < 2) {
     resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need more recent weight entries. Log your weight for at least 2 days within the past 30 days.';
+    resultEl.innerHTML = '⚠️ Need at least 2 weight entries within the past 30 days.';
     return;
   }
 
   const first = recentWeights[0];
   const last  = recentWeights[recentWeights.length - 1];
   const days  = Math.round((new Date(last.date) - new Date(first.date)) / (1000*60*60*24));
-  if (days < 3) {
+  if (days < 2) {
     resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need at least 3 days between first and last weight entry for an accurate estimate.';
+    resultEl.innerHTML = '⚠️ Need at least 2 days between weight entries for an accurate estimate.';
     return;
   }
 
   // Average daily calories logged between those dates
   const dateKeys = [];
-  const d = new Date(first.date);
-  while (d <= new Date(last.date)) {
+  const d = new Date(first.date + 'T12:00:00');
+  const lastDate = new Date(last.date + 'T12:00:00');
+  while (d <= lastDate) {
     dateKeys.push(d.toISOString().slice(0,10));
     d.setDate(d.getDate()+1);
   }
   const loggedKeys = dateKeys.filter(k => macroLog[k] && macroLog[k].calories > 0);
-  if (loggedKeys.length < 3) {
+  if (loggedKeys.length < 2) {
     resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Not enough food log entries in that period. Log your meals for at least 3 days.';
+    resultEl.innerHTML = '⚠️ Not enough food log entries. Log meals for at least 2 days in that period.';
     return;
   }
 
   const avgCals = loggedKeys.reduce((s,k) => s + macroLog[k].calories, 0) / loggedKeys.length;
-  const weightChange = last.weight - first.weight; // negative = loss
-  // calories from weight change: 1 lb = 3500 kcal
-  const calsFromWeightChange = (weightChange * 3500) / days; // daily surplus/deficit from weight
-  // TDEE = avgCals - calsFromWeightChange
-  // If lost weight (negative change), calsFromWeightChange is negative, so TDEE = avgCals + |deficit|
+  const weightChange = last.weight - first.weight;
+  const calsFromWeightChange = (weightChange * 3500) / days;
   const estimatedTDEE = Math.round(avgCals - calsFromWeightChange);
 
-  // Populate the field
   document.getElementById('settingTDEE').value = estimatedTDEE;
-
   const lostGained = weightChange < 0 ? `lost ${Math.abs(weightChange).toFixed(1)} lbs` : `gained ${weightChange.toFixed(1)} lbs`;
   resultEl.style.display = 'block';
   resultEl.innerHTML = `
     <strong style="color:var(--text)">Estimated TDEE: ${estimatedTDEE.toLocaleString()} kcal</strong><br>
-    Based on ${days} days of data (${loggedKeys.length} days logged).<br>
-    Avg intake: ${Math.round(avgCals)} kcal/day · ${lostGained} (${first.date} → ${last.date})<br>
-    <span style="color:var(--text3)">Hit Save to apply this number.</span>
+    Based on ${days} days · ${loggedKeys.length} days of food logs<br>
+    Avg intake: ${Math.round(avgCals)} kcal/day · ${lostGained}<br>
+    <span style="color:var(--text3)">(${first.date} → ${last.date}) · Hit Save to apply.</span>
   `;
 }
 
