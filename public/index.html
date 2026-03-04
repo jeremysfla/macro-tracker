@@ -390,18 +390,27 @@
 
   /* Weekly Calorie Balance */
   .week-balance-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 16px; }
-  .wbd { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .wbd { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; border-radius: 8px; padding: 4px 2px; transition: background 0.15s; }
+  .wbd:hover { background: var(--surface2); }
   .wbd-name { font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: 0.5px; text-transform: uppercase; }
-  .wbd-bar-wrap { width: 100%; height: 56px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
-  .wbd-bar { width: 100%; border-radius: 6px 6px 0 0; min-height: 3px; transition: height 0.3s; }
+  .wbd-bar-wrap { width: 100%; height: 52px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+  .wbd-bar { width: 80%; border-radius: 4px 4px 0 0; min-height: 3px; transition: height 0.3s; }
   .wbd-bar.surplus { background: var(--red); }
   .wbd-bar.deficit { background: var(--green); }
   .wbd-bar.none    { background: var(--border); }
-  .wbd-val { font-size: 8px; font-weight: 700; margin-top: 2px; text-align: center; line-height: 1.2; }
+  .wbd-val { font-size: 9px; font-weight: 800; margin-top: 1px; text-align: center; line-height: 1.2; }
   .wbd-val.surplus { color: var(--red); }
   .wbd-val.deficit { color: var(--green); }
   .wbd-val.none    { color: var(--text3); }
-  .wbd-today { outline: 2px solid var(--blue); border-radius: 8px; padding: 3px 2px; }
+  .wbd-cals { font-size: 8px; color: var(--text3); font-weight: 600; text-align: center; line-height: 1.2; }
+  .wbd-today { outline: 2px solid var(--blue); border-radius: 8px; }
+  .wbd-selected { background: var(--surface2); outline: 2px solid #8b5cf6; border-radius: 8px; }
+  .wbd-detail { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; animation: fadeIn 0.2s ease; }
+  .wbd-detail-title { font-size: 10px; font-weight: 800; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+  .wbd-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .wbd-detail-cell { text-align: center; }
+  .wbd-detail-val { font-size: 16px; font-weight: 800; color: var(--text); }
+  .wbd-detail-lbl { font-size: 9px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
   .weekly-summary-row { display: flex; gap: 10px; }
   .weekly-stat { flex: 1; background: var(--surface2); border-radius: 14px; padding: 12px 10px; border: 1.5px solid var(--border); text-align: center; }
   .weekly-stat-val { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
@@ -794,6 +803,7 @@ PROMISE ERROR:
           <div id="weekRangeLabel" style="font-size:10px;color:var(--text3);font-weight:600"></div>
         </div>
         <div class="week-balance-grid" id="weekBalanceGrid"></div>
+        <div id="wbdDetailPanel" style="display:none" class="wbd-detail"></div>
         <div class="weekly-summary-row" id="weeklySummaryRow"></div>
       </div>
 
@@ -6210,19 +6220,18 @@ function renderWeeklyBalance() {
       : isSurplus
         ? `+${Math.abs(bal) >= 1000 ? (Math.abs(bal)/1000).toFixed(1)+'k' : Math.round(Math.abs(bal))}`
         : `-${Math.abs(bal) >= 1000 ? (Math.abs(bal)/1000).toFixed(1)+'k' : Math.round(Math.abs(bal))}`;
-    const runDot = d.dayBurn > 0 ? `<div style="font-size:8px;text-align:center;margin-top:2px">🏃</div>` : '';
+    const runIcon = d.dayBurn > 0 ? '🏃' : '';
     const calLine = d.dailyCals !== null
-      ? `<div style="font-size:9px;color:var(--text3);text-align:center;margin-top:1px;font-weight:600">${d.dailyCals >= 1000 ? (d.dailyCals/1000).toFixed(1)+'k' : d.dailyCals}</div>`
-      : '';
+      ? `<div class="wbd-cals">${d.dailyCals >= 1000 ? (d.dailyCals/1000).toFixed(1)+'k' : d.dailyCals} kcal${runIcon ? ' '+runIcon : ''}</div>`
+      : (runIcon ? `<div class="wbd-cals">${runIcon}</div>` : '');
 
-    return `<div class="wbd${d.isToday ? ' wbd-today' : ''}">
+    return `<div class="wbd${d.isToday ? ' wbd-today' : ''}" onclick="selectWeekDay('${d.key}')" data-wbd-key="${d.key}">
       <div class="wbd-name">${d.name}</div>
       <div class="wbd-bar-wrap">
         <div class="wbd-bar ${type}" style="height:${barH}px"></div>
       </div>
       <div class="wbd-val ${type}">${label}</div>
       ${calLine}
-      ${runDot}
     </div>`;
   }).join('');
 
@@ -6264,6 +6273,85 @@ function renderWeeklyBalance() {
       <div class="weekly-stat-val">${daysLogged}/7</div>
       <div class="weekly-stat-lbl">Days Logged</div>
     </div>`;
+}
+
+let _selectedWbdKey = null;
+
+function selectWeekDay(key) {
+  const panel   = document.getElementById('wbdDetailPanel');
+  const macroLog = getStorage('macroLog', {});
+  const burnLog  = getStorage('burnLog', {});
+  const baseTDEE = getStorage('userTDEE', null) || TDEE;
+
+  // Deselect if clicking same day
+  if (_selectedWbdKey === key) {
+    _selectedWbdKey = null;
+    panel.style.display = 'none';
+    document.querySelectorAll('.wbd-selected').forEach(el => el.classList.remove('wbd-selected'));
+    return;
+  }
+  _selectedWbdKey = key;
+
+  // Highlight selected tile
+  document.querySelectorAll('[data-wbd-key]').forEach(el => {
+    el.classList.toggle('wbd-selected', el.dataset.wbdKey === key);
+  });
+
+  const log     = macroLog[key] || {};
+  const burn    = burnLog[key] || 0;
+  const cals    = log.calories || 0;
+  const protein = log.protein  || 0;
+  const carbs   = log.carbs    || 0;
+  const fat     = log.fat      || 0;
+  const maint   = baseTDEE + burn;
+  const balance = cals > 0 ? cals - maint : null;
+  const hasData = cals > 0;
+
+  // Format date label
+  const d = new Date(key + 'T12:00:00');
+  const dayLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  const balColor  = balance === null ? 'var(--text3)' : balance < 0 ? 'var(--green)' : 'var(--red)';
+  const balSign   = balance === null ? '' : balance < 0 ? '−' : '+';
+  const balVal    = balance === null ? '—' : balSign + Math.abs(Math.round(balance)).toLocaleString();
+  const lbsImpact = balance !== null ? (balance / 3500) : null;
+  const lbsStr    = lbsImpact !== null
+    ? (lbsImpact < 0 ? '−' : '+') + Math.abs(lbsImpact).toFixed(2) + ' lbs'
+    : '—';
+  const lbsColor  = lbsImpact === null ? 'var(--text3)' : lbsImpact < 0 ? 'var(--green)' : 'var(--red)';
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="wbd-detail-title">${dayLabel}${burn > 0 ? ' 🏃 +' + burn.toLocaleString() + ' run cals' : ''}</div>
+    ${!hasData ? '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">No food logged this day</div>' : `
+    <div class="wbd-detail-grid">
+      <div class="wbd-detail-cell">
+        <div class="wbd-detail-val" style="color:#f59e0b">${cals.toLocaleString()}</div>
+        <div class="wbd-detail-lbl">Calories</div>
+      </div>
+      <div class="wbd-detail-cell">
+        <div class="wbd-detail-val" style="color:#4ade80">${protein}g</div>
+        <div class="wbd-detail-lbl">Protein</div>
+      </div>
+      <div class="wbd-detail-cell">
+        <div class="wbd-detail-val" style="color:#60a5fa">${carbs}g</div>
+        <div class="wbd-detail-lbl">Carbs</div>
+      </div>
+      <div class="wbd-detail-cell">
+        <div class="wbd-detail-val" style="color:#f87171">${fat}g</div>
+        <div class="wbd-detail-lbl">Fat</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
+        <div style="font-size:14px;font-weight:800;color:${balColor}">${balVal}</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs TDEE (${maint.toLocaleString()} kcal)</div>
+      </div>
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
+        <div style="font-size:14px;font-weight:800;color:${lbsColor}">${lbsStr}</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">Est. Weight Impact</div>
+      </div>
+    </div>`}`;
 }
 
 // ═══════════════════════════════════════════════════════
