@@ -1583,26 +1583,11 @@ PROMISE ERROR:
     <!-- ── NUTRITION DATABASES ── -->
     <div class="settings-section">
       <div class="settings-section-title">🗄️ Nutrition Databases</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
-        <strong style="color:var(--text)">Open Food Facts</strong> and <strong style="color:var(--text)">USDA FoodData Central</strong> run automatically (no key needed).<br>
-        Add <strong style="color:#a78bfa">Nutritionix</strong> for restaurant foods &amp; branded items.
-        <a href="https://developer.nutritionix.com" target="_blank" style="color:#a78bfa;font-weight:600">Get free keys →</a>
-      </div>
-      <div class="key-input-group">
-        <div class="key-input-label">Nutritionix App ID</div>
-        <input type="text" id="nutritionixAppIdInput" class="s-input" placeholder="e.g. a1b2c3d4" />
-      </div>
-      <div class="key-input-group">
-        <div class="key-input-label">Nutritionix App Key</div>
-        <input type="password" id="nutritionixAppKeyInput" class="s-input" placeholder="Paste App Key…" />
-      </div>
-      <button class="btn-green" style="margin-top:6px" onclick="saveNutritionixKeys()">💾 Save Keys</button>
-      <div id="nutritionixStatus" style="font-size:11px;color:var(--text3);margin-top:8px"></div>
-      <div style="margin-top:12px;background:var(--surface2);border-radius:12px;padding:12px;font-size:11px;color:var(--text3);line-height:1.9">
-        ✅ Open Food Facts (world + US)<br>
-        ✅ USDA FoodData Central (SR28 + Branded)<br>
-        ✅ Nutritionix (with key)<br>
-        ✅ UPC ItemDB · 📸 Photo AI label scan
+      <div style="background:var(--surface2);border-radius:12px;padding:12px;font-size:11px;color:var(--text3);line-height:1.9">
+        ✅ Open Food Facts (world + US) — free, no key needed<br>
+        ✅ USDA FoodData Central (SR28 + Branded) — free, no key needed<br>
+        ✅ UPC ItemDB — free, broad product coverage<br>
+        📸 Photo AI label scan — Claude vision
       </div>
     </div>
 
@@ -3989,23 +3974,16 @@ function logScannedFood() {
 // ══════════════════════════════════════════════════════════════════
 // ── MULTI-DATABASE FOOD LOOKUP ENGINE ─────────────────────────────
 // Covers: USDA FoodData Central (SR28/Foundation/Branded/UPC),
-//         Open Food Facts (world + US), Nutritionix (branded + NLP),
+//         Open Food Facts (world + US),
 //         UPC ItemDB (broad product coverage)
 //
 // For photo AI: two-phase approach
 //   Phase 1 — Vision: Claude identifies each food + estimated portion
-//   Phase 2 — DB lookup: query USDA/Nutritionix for each identified food
+//   Phase 2 — DB lookup: query USDA for each identified food
 //             and replace estimated values with database-accurate macros
 // ══════════════════════════════════════════════════════════════════
 
 // ── API Keys (editable in Settings) ──
-function getNutritionixKeys() {
-  return {
-    appId:  getStorage('nutritionixAppId',  ''),
-    appKey: getStorage('nutritionixAppKey', ''),
-  };
-}
-
 // ── Sanity-check a parsed product ──
 function isSaneProduct(p) {
   if (!p || !p.name) return false;
@@ -4099,21 +4077,6 @@ function parseUSDAProduct(f) {
     servingSize: servingG > 0 ? `${f.servingSize}${f.servingSizeUnit||'g'}` : '100g',
     source:      'USDA FDC',
     micros,
-  };
-}
-
-// ── Parse Nutritionix branded item ──
-function parseNutritionixItem(item) {
-  const s = item.serving_qty || 1;
-  return {
-    name:        item.food_name || '',
-    brand:       item.brand_name || item.nf_brand_name || '',
-    calories:    Math.round(item.nf_calories || 0),
-    protein:     Math.round((item.nf_protein||0)*10)/10,
-    carbs:       Math.round((item.nf_total_carbohydrate||0)*10)/10,
-    fat:         Math.round((item.nf_total_fat||0)*10)/10,
-    servingSize: `${s} ${item.serving_unit||'serving'}`,
-    source:      'Nutritionix',
   };
 }
 
@@ -4264,8 +4227,6 @@ function extractServingGrams(servingStr) {
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-  const nix = getNutritionixKeys();
-
   // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
   const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
   const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
@@ -4341,23 +4302,7 @@ async function lookupBarcodeMultiDB(barcode) {
     }
   } catch(e) { console.warn('USDA:', e); }
 
-  // 3. Nutritionix (if user has keys)
-  if (nix.appId && nix.appKey) {
-    try {
-      log('⏳ Searching Nutritionix…');
-      const r = await fetch('https://trackapi.nutritionix.com/v2/search/item?upc=' + barcode, {
-        headers: { 'x-app-id': nix.appId, 'x-app-key': nix.appKey, 'x-remote-user-id': '0' }
-      });
-      const d = await r.json();
-      const item = (d.foods || [])[0];
-      if (item) {
-        const p = parseNutritionixItem(item);
-        if (isSaneProduct(p)) { log('✅ Found — Nutritionix'); return saveCache(p); }
-      }
-    } catch(e) { console.warn('Nutritionix:', e); }
-  }
-
-  // 4. Open Food Facts .org (different CDN node, second chance)
+  // 3. Open Food Facts .org (different CDN node, second chance)
   try {
     log('⏳ Searching Open Food Facts (alt)…');
     for (const code of allCodes) {
@@ -4436,7 +4381,6 @@ async function searchUSDAByName(name) {
 
 // ── Multi-DB text search for AI Search modal ──
 async function searchFoodMultiDB(query) {
-  const nix = getNutritionixKeys();
   const results = [];
   const seen = new Set();
   const dedup = p => { const k=p.name.toLowerCase().slice(0,25).trim(); if(seen.has(k))return false; seen.add(k);return true; };
@@ -4461,20 +4405,7 @@ async function searchFoodMultiDB(query) {
     (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial'}); });
   } catch(e) {}
 
-  // 3. Nutritionix natural language
-  if (nix.appId && nix.appKey) {
-    try {
-      const r = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-app-id':nix.appId,'x-app-key':nix.appKey,'x-remote-user-id':'0'},
-        body:JSON.stringify({query})
-      });
-      const d = await r.json();
-      (d.foods||[]).forEach(item => { const p=parseNutritionixItem(item); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial',source:'Nutritionix'}); });
-    } catch(e) {}
-  }
-
-  // 4. Open Food Facts text search
+  // 3. Open Food Facts text search
   try {
     const r = await fetch(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}` +
@@ -4603,7 +4534,6 @@ function buildNutritionKnowledgePrompt(hint, visionData) {
 - McCance & Widdowson's CoFID (UK food composition)
 - NEVO Dutch Food Composition Database
 - Australian Food Composition Database (NUTTAB)
-- Nutritionix branded and restaurant database
 - Open Food Facts global product database
 
 ${hint ? `User note: "${hint}"` : ''}
@@ -5077,34 +5007,7 @@ function logAIFood() {
 }
 
 // ── Settings ──
-function saveNutritionixKeys() {
-  const id  = document.getElementById('nutritionixAppIdInput')?.value.trim();
-  const key = document.getElementById('nutritionixAppKeyInput')?.value.trim();
-  if (id)  setStorage('nutritionixAppId',  id);
-  if (key) setStorage('nutritionixAppKey', key);
-  const status = document.getElementById('nutritionixStatus');
-  if (status) {
-    status.textContent = (id && key) ? '✅ Nutritionix keys saved' : '⚠️ Enter both App ID and App Key';
-    status.style.color = (id && key) ? '#22c55e' : '#f59e0b';
-  }
-  showToast('✅ Nutritionix keys saved');
-}
-
-function loadNutritionixKeyInputs() {
-  const nix = getNutritionixKeys();
-  const idEl  = document.getElementById('nutritionixAppIdInput');
-  const keyEl = document.getElementById('nutritionixAppKeyInput');
-  if (idEl  && nix.appId)  idEl.value  = nix.appId;
-  if (keyEl && nix.appKey) keyEl.value = nix.appKey;
-  const status = document.getElementById('nutritionixStatus');
-  if (status && nix.appId && nix.appKey) {
-    status.textContent = '✅ Nutritionix connected';
-    status.style.color = '#22c55e';
-  }
-}
-
 function openSettings() {
-  loadNutritionixKeyInputs();
   document.getElementById('settingsModal').classList.add('open');
   const creds = getStorage('garminCreds', null);
   if (creds) {
