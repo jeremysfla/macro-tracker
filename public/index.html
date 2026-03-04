@@ -1509,7 +1509,7 @@ PROMISE ERROR:
         </div>
         <div style="display:flex;gap:8px">
           <button onclick="document.getElementById('settingTDEE').value=2208;document.getElementById('tdeeCalcResult').style.display='block';document.getElementById('tdeeCalcResult').innerHTML='↩️ Reset to baseline 2,208 kcal. Hit Save to apply.';" style="flex:1;padding:10px 12px;background:#1e3a5f;border:1.5px solid #3b82f6;border-radius:12px;color:#60a5fa;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">↩️ Reset to 2,208</button>
-          <button onclick="autoCalcTDEE()" style="flex:1;padding:10px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">🧮 Auto-calc</button>
+          <button onclick="autoCalcTDEE()" style="flex:1;padding:10px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">🧮 Calculate target</button>
         </div>
         <div id="tdeeCalcResult" style="display:none;font-size:11px;line-height:1.7;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);margin-top:10px"></div>
       </div>
@@ -5148,75 +5148,110 @@ function updateGoalDateHint() {
 
 function autoCalcTDEE() {
   const resultEl = document.getElementById('tdeeCalcResult');
-  const macroLog      = getStorage('macroLog', {});
-  const weightEntries = getWeightEntries(); // uses weightLog — correct key
-
-  if (weightEntries.length < 2) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need at least 2 weight entries. Log your weight daily and come back in a few days.';
-    return;
-  }
-
-  // Use entries within last 30 days
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-  const cutoffKey = cutoff.toISOString().slice(0,10);
-  const recentWeights = weightEntries.filter(e => e.date >= cutoffKey);
-  if (recentWeights.length < 2) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need at least 2 weight entries within the past 30 days.';
-    return;
-  }
-
-  const first = recentWeights[0];
-  const last  = recentWeights[recentWeights.length - 1];
-  const days  = Math.round((new Date(last.date) - new Date(first.date)) / (1000*60*60*24));
-  if (days < 2) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Need at least 2 days between weight entries for an accurate estimate.';
-    return;
-  }
-
-  // Average daily calories logged between those dates
-  const dateKeys = [];
-  const d = new Date(first.date + 'T12:00:00');
-  const lastDate = new Date(last.date + 'T12:00:00');
-  while (d <= lastDate) {
-    dateKeys.push(d.toISOString().slice(0,10));
-    d.setDate(d.getDate()+1);
-  }
-  const loggedKeys = dateKeys.filter(k => macroLog[k] && macroLog[k].calories > 0);
-  if (loggedKeys.length < 2) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = '⚠️ Not enough food log entries. Log meals for at least 2 days in that period.';
-    return;
-  }
-
-  const avgCals = loggedKeys.reduce((s,k) => s + macroLog[k].calories, 0) / loggedKeys.length;
-  const weightChange = last.weight - first.weight;
-
-  // Clamp weight change to max physiologically realistic fat loss (1 lb/day absolute max)
-  // to avoid water weight / glycogen swings inflating TDEE estimate
-  const maxLossPerDay = 1.0;
-  const clampedChange = Math.max(weightChange, -maxLossPerDay * days);
-  const calsFromWeightChange = (clampedChange * 3500) / days;
-  const estimatedTDEE = Math.round(avgCals - calsFromWeightChange);
-
-  // Sanity check: TDEE must be between 1,200 and 5,000 for any adult
-  if (estimatedTDEE < 1200 || estimatedTDEE > 5000) {
-    resultEl.style.display = 'block';
-    resultEl.innerHTML = `⚠️ Calculated TDEE (${estimatedTDEE.toLocaleString()}) is outside a realistic range — likely due to water weight fluctuations. Use your baseline of <strong>2,208 kcal</strong> instead.`;
-    return;
-  }
-
-  document.getElementById('settingTDEE').value = estimatedTDEE;
-  const lostGained = weightChange < 0 ? `lost ${Math.abs(weightChange).toFixed(1)} lbs` : `gained ${weightChange.toFixed(1)} lbs`;
   resultEl.style.display = 'block';
+
+  // ── Pull all the inputs we need ──
+  const goals        = getStorage('userGoals', {});
+  const weightLog    = getWeightEntries();           // [{date, weight}] sorted asc
+  const macroLog     = getStorage('macroLog', {});
+  const baseTDEE     = getStorage('userTDEE', null) || TDEE;
+
+  // Current weight: most recent weigh-in, fallback to settings field
+  const latestEntry  = weightLog.length ? weightLog[weightLog.length - 1] : null;
+  const currentWeight = latestEntry
+    ? latestEntry.weight
+    : parseFloat(document.getElementById('settingWeight')?.value) || goals.weight || 165;
+
+  const goalWeight   = parseFloat(document.getElementById('settingGoalWeight')?.value) || goals.goal || 163;
+  const goalDateStr  = document.getElementById('settingGoalDate')?.value || goals.goalDate || '';
+
+  if (!goalDateStr) {
+    resultEl.innerHTML = '⚠️ Set a <strong>Goal Date</strong> above first — needed to calculate your required daily deficit.';
+    return;
+  }
+
+  const today      = new Date(todayKey() + 'T12:00:00');
+  const goalDate   = new Date(goalDateStr + 'T12:00:00');
+  const daysLeft   = Math.round((goalDate - today) / 86400000);
+
+  if (daysLeft <= 0) {
+    resultEl.innerHTML = '⚠️ Goal date is in the past. Update it to a future date.';
+    return;
+  }
+
+  const lbsToLose  = Math.max(0, currentWeight - goalWeight);
+  const totalDeficit = lbsToLose * 3500;             // kcal needed
+  const dailyDeficit = Math.round(totalDeficit / daysLeft);
+  const recommendedCals = Math.round(baseTDEE - dailyDeficit);
+
+  // ── Layer 2: refine using actual logged data if we have enough ──
+  // If 7+ days of both food + weight logs, compute actual TDEE from behaviour
+  let refinedSection = '';
+  const recentWeights = weightLog.filter(e => {
+    const d = new Date(e.date + 'T12:00:00');
+    return (today - d) / 86400000 <= 14;
+  });
+
+  if (recentWeights.length >= 3) {
+    const first = recentWeights[0];
+    const last  = recentWeights[recentWeights.length - 1];
+    const span  = Math.round((new Date(last.date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000);
+
+    if (span >= 3) {
+      // Get food logs in that window
+      const keys = Object.keys(macroLog).filter(k => k >= first.date && k <= last.date && macroLog[k].calories > 0);
+      if (keys.length >= 3) {
+        const avgEaten = keys.reduce((s, k) => s + macroLog[k].calories, 0) / keys.length;
+        const actualLoss = first.weight - last.weight; // positive = lost weight
+
+        // Clamp to max 0.5 lb/day to ignore water weight spikes
+        const clampedLoss = Math.min(actualLoss, 0.5 * span);
+        const impliedDeficit = (clampedLoss * 3500) / span;
+        const inferredTDEE = Math.round(avgEaten + impliedDeficit);
+
+        // Only use inferred TDEE if it's in a plausible range
+        if (inferredTDEE >= 1400 && inferredTDEE <= 4500) {
+          const refinedDailyDeficit = Math.round((lbsToLose * 3500) / daysLeft);
+          const refinedCals = Math.max(1200, inferredTDEE - refinedDailyDeficit);
+          refinedSection = `
+            <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:10px;border:1px solid #4ade8044">
+              <div style="font-size:10px;font-weight:800;color:#4ade80;margin-bottom:4px">🧠 REFINED FROM YOUR ACTUAL LOGS</div>
+              <div style="font-size:11px;color:var(--text2)">
+                Based on ${span} days of data (${keys.length} food logs + ${recentWeights.length} weigh-ins)<br>
+                Avg eaten: <strong>${Math.round(avgEaten)} kcal</strong> · Lost: <strong>${clampedLoss.toFixed(1)} lbs</strong><br>
+                Inferred TDEE: <strong>${inferredTDEE.toLocaleString()} kcal</strong><br>
+                <span style="color:#4ade80;font-weight:700">Refined target: ${refinedCals.toLocaleString()} kcal/day</span>
+              </div>
+            </div>`;
+
+          // Use the refined value as the primary recommendation
+          document.getElementById('settingTDEE').value = inferredTDEE;
+          document.getElementById('settingCalories').value = refinedCals;
+        }
+      }
+    }
+  }
+
+  // If no refinement, use the forward-looking calculation
+  if (!refinedSection) {
+    const safeCals = Math.max(1200, recommendedCals);
+    document.getElementById('settingTDEE').value = baseTDEE;
+    document.getElementById('settingCalories').value = safeCals;
+  }
+
+  const lbsPerWeek = ((lbsToLose * 7) / daysLeft).toFixed(2);
+  const paceColor  = parseFloat(lbsPerWeek) > 1.5 ? '#f87171' : parseFloat(lbsPerWeek) > 1.0 ? '#f59e0b' : '#4ade80';
+
   resultEl.innerHTML = `
-    <strong style="color:var(--text)">Estimated TDEE: ${estimatedTDEE.toLocaleString()} kcal</strong><br>
-    Based on ${days} days · ${loggedKeys.length} days of food logs<br>
-    Avg intake: ${Math.round(avgCals)} kcal/day · ${lostGained}<br>
-    <span style="color:var(--text3)">(${first.date} → ${last.date}) · Hit Save to apply.</span>
-  `;
+    <div style="font-size:11px;color:var(--text2);line-height:1.8">
+      <strong style="color:var(--text)">📊 Goal Plan</strong><br>
+      Current: <strong>${currentWeight} lbs</strong> · Goal: <strong>${goalWeight} lbs</strong> · Need to lose: <strong>${lbsToLose.toFixed(1)} lbs</strong><br>
+      Days remaining: <strong>${daysLeft}</strong> · Pace: <span style="color:${paceColor};font-weight:700">${lbsPerWeek} lbs/week</span><br>
+      Required daily deficit: <strong>${dailyDeficit.toLocaleString()} kcal</strong><br>
+      Base TDEE: <strong>${baseTDEE.toLocaleString()} kcal</strong> → <strong style="color:#f59e0b">Calorie target: ${Math.max(1200, recommendedCals).toLocaleString()} kcal/day</strong>
+      ${refinedSection}
+      <div style="margin-top:8px;font-size:10px;color:var(--text3)">Calorie target updated above. Hit <strong>Save</strong> to apply.</div>
+    </div>`;
 }
 
 // ── Garmin OAuth 1.0a ──
