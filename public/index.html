@@ -3073,7 +3073,7 @@ function setFoodEntries(entries, dateKey) {
     fat:      acc.fat      + (e.fat      || 0),
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
   const macroLog = getStorage('macroLog', {});
-  macroLog[key]  = totals;
+  macroLog[key]  = { calories: Math.round(totals.calories), protein: Math.round(totals.protein), carbs: Math.round(totals.carbs), fat: Math.round(totals.fat) };
   setStorage('macroLog', macroLog);
 }
 
@@ -6382,10 +6382,10 @@ function selectWeekDay(key) {
 
   const log     = macroLog[key] || {};
   const burn    = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
-  const cals    = log.calories || 0;
-  const protein = log.protein  || 0;
-  const carbs   = log.carbs    || 0;
-  const fat     = log.fat      || 0;
+  const cals    = Math.round(log.calories || 0);
+  const protein = Math.round(log.protein  || 0);
+  const carbs   = Math.round(log.carbs    || 0);
+  const fat     = Math.round(log.fat      || 0);
   // Balance vs base TDEE only — run burn is additional deficit shown separately
   const balance      = cals > 0 ? cals - baseTDEE : null;
   const totalDeficit = cals > 0 ? cals - (baseTDEE + burn) : null; // including run
