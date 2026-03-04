@@ -610,7 +610,7 @@ PROMISE ERROR:
   <div class="header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
-        <div class="header-sub">170 → 163 lbs · 30 days</div>
+        <div class="header-sub" id="headerGoalSub">Loading…</div>
         <div class="header-title" id="appHeaderTitle" onclick="handleDeployTap()">Jeremy's Tracker AI</div>
         <div id="headerDateLabel" style="font-size:12px;color:var(--text2);font-weight:600;margin-top:4px;letter-spacing:0.2px"></div>
       </div>
@@ -1907,6 +1907,22 @@ function updateHeaderDate() {
   const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/New_York' });
   const el = document.getElementById('headerDateLabel');
   if (el) el.textContent = label;
+
+  // Update goal sub-header dynamically
+  const goalEl = document.getElementById('headerGoalSub');
+  if (goalEl) {
+    const goals = getStorage('userGoals', {});
+    const gw    = goals.goal     || 163;
+    const gd    = goals.goalDate || '';
+    if (gd) {
+      const daysLeft = Math.max(0, Math.round((new Date(gd + 'T12:00:00') - new Date(todayKey() + 'T12:00:00')) / 86400000));
+      const dateStr  = new Date(gd + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      goalEl.textContent = `Goal: ${gw} lbs by ${dateStr} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+    } else {
+      const cw = goals.weight || 165;
+      goalEl.textContent = `${cw} → ${gw} lbs`;
+    }
+  }
 }
 
 // ── Auto Midnight Refresh ──
