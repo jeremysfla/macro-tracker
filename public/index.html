@@ -763,27 +763,27 @@ PROMISE ERROR:
         <div class="macro-grid">
           <div class="macro-tile" style="border-color:#3d2e00">
             <div class="macro-tile-label" style="color:#f59e0b">Calories</div>
-            <div class="macro-tile-val">2,200 kcal</div>
-            <div class="macro-tile-note">~600 kcal deficit</div>
+            <div class="macro-tile-val" id="tileCalories">—</div>
+            <div class="macro-tile-note" id="tileCaloriesNote">—</div>
           </div>
           <div class="macro-tile" style="border-color:#166534">
             <div class="macro-tile-label" style="color:#22c55e">Protein</div>
-            <div class="macro-tile-val">190g</div>
+            <div class="macro-tile-val" id="tileProtein">—</div>
             <div class="macro-tile-note">Protect muscle in deficit</div>
           </div>
           <div class="macro-tile" style="border-color:#1e3a5f">
             <div class="macro-tile-label" style="color:#3b82f6">Carbs</div>
-            <div class="macro-tile-val">190g</div>
-            <div class="macro-tile-note">Fuel runs + lifts</div>
+            <div class="macro-tile-val" id="tileCarbs">—</div>
+            <div class="macro-tile-note" id="tileCarbsNote">Base target</div>
           </div>
           <div class="macro-tile" style="border-color:#7f1d1d">
             <div class="macro-tile-label" style="color:#ef4444">Fat</div>
-            <div class="macro-tile-val">65g</div>
+            <div class="macro-tile-val" id="tileFat">—</div>
             <div class="macro-tile-note">Hormone support</div>
           </div>
         </div>
-        <div class="tip-box">
-          💡 <span style="color:#4ade80">Goal:</span> 170 → 163 lbs in 30 days. Eat protein first at every meal. On run days, keep carbs toward the higher end. If energy crashes, add 100 kcal from carbs only.
+        <div class="tip-box" id="macroTipBox">
+          💡 Loading targets…
         </div>
       </div>
 
@@ -5145,6 +5145,46 @@ function saveGoalSettings() {
   showToast('✅ Goals & macros saved!');
 }
 
+function updateMacroTargetsRow() {
+  // Single source of truth: garminAdjusted > adaptive > userMacros > MACROS defaults
+  const garminAdj  = getStorage('garminAdjustedMacros', null);
+  const adaptive   = getStorage('adaptiveMacros', null);
+  const userMacros = getStorage('userMacros', null);
+  const m = garminAdj || adaptive || userMacros || MACROS;
+
+  const tdee   = getStorage('userTDEE', null) || TDEE;
+  const goals  = getStorage('userGoals', {});
+  const cw     = goals.weight || 165;
+  const gw     = goals.goal   || 163;
+  const deficit = tdee - m.calories;
+
+  // Update tile values
+  const el = id => document.getElementById(id);
+  if (el('tileCalories'))    el('tileCalories').textContent    = m.calories.toLocaleString() + ' kcal';
+  if (el('tileProtein'))     el('tileProtein').textContent     = m.protein + 'g';
+  if (el('tileCarbs'))       el('tileCarbs').textContent       = m.carbs + 'g';
+  if (el('tileFat'))         el('tileFat').textContent         = m.fat + 'g';
+
+  // Dynamic notes
+  if (el('tileCaloriesNote')) {
+    if (garminAdj)      el('tileCaloriesNote').textContent = '🟠 Adjusted for run';
+    else if (adaptive)  el('tileCaloriesNote').textContent = '🧠 Adaptive target';
+    else if (deficit > 0) el('tileCaloriesNote').textContent = '~' + deficit.toLocaleString() + ' kcal deficit';
+    else                el('tileCaloriesNote').textContent = 'Maintenance';
+  }
+  if (el('tileCarbsNote')) {
+    el('tileCarbsNote').textContent = garminAdj ? 'Run fuel added' : 'Base target';
+  }
+
+  // Tip box
+  if (el('macroTipBox')) {
+    const lbsToLose = Math.max(0, (cw - gw)).toFixed(1);
+    const wksToGoal = deficit > 0 ? Math.round((lbsToLose * 3500) / (deficit * 7) * 10) / 10 : '?';
+    const src = garminAdj ? '🟠 Run day — extra fuel added' : adaptive ? '🧠 Adaptive macros active' : '🎯 Base cut targets';
+    el('macroTipBox').innerHTML = `💡 <span style=color:#4ade80>${src}.</span> Goal: ${cw} → ${gw} lbs (~${wksToGoal} wks at this deficit). Strava auto-adds carbs &amp; cals on run days.`;
+  }
+}
+
 function autoCalcTDEE() {
   const resultEl = document.getElementById('tdeeCalcResult');
   // Need at least 7 days of both food log and weight entries
@@ -5539,6 +5579,7 @@ function adjustMacrosForBurn(burnCalories) {
 
   // Update rings, targets row, and weekly balance
   renderRings(adjusted);
+  updateMacroTargetsRow();
   renderWeeklyBalance();
 }
 
@@ -6070,36 +6111,38 @@ async function loadDailyQuote() {
   const QUOTE_KEY = 'dailyQuote';
   const today = todayKey();
 
-  // Use cached quote if already generated today
+  // Use cached quote if already generated today (and it has content)
   const cached = getStorage(QUOTE_KEY, null);
-  if (cached && cached.date === today) {
+  if (cached && cached.date === today && cached.quote) {
     renderQuote(cached.quote, cached.author);
     return;
   }
 
-  // Clear stale cache from a previous day
-  if (cached && cached.date !== today) {
-    localStorage.removeItem(QUOTE_KEY);
-  }
+  // Clear any stale cache
+  localStorage.removeItem(QUOTE_KEY);
 
   const textEl   = document.getElementById('dailyQuoteText');
   const authorEl = document.getElementById('dailyQuoteAuthor');
-  textEl.textContent = 'Generating today\'s motivation…';
-  textEl.className = 'quote-text quote-loading';
-  authorEl.textContent = '';
+  if (textEl)   { textEl.textContent = "Generating today's motivation…"; textEl.className = 'quote-text quote-loading'; }
+  if (authorEl) authorEl.textContent = '';
 
-  const prompt = `You are a personal coach for Jeremy, a 52-year-old man working hard to go from 170 lbs to 163 lbs in 30 days. He follows a Push/Pull/Legs lifting program 3x per week, runs regularly, and tracks macros at 2,200 kcal/day with 190g protein.
+  // Pull current user stats for a personalised prompt
+  const goals  = getStorage('userGoals', {});
+  const macros = getStorage('userMacros', null) || MACROS;
+  const cw     = goals.weight || 165;
+  const gw     = goals.goal   || 163;
+  const cal    = macros.calories;
+  const pro    = macros.protein;
 
-Generate ONE short, powerful motivational quote for today (${nowEST().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', timeZone:'America/New_York'})}). The quote should feel personal to his journey — touching on one or more of: strength training at 52, staying disciplined with nutrition, weight loss, consistency, or the mental game of fitness.
+  const prompt = `You are a personal coach for Jeremy, a 52-year-old man working to go from ${cw} lbs to ${gw} lbs. He follows a Push/Pull/Legs lifting program 3x per week, runs regularly (training for Grandma's Marathon in June 2026), and tracks macros at ${cal} kcal/day with ${pro}g protein.
 
-The quote can be original or attributed to a real person. Keep it under 30 words.
+Generate ONE short, powerful motivational quote for today (${nowEST().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', timeZone:'America/New_York'})}). Touch on one of: strength at 52, nutrition discipline, weight loss, marathon training, or mental toughness.
 
-Respond with ONLY valid JSON, no markdown:
-{"quote": "The quote text here.", "author": "— Author Name (or leave empty string if original)"}`;
+Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
+{"quote": "The quote here.", "author": "— Author (or empty string if original)"}`;
 
-  // Large pool of fallback quotes — rotated by date so it changes daily even offline
   const fallbacks = [
-    { quote: "The only bad workout is the one that didn't happen. Show up, every single day.", author: "" },
+    { quote: "The only bad workout is the one that didn't happen. Show up.", author: "" },
     { quote: "Discipline is choosing between what you want now and what you want most.", author: "— Abraham Lincoln" },
     { quote: "At 52, you're not slowing down. You're refining. Every rep counts double.", author: "" },
     { quote: "Your body can stand almost anything. It's your mind you have to convince.", author: "" },
@@ -6113,29 +6156,36 @@ Respond with ONLY valid JSON, no markdown:
     { quote: "Strength does not come from the body. It comes from the will.", author: "" },
     { quote: "The pain you feel today will be the strength you feel tomorrow.", author: "" },
     { quote: "Fitness is not about being better than someone else. It's about being better than you used to be.", author: "" },
-    { quote: "At 52, every pound you lose is a gift to the next 30 years.", author: "" },
+    { quote: "At 52, every mile you run is a gift to the next 30 years.", author: "" },
+    { quote: "The marathon doesn't start at mile one. It starts the moment you decide to train.", author: "" },
+    { quote: "Protein first. Always.", author: "" },
+    { quote: "The deficit today builds the body tomorrow.", author: "" },
+    { quote: "Champions aren't made in gyms. They're made from what they have deep inside.", author: "— Muhammad Ali" },
+    { quote: "Do something today that your future self will thank you for.", author: "" },
   ];
 
   try {
-    const data = await callClaudeAPI({
+    const resp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    if (!data.content) throw new Error('API error');
-    const raw  = data.content.find(b => b.type === 'text')?.text || '';
+    if (!resp || !resp.content) throw new Error('No API response');
+    const raw = resp.content.find(b => b.type === 'text')?.text || '';
+    if (!raw) throw new Error('Empty response');
     const clean = raw.replace(/```json|```/g, '').trim();
     const jsonMatch = clean.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON');
+    if (!jsonMatch) throw new Error('No JSON in: ' + clean.slice(0, 80));
     const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed.quote) throw new Error('Missing quote field');
 
-    const entry = { date: today, quote: parsed.quote, author: parsed.author || '' };
+    const entry = { date: today, quote: parsed.quote, author: parsed.author || '', _apiFetched: true };
     setStorage(QUOTE_KEY, entry);
     renderQuote(entry.quote, entry.author);
 
   } catch (e) {
-    // Pick fallback by day-of-year so it changes daily
+    console.warn('[Quote] Using fallback:', e.message);
     const d = nowEST();
     const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
     const fb = fallbacks[dayOfYear % fallbacks.length];
@@ -9943,6 +9993,7 @@ function _initApp() {
 
   safeCall(renderRings, 'renderRings');
   safeCall(renderQuickRecs, 'renderQuickRecs');
+  safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow');
   safeCall(renderUsualFoods, 'renderUsualFoods');
   safeCall(renderFoodLog, 'renderFoodLog');
   safeCall(renderWeightTrend, 'renderWeightTrend');
@@ -9972,6 +10023,10 @@ function _initApp() {
   setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
   setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
 
+  // Force re-fetch if cached quote was stored while callClaudeAPI was broken (missing async)
+  const _qc = getStorage('dailyQuote', null);
+  if (_qc && !_qc._apiFetched) localStorage.removeItem('dailyQuote');
+
   safeCall(loadDailyQuote, 'loadDailyQuote');
   safeCall(renderRecipeList, 'renderRecipeList');
   safeCall(updateHeaderDate, 'updateHeaderDate');
@@ -9984,6 +10039,7 @@ function _initApp() {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       safeCall(renderRings, 'renderRings-paint');
+      safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow-paint');
       safeCall(renderFoodLog, 'renderFoodLog-paint');
       safeCall(renderWeekStrip, 'renderWeekStrip-paint');
       safeCall(renderWeeklyBalance, 'renderWeeklyBalance-paint');
