@@ -1504,9 +1504,12 @@ PROMISE ERROR:
         <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px">
           Daily burn at rest + activity. <strong style="color:var(--text2)">Your baseline TDEE: 2,208 kcal</strong> (Mifflin-St Jeor × 1.375, lightly active — exercise NOT included, Strava handles that).
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="number" id="settingTDEE" class="s-input s-input-sm" placeholder="2770" style="font-size:18px;font-weight:800;text-align:center" />
-          <button onclick="autoCalcTDEE()" style="flex:1;padding:10px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">🧮 Auto-calculate from logs</button>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <input type="number" id="settingTDEE" class="s-input s-input-sm" placeholder="2208" style="font-size:18px;font-weight:800;text-align:center;flex:1" />
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="document.getElementById('settingTDEE').value=2208;document.getElementById('tdeeCalcResult').style.display='block';document.getElementById('tdeeCalcResult').innerHTML='↩️ Reset to baseline 2,208 kcal. Hit Save to apply.';" style="flex:1;padding:10px 12px;background:#1e3a5f;border:1.5px solid #3b82f6;border-radius:12px;color:#60a5fa;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">↩️ Reset to 2,208</button>
+          <button onclick="autoCalcTDEE()" style="flex:1;padding:10px 12px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">🧮 Auto-calc</button>
         </div>
         <div id="tdeeCalcResult" style="display:none;font-size:11px;line-height:1.7;padding:10px 12px;background:var(--surface);border-radius:10px;border:1px solid var(--border);margin-top:10px"></div>
       </div>
@@ -5190,8 +5193,20 @@ function autoCalcTDEE() {
 
   const avgCals = loggedKeys.reduce((s,k) => s + macroLog[k].calories, 0) / loggedKeys.length;
   const weightChange = last.weight - first.weight;
-  const calsFromWeightChange = (weightChange * 3500) / days;
+
+  // Clamp weight change to max physiologically realistic fat loss (1 lb/day absolute max)
+  // to avoid water weight / glycogen swings inflating TDEE estimate
+  const maxLossPerDay = 1.0;
+  const clampedChange = Math.max(weightChange, -maxLossPerDay * days);
+  const calsFromWeightChange = (clampedChange * 3500) / days;
   const estimatedTDEE = Math.round(avgCals - calsFromWeightChange);
+
+  // Sanity check: TDEE must be between 1,200 and 5,000 for any adult
+  if (estimatedTDEE < 1200 || estimatedTDEE > 5000) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `⚠️ Calculated TDEE (${estimatedTDEE.toLocaleString()}) is outside a realistic range — likely due to water weight fluctuations. Use your baseline of <strong>2,208 kcal</strong> instead.`;
+    return;
+  }
 
   document.getElementById('settingTDEE').value = estimatedTDEE;
   const lostGained = weightChange < 0 ? `lost ${Math.abs(weightChange).toFixed(1)} lbs` : `gained ${weightChange.toFixed(1)} lbs`;
