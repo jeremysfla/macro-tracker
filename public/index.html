@@ -6386,25 +6386,24 @@ function selectWeekDay(key) {
   const protein = Math.round(log.protein  || 0);
   const carbs   = Math.round(log.carbs    || 0);
   const fat     = Math.round(log.fat      || 0);
-  // Balance vs base TDEE only — run burn is additional deficit shown separately
-  const balance      = cals > 0 ? cals - baseTDEE : null;
-  const totalDeficit = cals > 0 ? cals - (baseTDEE + burn) : null; // including run
+  // Detail panel shows full deficit including run burn
+  // Weekly bar uses base-only (already correct in renderWeeklyBalance)
+  const totalDeficit = cals > 0 ? cals - (baseTDEE + burn) : null;
   const hasData = cals > 0;
 
   // Format date label
   const d = new Date(key + 'T12:00:00');
   const dayLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
-  const balColor  = balance === null ? 'var(--text3)' : balance < 0 ? 'var(--green)' : 'var(--red)';
-  const balSign   = balance === null ? '' : balance < 0 ? '−' : '+';
-  const balVal    = balance === null ? '—' : balSign + Math.abs(Math.round(balance)).toLocaleString();
+  const balColor  = totalDeficit === null ? 'var(--text3)' : totalDeficit < 0 ? 'var(--green)' : 'var(--red)';
+  const balSign   = totalDeficit === null ? '' : totalDeficit < 0 ? '−' : '+';
+  const balVal    = totalDeficit === null ? '—' : balSign + Math.abs(Math.round(totalDeficit)).toLocaleString();
   // Weight impact uses total deficit (base + run)
   const lbsImpact = totalDeficit !== null ? (totalDeficit / 3500) : null;
   const lbsStr    = lbsImpact !== null
     ? (lbsImpact < 0 ? '−' : '+') + Math.abs(lbsImpact).toFixed(2) + ' lbs'
     : '—';
   const lbsColor  = lbsImpact === null ? 'var(--text3)' : lbsImpact < 0 ? 'var(--green)' : 'var(--red)';
-  const runLine   = burn > 0 ? ` <span style="color:#f97316;font-size:9px">+ 🏃 ${burn.toLocaleString()} run cal bonus</span>` : '';
 
   panel.style.display = 'block';
   panel.innerHTML = `
@@ -6431,7 +6430,7 @@ function selectWeekDay(key) {
     <div style="display:flex;gap:8px;margin-top:10px">
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${balColor}">${balVal}</div>
-        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs Maintenance (${baseTDEE.toLocaleString()} kcal)${runLine}</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs Maintenance (${baseTDEE.toLocaleString()}${burn > 0 ? ' + 🏃' + burn.toLocaleString() : ''} kcal)</div>
       </div>
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${lbsColor}">${lbsStr}</div>
