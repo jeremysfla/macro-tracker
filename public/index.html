@@ -5203,7 +5203,6 @@ function autoCalcTDEE() {
   const recommendedCals = Math.round(baseTDEE - dailyDeficit);
 
   // ── Layer 2: refine using actual logged data if we have enough ──
-  // If 7+ days of both food + weight logs, compute actual TDEE from behaviour
   let refinedSection = '';
   const recentWeights = weightLog.filter(e => {
     const d = new Date(e.date + 'T12:00:00');
@@ -5215,46 +5214,58 @@ function autoCalcTDEE() {
     const last  = recentWeights[recentWeights.length - 1];
     const span  = Math.round((new Date(last.date + 'T12:00:00') - new Date(first.date + 'T12:00:00')) / 86400000);
 
-    if (span >= 3) {
-      // Get food logs in that window
+    if (span >= 5) {
       const keys = Object.keys(macroLog).filter(k => k >= first.date && k <= last.date && macroLog[k].calories > 0);
-      if (keys.length >= 3) {
+      if (keys.length >= 4) {
         const avgEaten = keys.reduce((s, k) => s + macroLog[k].calories, 0) / keys.length;
-        const actualLoss = first.weight - last.weight; // positive = lost weight
+        const actualLoss = first.weight - last.weight;
 
-        // Clamp to max 0.5 lb/day to ignore water weight spikes
-        const clampedLoss = Math.min(actualLoss, 0.5 * span);
+        // Max realistic fat loss: 0.25 lb/day (1.75/wk) — anything beyond is water weight
+        const maxRealisticLoss = 0.25 * span;
+        const clampedLoss = Math.min(Math.max(actualLoss, 0), maxRealisticLoss);
         const impliedDeficit = (clampedLoss * 3500) / span;
         const inferredTDEE = Math.round(avgEaten + impliedDeficit);
 
-        // Only use inferred TDEE if it's in a plausible range
-        if (inferredTDEE >= 1400 && inferredTDEE <= 4500) {
+        // Only trust inferred TDEE if it's within 20% of our baseline — wilder swings = water weight
+        const tdeeRatio = inferredTDEE / baseTDEE;
+        const tdeeReliable = tdeeRatio >= 0.8 && tdeeRatio <= 1.2;
+
+        if (tdeeReliable) {
           const refinedDailyDeficit = Math.round((lbsToLose * 3500) / daysLeft);
           const refinedCals = Math.max(1200, inferredTDEE - refinedDailyDeficit);
+          // Only update fields if refined is better (closer to goal pace)
+          document.getElementById('settingTDEE').value = inferredTDEE;
+          document.getElementById('settingCalories').value = refinedCals;
           refinedSection = `
             <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:10px;border:1px solid #4ade8044">
               <div style="font-size:10px;font-weight:800;color:#4ade80;margin-bottom:4px">🧠 REFINED FROM YOUR ACTUAL LOGS</div>
               <div style="font-size:11px;color:var(--text2)">
-                Based on ${span} days of data (${keys.length} food logs + ${recentWeights.length} weigh-ins)<br>
-                Avg eaten: <strong>${Math.round(avgEaten)} kcal</strong> · Lost: <strong>${clampedLoss.toFixed(1)} lbs</strong><br>
+                Based on ${span} days (${keys.length} food logs + ${recentWeights.length} weigh-ins)<br>
+                Avg eaten: <strong>${Math.round(avgEaten)} kcal</strong> · Fat loss est: <strong>${clampedLoss.toFixed(1)} lbs</strong><br>
                 Inferred TDEE: <strong>${inferredTDEE.toLocaleString()} kcal</strong><br>
                 <span style="color:#4ade80;font-weight:700">Refined target: ${refinedCals.toLocaleString()} kcal/day</span>
               </div>
             </div>`;
-
-          // Use the refined value as the primary recommendation
-          document.getElementById('settingTDEE').value = inferredTDEE;
-          document.getElementById('settingCalories').value = refinedCals;
+        } else {
+          // Show note but don't override — too much water weight noise
+          refinedSection = `
+            <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:10px;border:1px solid #f59e0b44">
+              <div style="font-size:10px;font-weight:800;color:#f59e0b;margin-bottom:4px">⚠️ LOG DATA NOISY</div>
+              <div style="font-size:11px;color:var(--text3)">
+                Inferred TDEE (${inferredTDEE.toLocaleString()} kcal) is too far from your baseline (${baseTDEE.toLocaleString()} kcal) —
+                likely water weight from starting your cut. Using forward-looking plan instead.
+                Check back in ${Math.max(0, 14 - span)} more days for a reliable estimate.
+              </div>
+            </div>`;
         }
       }
     }
   }
 
-  // If no refinement, use the forward-looking calculation
+  // If no valid refinement, use forward-looking calculation
   if (!refinedSection) {
-    const safeCals = Math.max(1200, recommendedCals);
     document.getElementById('settingTDEE').value = baseTDEE;
-    document.getElementById('settingCalories').value = safeCals;
+    document.getElementById('settingCalories').value = Math.max(1200, recommendedCals);
   }
 
   const lbsPerWeek = ((lbsToLose * 7) / daysLeft).toFixed(2);
