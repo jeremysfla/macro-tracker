@@ -5132,12 +5132,12 @@ function updateMacroTargetsRow() {
     const src2 = garminAdj ? '🟠 Run day — extra fuel added' : adaptive ? '🧠 Adaptive macros active' : '🎯 Base cut targets';
     let tipTime = '';
     if (goals.goalDate) {
-      const dl = Math.round((new Date(goals.goalDate + 'T00:00:00') - new Date()) / 86400000);
-      if (dl > 0) tipTime = ' · ' + dl + ' days to goal';
+      const dl = Math.max(0, Math.round((new Date(goals.goalDate + 'T12:00:00') - new Date(todayKey() + 'T12:00:00')) / 86400000));
+      tipTime = dl > 0 ? ' · ' + dl + ' days to goal' : ' · Goal date reached!';
     } else if (deficit > 0) {
       tipTime = ' · ~' + (Math.round(((cw-gw)*3500)/(deficit*7)*10)/10) + ' wks at this deficit';
     }
-    el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. Strava auto-adds carbs &amp; cals on run days.'
+        el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. Strava auto-adds carbs &amp; cals on run days.'
   }
 }
 
