@@ -6160,10 +6160,8 @@ function renderWeeklyBalance() {
   const macroLog   = getStorage('macroLog', {});
   const burnLog    = getStorage('burnLog', {});
   const shoeRuns   = getShoeRuns(); // runs logged via shoe tracker (may have calorie data)
-  // Use userTDEE, fallback to adaptive calories, fallback to hardcoded TDEE
-  const adaptive   = getStorage('adaptiveMacros', null);
-  const userMacros = getStorage('userMacros', null);
-  const baseTDEE   = getStorage('userTDEE', null) || (adaptive || userMacros || { calories: TDEE }).calories;
+  // baseTDEE: use explicitly saved TDEE, else the calculated default (never fall to macro target)
+  const baseTDEE   = getStorage('userTDEE', null) || TDEE;
 
   const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -6174,20 +6172,23 @@ function renderWeeklyBalance() {
     const isToday = key === todayStr;
     const isPast  = key <= todayStr;
 
-    // Burn calories: prefer explicit burnLog (Strava/Garmin), then estimate from shoeRuns
+    // Burn calories from Strava/Garmin burnLog or shoe run estimate
     let dayBurn = burnLog[key] || 0;
     if (!dayBurn) {
-      // Estimate from shoe runs: ~100 cal/mile (conservative)
       const dayRuns = shoeRuns.filter(r => r.date === key);
       dayBurn = dayRuns.reduce((s, r) => {
-        if (r.calories && r.calories > 0) return s + r.calories;  // Strava/Garmin exact
-        return s + Math.round((r.miles || 0) * 100);              // estimate if no cal data
+        if (r.calories && r.calories > 0) return s + r.calories;
+        return s + Math.round((r.miles || 0) * 100);
       }, 0);
     }
 
+    // Net balance: calories eaten minus maintenance (TDEE only — don't add burn on top,
+    // since TDEE already includes base activity. Run burn reduces net deficit instead.)
+    // balance = eaten - TDEE - burn  →  deeper deficit on run days (correct)
     const trueMaint = baseTDEE + dayBurn;
     const balance   = hasData ? (log.calories - trueMaint) : null;
-    return { name: DAY_NAMES[i], key, balance, hasData, isToday, isPast, dayBurn };
+    const dailyCals = hasData ? log.calories : null;
+    return { name: DAY_NAMES[i], key, balance, hasData, isToday, isPast, dayBurn, dailyCals };
   });
 
   // Max absolute balance for scaling bars
@@ -6210,6 +6211,9 @@ function renderWeeklyBalance() {
         ? `+${Math.abs(bal) >= 1000 ? (Math.abs(bal)/1000).toFixed(1)+'k' : Math.round(Math.abs(bal))}`
         : `-${Math.abs(bal) >= 1000 ? (Math.abs(bal)/1000).toFixed(1)+'k' : Math.round(Math.abs(bal))}`;
     const runDot = d.dayBurn > 0 ? `<div style="font-size:8px;text-align:center;margin-top:2px">🏃</div>` : '';
+    const calLine = d.dailyCals !== null
+      ? `<div style="font-size:9px;color:var(--text3);text-align:center;margin-top:1px;font-weight:600">${d.dailyCals >= 1000 ? (d.dailyCals/1000).toFixed(1)+'k' : d.dailyCals}</div>`
+      : '';
 
     return `<div class="wbd${d.isToday ? ' wbd-today' : ''}">
       <div class="wbd-name">${d.name}</div>
@@ -6217,6 +6221,7 @@ function renderWeeklyBalance() {
         <div class="wbd-bar ${type}" style="height:${barH}px"></div>
       </div>
       <div class="wbd-val ${type}">${label}</div>
+      ${calLine}
       ${runDot}
     </div>`;
   }).join('');
@@ -6227,6 +6232,7 @@ function renderWeeklyBalance() {
   const weeklyBurn   = days.reduce((s, d) => s + (d.dayBurn || 0), 0);
   const weightImpact = weeklyNet / 3500; // lbs (neg = loss)
   const daysLogged   = loggedDays.length;
+  const avgDailyCals = daysLogged > 0 ? Math.round(loggedDays.reduce((s, d) => s + d.dailyCals, 0) / daysLogged) : 0;
 
   const netColor = weeklyNet < 0 ? 'var(--green)' : weeklyNet > 0 ? 'var(--red)' : 'var(--text)';
   const wtColor  = weightImpact < 0 ? 'var(--green)' : weightImpact > 0 ? 'var(--red)' : 'var(--text)';
@@ -6243,13 +6249,17 @@ function renderWeeklyBalance() {
   sumRow.innerHTML = `
     <div class="weekly-stat">
       <div class="weekly-stat-val" style="color:${netColor}">${netSign}${Math.abs(Math.round(weeklyNet)).toLocaleString()}</div>
-      <div class="weekly-stat-lbl">Net vs Maintenance</div>
+      <div class="weekly-stat-lbl">Net vs TDEE</div>
     </div>
     <div class="weekly-stat">
       <div class="weekly-stat-val" style="color:${wtColor}">${wtSign}${Math.abs(weightImpact).toFixed(2)} lbs</div>
       <div class="weekly-stat-lbl">Expected Change</div>
     </div>
     ${burnTile}
+    <div class="weekly-stat">
+      <div class="weekly-stat-val">${avgDailyCals > 0 ? avgDailyCals.toLocaleString() : '—'}</div>
+      <div class="weekly-stat-lbl">Avg Daily Cals</div>
+    </div>
     <div class="weekly-stat">
       <div class="weekly-stat-val">${daysLogged}/7</div>
       <div class="weekly-stat-lbl">Days Logged</div>
