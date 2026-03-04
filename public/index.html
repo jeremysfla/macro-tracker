@@ -1664,6 +1664,7 @@ PROMISE ERROR:
 
     <button class="btn-outline" onclick="closeSettings()" style="margin-top:4px;margin-bottom:8px">✕ Close Settings</button>
   </div>
+</div>
 
 <!-- Rest Timer Overlay -->
 <div id="restTimerOverlay" style="display:none" class="rest-timer-overlay">
@@ -5134,6 +5135,9 @@ function saveGoalSettings() {
   setStorage('userGoals',  { weight: w, goal: g });
   setStorage('userMacros', { calories: cal, protein: pro, carbs: crb, fat: fat });
   setStorage('userTDEE',   tdee);
+  // Clear adaptive overrides so new base targets are used immediately
+  localStorage.removeItem('adaptiveMacros');
+  localStorage.removeItem('garminAdjustedMacros');
   renderRings();
   renderProteinPace();
   renderWeeklyBalance();
@@ -5923,27 +5927,28 @@ function checkAdaptiveMacros() {
 
   const diff = weeklyChange - targetChange; // positive = losing too slow, negative = too fast
 
-  let newCalories = MACROS.calories;
+  let newCalories = (getStorage('userMacros', null) || MACROS).calories;
   let msg = '';
+  const baseMacros = getStorage('userMacros', null) || MACROS;
 
   if (Math.abs(diff) < 0.3) {
     msg = `✅ Perfect pace — losing ${Math.abs(weeklyChange).toFixed(1)} lbs/wk. Macros unchanged.`;
   } else if (diff > 0.3) {
     // Losing too slowly — cut more
     const cut = Math.round(diff * 500);
-    newCalories = Math.max(1800, MACROS.calories - cut);
-    msg = `⚠️ Losing ${Math.abs(weeklyChange).toFixed(1)} lbs/wk — below target. Reducing calories by ${MACROS.calories - newCalories} to ${newCalories} kcal.`;
+    newCalories = Math.max(1400, baseMacros.calories - cut);
+    msg = `⚠️ Losing ${Math.abs(weeklyChange).toFixed(1)} lbs/wk — below target. Reducing calories by ${baseMacros.calories - newCalories} to ${newCalories} kcal.`;
   } else {
     // Losing too fast — add back
     const add = Math.round(Math.abs(diff) * 500);
-    newCalories = Math.min(2800, MACROS.calories + add);
-    msg = `⚡ Losing ${Math.abs(weeklyChange).toFixed(1)} lbs/wk — ahead of target. Adding ${newCalories - MACROS.calories} calories to ${newCalories} kcal to protect muscle.`;
+    newCalories = Math.min(2400, baseMacros.calories + add);
+    msg = `⚡ Losing ${Math.abs(weeklyChange).toFixed(1)} lbs/wk — ahead of target. Adding ${newCalories - baseMacros.calories} calories to ${newCalories} kcal to protect muscle.`;
   }
 
   // Update adaptive targets
-  const adjustedProtein = MACROS.protein; // always keep protein high
-  const adjustedCarbs   = Math.round((newCalories - adjustedProtein * 4 - MACROS.fat * 9) / 4);
-  const adaptive = { calories: newCalories, protein: adjustedProtein, carbs: Math.max(100, adjustedCarbs), fat: MACROS.fat };
+  const adjustedProtein = baseMacros.protein; // always keep protein high
+  const adjustedCarbs   = Math.round((newCalories - adjustedProtein * 4 - baseMacros.fat * 9) / 4);
+  const adaptive = { calories: newCalories, protein: adjustedProtein, carbs: Math.max(50, adjustedCarbs), fat: baseMacros.fat };
   setStorage('adaptiveMacros', adaptive);
 
   const banner = document.getElementById('adaptiveMacroBanner');
@@ -5956,9 +5961,10 @@ function checkAdaptiveMacros() {
 
 // renderRings — checks adaptive macros, Garmin/Strava adjustments, and ringMode
 function renderRings(overrideMacros) {
-  const adaptive  = getStorage('adaptiveMacros', null);
-  const garminAdj = getStorage('garminAdjustedMacros', null);
-  const targets   = overrideMacros || garminAdj || adaptive || MACROS;
+  const adaptive   = getStorage('adaptiveMacros', null);
+  const garminAdj  = getStorage('garminAdjustedMacros', null);
+  const userMacros = getStorage('userMacros', null);
+  const targets    = overrideMacros || garminAdj || adaptive || userMacros || MACROS;
   const macroLog  = getStorage('macroLog', {});
   const dayData   = macroLog[getSelectedDateKey()] || { calories:0, protein:0, carbs:0, fat:0 };
   document.getElementById('ringsRow').innerHTML =
