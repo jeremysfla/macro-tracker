@@ -411,10 +411,10 @@
   .wbd-detail-cell { text-align: center; }
   .wbd-detail-val { font-size: 16px; font-weight: 800; color: var(--text); }
   .wbd-detail-lbl { font-size: 9px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-  .weekly-summary-row { display: flex; gap: 10px; }
-  .weekly-stat { flex: 1; background: var(--surface2); border-radius: 14px; padding: 12px 10px; border: 1.5px solid var(--border); text-align: center; }
-  .weekly-stat-val { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
-  .weekly-stat-lbl { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+  .weekly-summary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+  .weekly-stat { background: var(--surface2); border-radius: 12px; padding: 10px 8px; border: 1.5px solid var(--border); text-align: center; }
+  .weekly-stat-val { font-size: 16px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; }
+  .weekly-stat-lbl { font-size: 8px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
 
   /* Misc */
   .empty-state { text-align: center; color: var(--text3); padding: 48px 20px; font-size: 14px; line-height: 1.8; }
@@ -800,8 +800,12 @@ PROMISE ERROR:
       <div class="card" id="weeklyBalanceCard">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div class="card-label" style="color:#8b5cf6;margin-bottom:0">📊 Weekly Calorie Balance</div>
-          <div id="weekRangeLabel" style="font-size:10px;color:var(--text3);font-weight:600"></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="weekRangeLabel" style="font-size:10px;color:var(--text3);font-weight:600"></div>
+            <button onclick="toggleWbdDebug()" style="font-size:9px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text3)">🔍</button>
+          </div>
         </div>
+        <div id="wbdDebugPanel" style="display:none;background:#1a1a2e;border:1px solid #4444aa;border-radius:10px;padding:10px;margin-bottom:12px;font-size:10px;font-family:monospace;color:#aaa;line-height:1.8;word-break:break-all"></div>
         <div class="week-balance-grid" id="weekBalanceGrid"></div>
         <div id="wbdDetailPanel" style="display:none" class="wbd-detail"></div>
         <div class="weekly-summary-row" id="weeklySummaryRow"></div>
@@ -6175,7 +6179,32 @@ function renderWeeklyBalance() {
   const burnLog    = getStorage('burnLog', {});
   const shoeRuns   = getShoeRuns(); // runs logged via shoe tracker (may have calorie data)
   // baseTDEE: use explicitly saved TDEE, else the calculated default (never fall to macro target)
-  const baseTDEE   = getStorage('userTDEE', null) || TDEE;
+  const _storedTDEE = getStorage('userTDEE', null);
+  const baseTDEE = (typeof _storedTDEE === 'number' && _storedTDEE > 1000 && _storedTDEE < 6000)
+    ? _storedTDEE
+    : TDEE;
+
+  // Write debug info to on-screen panel
+  const dbg = document.getElementById('wbdDebugPanel');
+  if (dbg) {
+    const macroLogRaw = getStorage('macroLog', {});
+    const burnLogRaw  = getStorage('burnLog', {});
+    const tdayKey     = todayKey();
+    let dbgLines = [
+      `TDEE const: ${TDEE}`,
+      `stored userTDEE: ${JSON.stringify(_storedTDEE)}`,
+      `baseTDEE used: ${baseTDEE}`,
+      `today: ${tdayKey}`,
+      `--- macroLog (this week) ---`,
+    ];
+    weekDays.forEach(d => {
+      const k = dateToKey(d);
+      const ml = macroLogRaw[k];
+      const bl = burnLogRaw[k];
+      if (ml || bl) dbgLines.push(`${k}: eaten=${ml ? ml.calories : '—'} burn=${bl ?? '—'}`);
+    });
+    dbg.innerHTML = dbgLines.join('<br>');
+  }
 
   const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -6359,6 +6388,14 @@ function selectWeekDay(key) {
         <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">Est. Weight Impact</div>
       </div>
     </div>`}`;
+}
+
+let _wbdDebugVisible = false;
+function toggleWbdDebug() {
+  _wbdDebugVisible = !_wbdDebugVisible;
+  const p = document.getElementById('wbdDebugPanel');
+  if (p) p.style.display = _wbdDebugVisible ? 'block' : 'none';
+  if (_wbdDebugVisible) renderWeeklyBalance(); // refresh debug data
 }
 
 // ═══════════════════════════════════════════════════════
