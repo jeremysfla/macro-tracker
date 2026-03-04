@@ -5091,6 +5091,8 @@ function saveGoalSettings() {
   renderProteinPace();
   renderWeeklyBalance();
   updateMacroTargetsRow();
+  updateHeaderDate();
+  renderEventCountdowns();
   showToast('✅ Goals & macros saved!');
 }
 
@@ -5844,10 +5846,7 @@ function disconnectStrava() {
 }
 
 // ── Weight Tracking & Trend ──
-const GOAL_WEIGHT    = 163;
-const START_WEIGHT   = 170;
-const GOAL_DAYS      = 30;
-const GOAL_WEEKLY_LB = (START_WEIGHT - GOAL_WEIGHT) / (GOAL_DAYS / 7); // ~1.63 lbs/wk
+// Goal constants are now read dynamically from userGoals storage
 
 function openWeightModal() {
   const log = getStorage('weightLog', {});
@@ -11171,13 +11170,18 @@ function renderEventCountdowns() {
     const dateStr = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 
     if (isWeight && e.weightTarget) {
-      const diff = currentWeight ? (currentWeight - e.weightTarget).toFixed(1) : null;
-      const byDate = new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+      const goals = getStorage('userGoals', {});
+      const target = goals.goal || e.weightTarget;
+      const goalDate = goals.goalDate || e.date;
+      const byDate = new Date(goalDate + 'T00:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+      const daysToGoal = Math.max(0, Math.round((new Date(goalDate + 'T12:00:00') - new Date(todayKey() + 'T12:00:00')) / 86400000));
+      const diff = currentWeight ? +(currentWeight - target).toFixed(1) : null;
+      const color2 = '#22c55e';
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
-        <div style="font-size:26px;font-weight:900;color:${color};letter-spacing:-1px">${e.weightTarget}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
+        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:26px;font-weight:900;color:${color2};letter-spacing:-1px">${target}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">by ${byDate}</div>
-        <div style="font-size:11px;color:${color};font-weight:700;margin-top:2px">${diff !== null ? (diff > 0 ? diff + ' to lose' : '✅ Achieved!') : days + ' days'}</div>
+        <div style="font-size:11px;color:${color2};font-weight:700;margin-top:2px">${diff !== null ? (diff <= 0 ? '✅ Achieved!' : diff + ' lbs to go') : daysToGoal + ' days left'}</div>
       </div>`;
     } else {
       return `<div style="flex:1;text-align:center;padding:0 8px">
