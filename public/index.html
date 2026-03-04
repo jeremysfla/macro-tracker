@@ -6198,9 +6198,8 @@ function renderWeeklyBalance() {
 
     // Net balance: calories eaten minus maintenance (TDEE only — don't add burn on top,
     // since TDEE already includes base activity. Run burn reduces net deficit instead.)
-    // balance = eaten - TDEE - burn  →  deeper deficit on run days (correct)
-    const trueMaint = baseTDEE + dayBurn;
-    const balance   = hasData ? (log.calories - trueMaint) : null;
+    // Balance vs base TDEE only — run burn shown separately, not inflating the bar deficit
+    const balance   = hasData ? (log.calories - baseTDEE) : null;
     const dailyCals = hasData ? log.calories : null;
     return { name: DAY_NAMES[i], key, balance, hasData, isToday, isPast, dayBurn, dailyCals };
   });
@@ -6241,9 +6240,10 @@ function renderWeeklyBalance() {
 
   // Weekly totals
   const loggedDays   = days.filter(d => d.balance !== null);
-  const weeklyNet    = loggedDays.reduce((s, d) => s + d.balance, 0);
+  const weeklyNet    = loggedDays.reduce((s, d) => s + d.balance, 0);  // vs base TDEE
   const weeklyBurn   = days.reduce((s, d) => s + (d.dayBurn || 0), 0);
-  const weightImpact = weeklyNet / 3500; // lbs (neg = loss)
+  const totalDeficit = weeklyNet - weeklyBurn; // includes run burn (more negative = more loss)
+  const weightImpact = totalDeficit / 3500;    // lbs (neg = loss)
   const daysLogged   = loggedDays.length;
   const avgDailyCals = daysLogged > 0 ? Math.round(loggedDays.reduce((s, d) => s + d.dailyCals, 0) / daysLogged) : 0;
 
