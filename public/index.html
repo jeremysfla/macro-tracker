@@ -5423,7 +5423,7 @@ async function fetchGarminToday() {
 
     renderGarminCard(totalCalories, totalDistance, totalDuration, activityCount);
     if (getStorage('garminAutoAdjust', true)) {
-      adjustMacrosForBurn(totalCalories);
+      adjustMacrosForBurn(Math.round(totalCalories * 0.75)); // net burn only
     }
     setStorage('garminToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
 
@@ -5705,7 +5705,11 @@ async function fetchStravaToday() {
     }
 
     renderGarminCard(totalCalories, totalDistance, totalDuration, count, 'strava');
-    if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(totalCalories);
+    // Strava's calories field = gross expenditure (includes BMR during run).
+    // Our TDEE already includes BMR for the full day, so we only add the NET
+    // incremental burn: ~75% of gross is the standard correction.
+    const netBurn = Math.round(totalCalories * 0.75);
+    if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(netBurn);
     setStorage('stravaToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
     renderShoeStravaCard();
 
@@ -6183,7 +6187,7 @@ function renderWeeklyBalance() {
     const isPast  = key <= todayStr;
 
     // Burn calories from Strava/Garmin burnLog or shoe run estimate
-    let dayBurn = burnLog[key] || 0;
+    let dayBurn = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
     if (!dayBurn) {
       const dayRuns = shoeRuns.filter(r => r.date === key);
       dayBurn = dayRuns.reduce((s, r) => {
@@ -6298,13 +6302,14 @@ function selectWeekDay(key) {
   });
 
   const log     = macroLog[key] || {};
-  const burn    = burnLog[key] || 0;
+  const burn    = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
   const cals    = log.calories || 0;
   const protein = log.protein  || 0;
   const carbs   = log.carbs    || 0;
   const fat     = log.fat      || 0;
-  const maint   = baseTDEE + burn;
-  const balance = cals > 0 ? cals - maint : null;
+  // Balance vs base TDEE only — run burn is additional deficit shown separately
+  const balance      = cals > 0 ? cals - baseTDEE : null;
+  const totalDeficit = cals > 0 ? cals - (baseTDEE + burn) : null; // including run
   const hasData = cals > 0;
 
   // Format date label
@@ -6314,15 +6319,17 @@ function selectWeekDay(key) {
   const balColor  = balance === null ? 'var(--text3)' : balance < 0 ? 'var(--green)' : 'var(--red)';
   const balSign   = balance === null ? '' : balance < 0 ? '−' : '+';
   const balVal    = balance === null ? '—' : balSign + Math.abs(Math.round(balance)).toLocaleString();
-  const lbsImpact = balance !== null ? (balance / 3500) : null;
+  // Weight impact uses total deficit (base + run)
+  const lbsImpact = totalDeficit !== null ? (totalDeficit / 3500) : null;
   const lbsStr    = lbsImpact !== null
     ? (lbsImpact < 0 ? '−' : '+') + Math.abs(lbsImpact).toFixed(2) + ' lbs'
     : '—';
   const lbsColor  = lbsImpact === null ? 'var(--text3)' : lbsImpact < 0 ? 'var(--green)' : 'var(--red)';
+  const runLine   = burn > 0 ? ` <span style="color:#f97316;font-size:9px">+ 🏃 ${burn.toLocaleString()} run cal bonus</span>` : '';
 
   panel.style.display = 'block';
   panel.innerHTML = `
-    <div class="wbd-detail-title">${dayLabel}${burn > 0 ? ' 🏃 +' + burn.toLocaleString() + ' run cals' : ''}</div>
+    <div class="wbd-detail-title">${dayLabel}</div>
     ${!hasData ? '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">No food logged this day</div>' : `
     <div class="wbd-detail-grid">
       <div class="wbd-detail-cell">
@@ -6345,7 +6352,7 @@ function selectWeekDay(key) {
     <div style="display:flex;gap:8px;margin-top:10px">
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${balColor}">${balVal}</div>
-        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs TDEE (${maint.toLocaleString()} kcal)</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs Maintenance (${baseTDEE.toLocaleString()} kcal)${runLine}</div>
       </div>
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${lbsColor}">${lbsStr}</div>
@@ -9989,6 +9996,23 @@ function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
+
+  // Migrate burnLog: old entries stored gross Strava calories; correct to net (×0.75)
+  // Run once, marked with _netMigrated flag
+  try {
+    const burnLog = getStorage('burnLog', {});
+    if (!burnLog._netMigrated) {
+      Object.keys(burnLog).forEach(k => {
+        if (k !== '_netMigrated' && typeof burnLog[k] === 'number') {
+          // Only migrate entries that look like gross calories (>400 suggests unreduced)
+          if (burnLog[k] > 400) burnLog[k] = Math.round(burnLog[k] * 0.75);
+        }
+      });
+      burnLog._netMigrated = true;
+      setStorage('burnLog', burnLog);
+    }
+  } catch(e) {}
+
   safeCall(renderWeekStrip, 'renderWeekStrip');
 
   // Restore today's calorie burn adjustment on reload
@@ -10162,7 +10186,7 @@ handleStravaCallback();
     const cached = getStorage('stravaToday', null);
     if (shouldUseCached(cached)) {
       renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'strava');
-      if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(cached.calories);
+      if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
     } else {
       fetchStravaToday();
     }
@@ -10171,7 +10195,7 @@ handleStravaCallback();
     const cached = getStorage('garminToday', null);
     if (shouldUseCached(cached)) {
       renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'garmin');
-      if (getStorage('garminAutoAdjust', true)) adjustMacrosForBurn(cached.calories);
+      if (getStorage('garminAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
     } else {
       fetchGarminToday();
     }
