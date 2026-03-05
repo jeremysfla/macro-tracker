@@ -620,10 +620,11 @@ PROMISE ERROR:
   <!-- Daily Motivation Quote -->
   <div class="quote-card" id="dailyQuoteCard">
     <div class="quote-icon">💬</div>
-    <div>
+    <div style="flex:1">
       <div class="quote-text quote-loading" id="dailyQuoteText">Loading today's motivation…</div>
       <div class="quote-author" id="dailyQuoteAuthor"></div>
     </div>
+    <button onclick="localStorage.removeItem('dailyQuote');loadDailyQuote();" title="Refresh quote" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;align-self:flex-start;opacity:0.6">🔄</button>
   </div>
   <div class="content">
 
@@ -6218,11 +6219,13 @@ Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
     renderQuote(entry.quote, entry.author);
 
   } catch (e) {
-    console.warn('[Quote] Using fallback:', e.message);
+    console.warn('[Quote] API failed, using fallback:', e.message);
     const d = nowEST();
     const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
     const fb = fallbacks[dayOfYear % fallbacks.length];
-    setStorage(QUOTE_KEY, { date: today, quote: fb.quote, author: fb.author });
+    // Store WITHOUT _apiFetched so startup cache-bust retries the API tomorrow
+    // Store WITHOUT today's date so it retries on next page load too
+    setStorage(QUOTE_KEY, { date: 'retry', quote: fb.quote, author: fb.author });
     renderQuote(fb.quote, fb.author);
   }
 }
@@ -10195,9 +10198,9 @@ function _initApp() {
   setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
   setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
 
-  // Force re-fetch if cached quote was stored while callClaudeAPI was broken (missing async)
+  // Clear cached quote if it was stored while API was broken, or is flagged for retry
   const _qc = getStorage('dailyQuote', null);
-  if (_qc && !_qc._apiFetched) localStorage.removeItem('dailyQuote');
+  if (_qc && (!_qc._apiFetched || _qc.date === 'retry')) localStorage.removeItem('dailyQuote');
 
   safeCall(loadDailyQuote, 'loadDailyQuote');
   safeCall(renderRecipeList, 'renderRecipeList');
