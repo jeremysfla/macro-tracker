@@ -803,10 +803,8 @@ PROMISE ERROR:
           <div class="card-label" style="color:#8b5cf6;margin-bottom:0">📊 Weekly Calorie Balance</div>
           <div style="display:flex;align-items:center;gap:8px">
             <div id="weekRangeLabel" style="font-size:10px;color:var(--text3);font-weight:600"></div>
-            <button onclick="toggleWbdDebug()" style="font-size:9px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text3)">🔍</button>
           </div>
         </div>
-        <div id="wbdDebugPanel" style="display:none;background:#1a1a2e;border:1px solid #4444aa;border-radius:10px;padding:10px;margin-bottom:12px;font-size:10px;font-family:monospace;color:#aaa;line-height:1.8;word-break:break-all"></div>
         <div class="week-balance-grid" id="weekBalanceGrid"></div>
         <div id="wbdDetailPanel" style="display:none" class="wbd-detail"></div>
         <div class="weekly-summary-row" id="weeklySummaryRow"></div>
@@ -6224,9 +6222,11 @@ Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
     const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
     const fb = fallbacks[dayOfYear % fallbacks.length];
     // Store WITHOUT _apiFetched so startup cache-bust retries the API tomorrow
-    // Store WITHOUT today's date so it retries on next page load too
     setStorage(QUOTE_KEY, { date: 'retry', quote: fb.quote, author: fb.author });
     renderQuote(fb.quote, fb.author);
+    // Show error hint under quote so we can diagnose
+    const authorEl = document.getElementById('dailyQuoteAuthor');
+    if (authorEl) authorEl.innerHTML += `<span style="font-size:9px;color:var(--text3);display:block;margin-top:4px">⚠️ ${e.message.slice(0,80)}</span>`;
   }
 }
 
@@ -6263,27 +6263,6 @@ function renderWeeklyBalance() {
     ? _storedTDEE
     : TDEE;
 
-  // Write debug info to on-screen panel
-  const dbg = document.getElementById('wbdDebugPanel');
-  if (dbg) {
-    const macroLogRaw = getStorage('macroLog', {});
-    const burnLogRaw  = getStorage('burnLog', {});
-    const tdayKey     = todayKey();
-    let dbgLines = [
-      `TDEE const: ${TDEE}`,
-      `stored userTDEE: ${JSON.stringify(_storedTDEE)}`,
-      `baseTDEE used: ${baseTDEE}`,
-      `today: ${tdayKey}`,
-      `--- macroLog (this week) ---`,
-    ];
-    weekDays.forEach(d => {
-      const k = dateToKey(d);
-      const ml = macroLogRaw[k];
-      const bl = burnLogRaw[k];
-      if (ml || bl) dbgLines.push(`${k}: eaten=${ml ? ml.calories : '—'} burn=${bl ?? '—'}`);
-    });
-    dbg.innerHTML = dbgLines.join('<br>');
-  }
 
   const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -6467,14 +6446,6 @@ function selectWeekDay(key) {
     </div>`}`;
 }
 
-let _wbdDebugVisible = false;
-function toggleWbdDebug() {
-  _wbdDebugVisible = !_wbdDebugVisible;
-  const p = document.getElementById('wbdDebugPanel');
-  if (p) p.style.display = _wbdDebugVisible ? 'block' : 'none';
-  if (_wbdDebugVisible) renderWeeklyBalance(); // refresh debug data
-}
-
 // ═══════════════════════════════════════════════════════
 // ── USDA FoodData Central Search ──
 // ═══════════════════════════════════════════════════════
@@ -6487,8 +6458,11 @@ async function callClaudeAPI(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error(`Proxy error ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(`API error ${res.status}: ${data.error?.message || JSON.stringify(data)}`);
+  }
+  return data;
 }
 
 async function searchUSDA(query, maxResults = 8) {
