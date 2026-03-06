@@ -611,7 +611,7 @@ PROMISE ERROR:
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <div class="header-sub" id="headerGoalSub">Loading…</div>
-        <div class="header-title" id="appHeaderTitle">Jeremy's Tracker AI</div>
+        <div class="header-title" id="appHeaderTitle" onclick="handleDeployTap()">Jeremy's Tracker AI</div>
         <div id="headerDateLabel" style="font-size:12px;color:var(--text2);font-weight:600;margin-top:4px;letter-spacing:0.2px"></div>
       </div>
       <button class="settings-btn" onclick="openSettings()" title="Settings">⚙️</button>
@@ -1315,7 +1315,7 @@ PROMISE ERROR:
     </div>
 
     <!-- Live total preview -->
-    <div id="editTotalPreview" style="display:none;background:var(--surface2);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;font-weight:700;color:var(--text);justify-content:space-between;align-items:center">
+    <div id="editTotalPreview" style="display:none;background:var(--surface2);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;font-weight:700;color:var(--text);display:flex;justify-content:space-between;align-items:center">
       <span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px">Total</span>
       <span id="editTotalText"></span>
     </div>
@@ -1926,16 +1926,16 @@ function updateHeaderDate() {
 
 // ── Auto Midnight Refresh ──
 function scheduleMidnightRefresh() {
-  // Calculate ms until next midnight EST using date math (handles sleep/wake correctly)
   const now = nowEST();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 1, 0); // 00:00:01 next day
-  const msUntilMidnight = tomorrow.getTime() - now.getTime();
+  const msUntilMidnight =
+    ((23 - now.getHours()) * 60 * 60 +
+     (59 - now.getMinutes()) * 60 +
+     (60 - now.getSeconds())) * 1000;
 
   setTimeout(() => {
     // New day — clear today's burn adjustment so yesterday's run doesn't carry over
     setStorage('garminAdjustedMacros', null);
+    // Keep burnLog entries (historical) but clear the adjustment
     updateHeaderDate();
     renderWeekStrip();
     renderRings();
@@ -1946,8 +1946,8 @@ function scheduleMidnightRefresh() {
     checkAdaptiveMacros();
     loadDailyQuote();
     showToast('🌅 Good morning! New day started.');
-    scheduleMidnightRefresh();
-  }, msUntilMidnight);
+    scheduleMidnightRefresh(); // schedule next midnight
+  }, msUntilMidnight + 1000); // +1s buffer
 }
 
 let activeSession = 'A';
@@ -2163,7 +2163,7 @@ function flashPR(exName, pr) {
   el.className = 'pr-flash';
   el.innerHTML = `<div class="pr-flash-icon">🏆</div>
     <div>
-      <div class="pr-flash-text">New PR — ${esc(exName)}!</div>
+      <div class="pr-flash-text">New PR — ${exName}!</div>
       <div class="pr-flash-sub">${pr.weight} lbs × ${pr.reps} reps · ~${pr.est1rm} lbs 1RM</div>
     </div>`;
   document.body.appendChild(el);
@@ -2592,9 +2592,9 @@ const EXERCISE_LIBRARY = {
 };
 
 // Session-specific exercise overrides (added/removed during session)
-let sessionExOverrides = {}; // { 'A': [{name,sets,reps,notes,added:true}, ...] }
+var sessionExOverrides = {}; // { 'A': [{name,sets,reps,notes,added:true}, ...] }
 // Tracks removed program exercises by session+index: { 'A': [0,2] }
-let sessionExRemoved = {};
+var sessionExRemoved = {};
 
 function getSessionExercises(sessKey) {
   const base = PROGRAM[sessKey].exercises
@@ -2628,7 +2628,7 @@ function openAddExerciseModal() {
     <div style="padding:10px 14px;background:#0f172a;flex-shrink:0">
       <input id="_exSearch" type="text" placeholder="Search exercises…"
         style="width:100%;background:#1e293b;border:1.5px solid #334155;border-radius:12px;padding:10px 14px;color:#fff;font-size:14px;outline:none;font-family:inherit;box-sizing:border-box"
-        oninput="clearTimeout(window._exSearchTimer);window._exSearchTimer=setTimeout(()=>filterExercises(this.value),150)"/>
+        oninput="filterExercises(this.value)"/>
     </div>
     <div id="_exLibraryList" style="flex:1;overflow-y:auto;padding:8px 14px 80px">
       ${cats.map(cat => `
@@ -2710,7 +2710,7 @@ function renderWorkoutPage() {
   document.getElementById('sessionHeader').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div style="font-size:20px;font-weight:700;letter-spacing:-0.3px;color:var(--text)">${esc(sess.name)}</div>
+        <div style="font-size:20px;font-weight:700;letter-spacing:-0.3px;color:var(--text)">${sess.name}</div>
         <div style="font-size:11px;color:var(--text2);margin-top:4px;font-weight:500">Tap set type to change · ✅ = mark done · + Add Set</div>
       </div>
       <span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;background:#0d2d1a;color:#22c55e">3×/wk</span>
@@ -2732,7 +2732,7 @@ function renderWorkoutPage() {
         <div style="cursor:pointer;display:flex;align-items:center;flex:1;gap:8px" onclick="openExChart('${ex.name.replace(/'/g,"\\'")}')">
           <div class="ex-badge" id="exbadge-${key}">${i+1}</div>
           <div style="flex:1">
-            <div class="ex-name">${esc(ex.name)}${addedBadge}</div>
+            <div class="ex-name">${ex.name}${addedBadge}</div>
             <div class="ex-meta">${ex.sets} × ${ex.reps}</div>
           </div>
           <div style="font-size:10px;color:#60a5fa;font-weight:600">📈</div>
@@ -2899,14 +2899,12 @@ function openExChart(exName) {
     const xStep  = iW / (points.length - 1);
     const yScale = v => iH - ((v - minV) / (maxV - minV)) * iH;
 
-    let svgParts = [];
-
     // Grid lines
     for (let i = 0; i <= 4; i++) {
       const y = PAD.t + (i / 4) * iH;
       const v = maxV - (i / 4) * (maxV - minV);
-      svgParts.push(`<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" stroke="#2a2f3d" stroke-width="1"/>`);
-      svgParts.push(`<text x="${PAD.l - 4}" y="${y + 4}" text-anchor="end" fill="#4d5468" font-size="9" font-family="Plus Jakarta Sans,sans-serif">${Math.round(v)}</text>`);
+      svg.innerHTML += `<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" stroke="#2a2f3d" stroke-width="1"/>`;
+      svg.innerHTML += `<text x="${PAD.l - 4}" y="${y + 4}" text-anchor="end" fill="#4d5468" font-size="9" font-family="Plus Jakarta Sans,sans-serif">${Math.round(v)}</text>`;
     }
 
     // Line path
@@ -2915,7 +2913,7 @@ function openExChart(exName) {
       const y = PAD.t + yScale(p.est1rm);
       return `${x},${y}`;
     }).join(' ');
-    svgParts.push(`<polyline points="${pts}" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`);
+    svg.innerHTML += `<polyline points="${pts}" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
 
     // Area fill
     const firstX = PAD.l, lastX = PAD.l + (points.length - 1) * xStep;
@@ -2923,21 +2921,20 @@ function openExChart(exName) {
     const areaPath = `M${firstX},${areaBase} ` +
       points.map((p, i) => `L${PAD.l + i * xStep},${PAD.t + yScale(p.est1rm)}`).join(' ') +
       ` L${lastX},${areaBase} Z`;
-    svgParts.push(`<path d="${areaPath}" fill="url(#chartGrad)" opacity="0.3"/>`);
-    svgParts.push(`<defs><linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>`);
+    svg.innerHTML += `<path d="${areaPath}" fill="url(#chartGrad)" opacity="0.3"/>`;
+    svg.innerHTML += `<defs><linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#22c55e"/><stop offset="100%" stop-color="#22c55e" stop-opacity="0"/></linearGradient></defs>`;
 
     // Dots + date labels (show every Nth)
     const showEvery = Math.max(1, Math.ceil(points.length / 5));
     points.forEach((p, i) => {
       const x = PAD.l + i * xStep;
       const y = PAD.t + yScale(p.est1rm);
-      svgParts.push(`<circle cx="${x}" cy="${y}" r="3.5" fill="#22c55e" stroke="#0d1e3d" stroke-width="1.5"/>`);
+      svg.innerHTML += `<circle cx="${x}" cy="${y}" r="3.5" fill="#22c55e" stroke="#0d1e3d" stroke-width="1.5"/>`;
       if (i % showEvery === 0 || i === points.length - 1) {
         const dateLabel = p.date ? p.date.slice(5) : '';
-        svgParts.push(`<text x="${x}" y="${H - 6}" text-anchor="middle" fill="#4d5468" font-size="8" font-family="Plus Jakarta Sans,sans-serif">${dateLabel}</text>`);
+        svg.innerHTML += `<text x="${x}" y="${H - 6}" text-anchor="middle" fill="#4d5468" font-size="8" font-family="Plus Jakarta Sans,sans-serif">${dateLabel}</text>`;
       }
     });
-    svg.innerHTML = svgParts.join('');
   } else if (points.length === 1) {
     svg.innerHTML = `<text x="150" y="70" text-anchor="middle" fill="#4d5468" font-size="12" font-family="Plus Jakarta Sans,sans-serif">Only 1 session — log more to see trends</text>`;
   } else {
@@ -3009,7 +3006,7 @@ function renderHistoryPage() {
       const est1rm  = Math.max(...sets1rm);
       const volEx   = done.reduce((sv, s) => sv + (parseFloat(s.weight)||0)*(parseInt(s.reps)||0), 0);
       return `<div class="hist-row">
-        <span class="hist-ex">${esc(ex.name)}</span>
+        <span class="hist-ex">${ex.name}</span>
         <span class="hist-wt">${bestSet.weight} lbs × ${bestSet.reps} · ${done.length} sets</span>
       </div>`;
     }).filter(Boolean).join('');
@@ -3022,7 +3019,7 @@ function renderHistoryPage() {
     return `<div class="hist-card">
       <div class="hist-header">
         <div>
-          <div class="hist-sess" style="font-size:15px;font-weight:800">${esc(sess?.name || 'Session')}</div>
+          <div class="hist-sess" style="font-size:15px;font-weight:800">${sess?.name || 'Session'}</div>
           <div class="hist-date">${date}${durStr ? ' · ⏱ ' + durStr : ''}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
@@ -3031,7 +3028,7 @@ function renderHistoryPage() {
         </div>
       </div>
       ${rows || '<div style="font-size:12px;color:var(--text3)">No sets recorded</div>'}
-      ${log.notes ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);line-height:1.6">📝 ${esc(log.notes)}</div>` : ''}
+      ${log.notes ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);line-height:1.6">📝 ${log.notes}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -3040,13 +3037,13 @@ function renderHistoryPage() {
 function renderProgramPage() {
   document.getElementById('programList').innerHTML = Object.entries(PROGRAM).map(([key, sess]) =>
     `<div class="card" style="margin-bottom:14px">
-      <div style="font-size:18px;font-weight:700;color:#22c55e;margin-bottom:12px;letter-spacing:-0.3px">Day ${key} — ${esc(sess.name)}</div>
+      <div style="font-size:18px;font-weight:700;color:#22c55e;margin-bottom:12px;letter-spacing:-0.3px">Day ${key} — ${sess.name}</div>
       ${sess.exercises.map(ex => `
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #e8eaf2">
           <div style="min-width:58px;height:32px;border-radius:20px;background:#0d2d1a;color:#22c55e;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;padding:0 8px">${ex.sets}×${ex.reps}</div>
           <div>
-            <div style="font-size:14px;font-weight:600;color:var(--text)">${esc(ex.name)}</div>
-            ${ex.notes ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(ex.notes)}</div>` : ''}
+            <div style="font-size:14px;font-weight:600;color:var(--text)">${ex.name}</div>
+            ${ex.notes ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">${ex.notes}</div>` : ''}
           </div>
         </div>`).join('')}
     </div>`
@@ -3743,7 +3740,7 @@ function renderQuickRecs() {
   document.getElementById('quickFoodsRow').innerHTML = recs.map((f, i) => {
     const idx = saved.findIndex(sf => sf.name === f.name && sf.slot === f.slot);
     return `<div class="quick-food-chip" onclick="quickAddFood(${idx})">
-      <div class="qfc-name">${esc(f.name)}</div>
+      <div class="qfc-name">${f.name}</div>
       <div class="qfc-cal">${f.calories} kcal · ${f.protein}g pro</div>
 
     </div>`;
@@ -3757,7 +3754,7 @@ function showServingsPrompt(foodName, defaultServings, callback) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
   overlay.innerHTML = `
     <div style="background:#1e293b;border-radius:16px;padding:24px;width:280px;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
-      <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px">${esc(foodName)}</div>
+      <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px">${foodName}</div>
       <div style="font-size:12px;color:#64748b;margin-bottom:16px">How many servings?</div>
       <input id="_srvInput" type="number" min="0.25" max="20" step="0.25" value="${defaultServings}"
         style="width:100%;background:#0f172a;border:1.5px solid #334155;border-radius:10px;padding:12px;color:#fff;font-size:20px;font-weight:700;text-align:center;outline:none;font-family:inherit;box-sizing:border-box"/>
@@ -3873,8 +3870,8 @@ const USDA_API_KEY = 'DEMO_KEY'; // free tier: 30 req/hr, 50/day
 
 // ── Barcode Scanner ──
 let scannerStream = null;
+let scannerInterval = null;
 let scannedProduct = null;
-let _scanId = 0; // guards against race conditions between concurrent scans
 let servings = 1;
 
 async function openScanner() {
@@ -3954,6 +3951,8 @@ function startQuagga() {
   });
 }
 
+function startDecoding() { /* legacy stub — not used with Quagga */ }
+function beginScan() { /* legacy stub — not used with Quagga */ }
 
 function renderFoodResult() {
   if (!scannedProduct) return;
@@ -4098,14 +4097,12 @@ function parseUSDAProduct(f) {
 
 // ── Barcode lookup: sequential cascade across all databases ──
 async function lookupBarcode(barcode) {
-  const myId = ++_scanId;
   document.getElementById('scanStatus').textContent = `⏳ Looking up ${barcode}…`;
   document.getElementById('cameraView').style.display = 'none';
   stopCamera();
 
   try {
     const prod = await lookupBarcodeMultiDB(barcode);
-    if (myId !== _scanId) return; // a newer scan started — discard this result
     if (prod && !prod.incomplete) {
       scannedProduct = prod;
       servings = 1;
@@ -4119,14 +4116,13 @@ async function lookupBarcode(barcode) {
     showBarcodeNotFound(barcode, productName);
 
   } catch(e) {
-    if (myId !== _scanId) return;
     showBarcodeNotFound(barcode, '');
     console.error('lookupBarcode error:', e);
   }
 }
 
 function showBarcodeNotFound(barcode, productName) {
-  const nameHint = productName ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Identified: ${esc(productName)}</div>` : '';
+  const nameHint = productName ? `<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Identified: ${productName}</div>` : '';
   document.getElementById('scanStatus').innerHTML = `
     <div style="text-align:center;padding:4px 0">
       ${nameHint}
@@ -4174,7 +4170,7 @@ async function scanNutritionLabel(barcode, productName) {
 
       try {
         const resp = await callClaudeAPI({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-opus-4-6',
           max_tokens: 512,
           messages: [{role:'user', content:[
             {type:'image', source:{type:'base64', media_type:'image/jpeg', data:base64}},
@@ -4489,7 +4485,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     msgEl.textContent = 'Identifying food and calculating macros…';
 
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-opus-4-6',
       max_tokens: 1024,
       messages: [{role:'user', content:[
         {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
@@ -4787,8 +4783,8 @@ function renderAISearchResults(results) {
     const srcCol = r.source === 'usda' ? '#60a5fa' : '#a78bfa';
     return `<div class="search-result-item" onclick="selectAISearchResult(${i})">
       <div style="flex:1">
-        <div class="search-result-name">${esc(r.name)}</div>
-        <div class="search-result-macros">${r.brand ? esc(r.brand) + ' · ' : ''}${esc(r.serving)}</div>
+        <div class="search-result-name">${r.name}</div>
+        <div class="search-result-macros">${r.brand ? r.brand + ' · ' : ''}${r.serving}</div>
         <div class="search-result-macros" style="margin-top:3px">
           <span style="color:#f59e0b;font-weight:700">${r.calories} kcal</span> ·
           <span style="color:#22c55e">P ${r.protein}g</span> ·
@@ -4822,8 +4818,8 @@ function renderAISearchFoodCard() {
   const p = aiSearchProduct;
   const s = aiSearchServings;
   document.getElementById('aiSearchFoodCard').innerHTML = `
-    <div class="food-name">${esc(p.name)}</div>
-    <div class="food-brand">${esc(p.brand)} · ${esc(p.serving)} per serving</div>
+    <div class="food-name">${p.name}</div>
+    <div class="food-brand">${p.brand} · ${p.serving} per serving</div>
     <div class="food-macros">
       <div class="food-macro-chip">
         <div class="food-macro-chip-val" style="color:#f59e0b">${Math.round(p.calories*s)}</div>
@@ -4974,7 +4970,7 @@ function renderAIResult() {
 
   document.getElementById('aiMealName').textContent = p.name;
   document.getElementById('aiMealDesc').innerHTML =
-    `<span style="color:${confColor};font-weight:700;font-size:11px">${confLabel}</span><br>${esc(p.description)}`;
+    `<span style="color:${confColor};font-weight:700;font-size:11px">${confLabel}</span><br>${p.description}`;
   document.getElementById('aiSrvVal').textContent = aiServings;
   renderAIMacroChips();
 }
@@ -6506,8 +6502,8 @@ async function runRestaurantSearch() {
     resEl.innerHTML = foods.map((f, i) => `
       <div class="db-result" onclick="openFoodDetail(${JSON.stringify(f).replace(/"/g, '&quot;')}, 'log')">
         <div class="db-result-info">
-          <div class="db-result-name">${esc(f.name)}</div>
-          <div class="db-result-meta">${f.brand ? esc(f.brand) + ' · ' : ''}${f.protein}g P · ${f.carbs}g C · ${f.fat}g F · per ${f.servingSize}${f.servingUnit}</div>
+          <div class="db-result-name">${f.name}</div>
+          <div class="db-result-meta">${f.brand ? f.brand + ' · ' : ''}${f.protein}g P · ${f.carbs}g C · ${f.fat}g F · per ${f.servingSize}${f.servingUnit}</div>
         </div>
         <div class="db-result-kcal">${f.calories}<br><span style="font-size:9px;color:var(--text3);font-weight:600">kcal</span></div>
       </div>`).join('');
@@ -6534,8 +6530,8 @@ function openFoodDetail(food, mode, recipeCallback) {
 
   const card = document.getElementById('fdFoodCard');
   card.innerHTML = `
-    <div class="food-name">${esc(food.name)}</div>
-    ${food.brand ? `<div class="food-brand">${esc(food.brand)}</div>` : ''}
+    <div class="food-name">${food.name}</div>
+    ${food.brand ? `<div class="food-brand">${food.brand}</div>` : ''}
     <div class="food-macros" id="fdMacrosGrid"></div>`;
   renderFdMacros();
 
@@ -6781,7 +6777,7 @@ async function searchRecipeIngredient() {
     resEl.innerHTML = foods.map((f,i) => `
       <div class="db-result" onclick='addIngToCurrentRecipe(${JSON.stringify(f)})'>
         <div class="db-result-info">
-          <div class="db-result-name">${esc(f.name)}</div>
+          <div class="db-result-name">${f.name}</div>
           <div class="db-result-meta">${f.calories} kcal · ${f.protein}g P · per ${f.servingSize}${f.servingUnit}</div>
         </div>
         <div style="font-size:18px;color:var(--green)">+</div>
@@ -6827,7 +6823,7 @@ function renderRecipeIngList() {
 
   listEl.innerHTML = currentRecipeIngredients.map((ing, i) => `
     <div class="recipe-ingredient-row">
-      <div class="recipe-ing-name">${ing.name.length > 32 ? esc(ing.name.slice(0,32))+'…' : esc(ing.name)}</div>
+      <div class="recipe-ing-name">${ing.name.length > 32 ? ing.name.slice(0,32)+'…' : ing.name}</div>
       <input class="ing-qty-input" type="number" value="${ing.qty}" min="0.25" step="0.25"
         onchange="updateIngQty(${i}, this.value)" title="Servings" />
       <div class="recipe-ing-macros">${Math.round(ing.calories*ing.qty)} kcal</div>
@@ -6896,7 +6892,7 @@ function renderRecipeList() {
     <div class="recipe-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div>
-          <div class="recipe-name">📖 ${esc(r.name)}</div>
+          <div class="recipe-name">📖 ${r.name}</div>
           <div class="recipe-meta">${r.ingredients.length} ingredients · Created ${r.created}</div>
         </div>
       </div>
@@ -6911,7 +6907,7 @@ function renderRecipeList() {
       </div>
       <div style="margin-bottom:10px">
         ${r.ingredients.map(ing => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
-          <span style="color:var(--text2)">${esc(ing.name.slice(0,40))}</span>
+          <span style="color:var(--text2)">${ing.name.slice(0,40)}</span>
           <span style="color:var(--text3);font-weight:600">×${ing.qty} · ${Math.round(ing.calories*ing.qty)} kcal</span>
         </div>`).join('')}
       </div>
@@ -7028,8 +7024,8 @@ const BACKUP_KEYS = [
   'macroLog', 'foodEntries', 'weightLog',
   'savedFoods', 'savedRecipes', 'liftLog', 'liftLog2',
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
-  'garminToday',
-  'stravaToday',
+  'garminToken', 'garminCreds', 'garminToday',
+  'stravaToken', 'stravaCreds', 'stravaToday',
   'garminAutoAdjust', 'stravaAutoAdjust',
   'shoeGarage', 'shoeRuns',
 ];
@@ -7059,10 +7055,8 @@ function importData(input) {
     try {
       const backup = JSON.parse(e.target.result);
       if (!backup.data) throw new Error('Invalid backup file');
-      const allowedKeys = new Set(BACKUP_KEYS);
       let count = 0;
       Object.entries(backup.data).forEach(([key, val]) => {
-        if (!allowedKeys.has(key)) return;
         localStorage.setItem(key, val);
         count++;
       });
@@ -7231,7 +7225,7 @@ function renderShoePage() {
             <div class="shoe-name" style="cursor:pointer" onclick="openShoeDetail('${shoe.id}')">${esc(shoe.name)}</div>
             <span class="shoe-status-badge ${shoe.status === 'retired' ? 'shoe-status-retired' : 'shoe-status-active'}">${shoe.status === 'retired' ? 'Retired' : 'Active'}</span>
           </div>
-          <div class="shoe-brand">${esc(shoe.brand || '')}${shoe.color ? ' · ' + esc(shoe.color) : ''}</div>
+          <div class="shoe-brand">${shoe.brand || ''}${shoe.color ? ' · ' + shoe.color : ''}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:4px">Last run: ${lastDate ? new Date(lastDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' }) : 'Never'}</div>
         </div>
         <!-- Action buttons -->
@@ -7572,7 +7566,7 @@ function promptShoeAssignment(runData) {
     const imgHtml = shoe.hasPhoto ? `<img src="${getShoePhoto(shoe.id)}" style="width:40px;height:40px;border-radius:10px;object-fit:cover;flex-shrink:0"/>` : `<div class="assign-shoe-avatar">👟</div>`;
     return `<button class="assign-shoe-btn" onclick="assignRunToShoe('${shoe.id}')">
       ${imgHtml}
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text)">${esc(shoe.name)}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${esc(shoe.brand||'')} · ${miles.toFixed(1)} mi so far</div></div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text)">${shoe.name}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${shoe.brand||''} · ${miles.toFixed(1)} mi so far</div></div>
       <div style="font-size:12px;color:var(--text3);font-weight:600">${(shoe.retireMiles||400)-miles>0?((shoe.retireMiles||400)-miles).toFixed(0)+' mi left':'⚠️ Retire'}</div>
     </button>`;
   }).join('') + `<button class="assign-shoe-btn" onclick="assignRunToNewShoe()" style="border-style:dashed"><div class="assign-shoe-avatar" style="font-size:24px">+</div><div style="font-size:14px;font-weight:700;color:var(--text2)">Add a new pair first</div></button>`;
@@ -7707,7 +7701,7 @@ function _renderShoeDetail(shoeId) {
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
       <div>
         <div class="modal-title" style="margin-bottom:2px">${esc(shoe.name)}</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600">${esc(shoe.brand||'')}${shoe.color?' · '+esc(shoe.color):''}</div>
+        <div style="font-size:12px;color:var(--text3);font-weight:600">${shoe.brand||''}${shoe.color?' · '+shoe.color:''}</div>
       </div>
       <button onclick="editShoeMileage('${shoeId}',${miles.toFixed(2)})" style="background:#0d1e3d;border:1px solid #1e3a5f;border-radius:8px;color:#60a5fa;font-size:11px;font-weight:700;padding:5px 11px;cursor:pointer;flex-shrink:0;margin-top:4px">✏️ Adjust Miles</button>
     </div>
@@ -10786,6 +10780,131 @@ function logCustomSupplement() {
   } catch(e) { console.warn('Seed failed:', e); }
 })();
 
+// ── Hidden Deploy Panel ──
+let _deployTapCount = 0, _deployTapTimer = null;
+function handleDeployTap() {
+  _deployTapCount++;
+  clearTimeout(_deployTapTimer);
+  if (_deployTapCount >= 5) {
+    _deployTapCount = 0;
+    openDeployModal();
+  } else {
+    _deployTapTimer = setTimeout(() => _deployTapCount = 0, 2000);
+  }
+}
+
+function openDeployModal() {
+  const modal = document.getElementById('deployModal');
+  modal.style.display = 'flex';
+  // Load saved token
+  const saved = localStorage.getItem('deploy_gh_token');
+  if (saved) {
+    document.getElementById('deployToken').value = saved;
+    document.getElementById('deployTokenSaved').style.display = 'block';
+  }
+}
+
+// Token save on input
+document.addEventListener('DOMContentLoaded', () => {
+  const tokenInput = document.getElementById('deployToken');
+  if (tokenInput) {
+    tokenInput.addEventListener('input', function() {
+      if (this.value.startsWith('ghp_')) {
+        localStorage.setItem('deploy_gh_token', this.value);
+        document.getElementById('deployTokenSaved').style.display = 'block';
+      }
+    });
+  }
+
+  // Drop zone
+  const drop = document.getElementById('deployDrop');
+  const fileInput = document.getElementById('deployFileInput');
+  if (drop) {
+    drop.addEventListener('click', () => fileInput.click());
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor = '#3b82f6'; });
+    drop.addEventListener('dragleave', () => drop.style.borderColor = '#2a2a2a');
+    drop.addEventListener('drop', e => {
+      e.preventDefault();
+      drop.style.borderColor = '#2a2a2a';
+      handleDeployFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', e => handleDeployFile(e.target.files[0]));
+  }
+});
+
+let _deployFileContent = null;
+function handleDeployFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _deployFileContent = e.target.result;
+    document.getElementById('deployFileName').textContent = file.name + ' (' + (file.size/1024).toFixed(0) + 'kb)';
+    document.getElementById('deployDrop').style.borderColor = '#22c55e';
+    const btn = document.getElementById('deploySubmitBtn');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  };
+  reader.readAsText(file);
+}
+
+async function runDeploy() {
+  const token = document.getElementById('deployToken').value.trim();
+  if (!token) { showDeployStatus('❌ Enter GitHub token first', '#ef4444'); return; }
+  if (!_deployFileContent) { showDeployStatus('❌ Select a file first', '#ef4444'); return; }
+
+  const btn = document.getElementById('deploySubmitBtn');
+  btn.disabled = true;
+  showDeployStatus('⏳ Pushing to GitHub...', '#3b82f6');
+
+  const REPO = 'jeremysfla/macro-tracker';
+  const FILE = 'public/index.html';
+  const headers = {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+
+  try {
+    function toBase64(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+
+    // Get current SHA of public/index.html
+    let sha = '';
+    const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE}`, { headers });
+    if (getResp.ok) { const d = await getResp.json(); sha = d.sha; }
+
+    // Push public/index.html
+    const encoded = toBase64(_deployFileContent);
+    const body = { message: `Deploy from app ${new Date().toLocaleString()}`, content: encoded };
+    if (sha) body.sha = sha;
+
+    const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE}`, {
+      method: 'PUT', headers, body: JSON.stringify(body)
+    });
+
+    if (!putResp.ok) { const e = await putResp.json(); throw new Error(e.message); }
+    const result = await putResp.json();
+    showDeployStatus(`✅ Deployed! Commit ${result.commit.sha.slice(0,7)} — live in ~30s`, '#22c55e');
+    _deployFileContent = null;
+    document.getElementById('deployFileName').textContent = file.name + ' (' + (file.size/1024).toFixed(0) + 'kb)';
+    document.getElementById('deployDrop').style.borderColor = '#2a2a2a';
+  } catch(e) {
+    showDeployStatus(`❌ ${e.message}`, '#ef4444');
+  }
+  btn.disabled = false;
+  btn.style.opacity = '1';
+}
+
+function showDeployStatus(msg, color) {
+  const el = document.getElementById('deployStatus');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = msg;
+}
 
 
 // ── Claude AI Chat ──
