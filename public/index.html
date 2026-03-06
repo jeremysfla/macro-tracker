@@ -1958,6 +1958,9 @@ function applyUserProfile(user) {
   setStorage('userGoals', goals);
   const macros = { calories: MACROS.calories, protein: MACROS.protein, carbs: MACROS.carbs, fat: MACROS.fat };
   setStorage('userMacros', macros);
+  // Clear any cached adjusted macros so D1 profile takes priority
+  localStorage.removeItem('adaptiveMacros');
+  localStorage.removeItem('garminAdjustedMacros');
 }
 
 // Onboarding navigation
