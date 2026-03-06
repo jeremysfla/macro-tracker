@@ -1738,31 +1738,9 @@ PROMISE ERROR:
 
       <div id="stravaSetupSteps">
         <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7">
-          Connect Strava to auto-pull run calories and adjust daily macros. Takes ~2 minutes.
+          Connect your Strava account to auto-pull run calories and adjust daily macros.
         </div>
-        <div class="oauth-step">
-          <div class="step-num">1</div>
-          <div class="oauth-step-text">Go to <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a> → create a free API app → set <strong>Authorization Callback Domain</strong> to <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">macro.jeremy-39c.workers.dev</code></div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">2</div>
-          <div class="oauth-step-text">Copy your <strong>Client ID</strong> and <strong>Client Secret</strong></div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">3</div>
-          <div class="oauth-step-text">Paste below and tap Connect</div>
-        </div>
-        <div style="margin-top:14px">
-          <div class="key-input-group">
-            <div class="key-input-label">Client ID</div>
-            <input type="text" id="stravaClientId" class="s-input" placeholder="e.g. 12345" />
-          </div>
-          <div class="key-input-group">
-            <div class="key-input-label">Client Secret</div>
-            <input type="password" id="stravaClientSecret" class="s-input" placeholder="Paste your Client Secret…" />
-          </div>
-          <button class="btn-green" style="margin-top:10px;background:#fc4c02;box-shadow:0 4px 14px rgba(252,76,2,0.3)" onclick="startStravaOAuth()">🟠 Connect to Strava</button>
-        </div>
+        <button class="btn-green" style="background:#fc4c02;box-shadow:0 4px 14px rgba(252,76,2,0.3)" onclick="startStravaOAuth()">🟠 Connect to Strava</button>
       </div>
 
       <div id="stravaConnectedPanel" style="display:none">
@@ -6048,75 +6026,43 @@ function adjustMacrosForBurn(burnCalories) {
   renderWeeklyBalance();
 }
 
-// ── Strava OAuth 2.0 ──
-const STRAVA_AUTH_URL   = 'https://www.strava.com/oauth/authorize';
-const STRAVA_TOKEN_URL  = 'https://www.strava.com/oauth/token';
+// ── Strava OAuth 2.0 (server-side) ──
 const STRAVA_API_BASE   = 'https://www.strava.com/api/v3';
 
 function startStravaOAuth() {
-  const clientId = document.getElementById('stravaClientId').value.trim();
-  const secret   = document.getElementById('stravaClientSecret').value.trim();
-  if (!clientId || !secret) { showToast('⚠️ Enter your Client ID and Secret first'); return; }
-  setStorage('stravaCreds', { clientId, secret });
-
-  const redirectUri = encodeURIComponent('https://macro.jeremy-39c.workers.dev');
-  const scope = 'read,activity:read';
-  window.location.href = `${STRAVA_AUTH_URL}?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=strava_oauth`;
+  // Server handles the redirect to Strava with credentials
+  window.location.href = '/api/strava/auth';
 }
 
-async function handleStravaCallback() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const code  = urlParams.get('code');
-  const state = urlParams.get('state');
-  if (!code || state !== 'strava_oauth') return;
+function handleStravaCallback() {
+  // Server redirects back with token in hash fragment: #strava_token={...}
+  const hash = window.location.hash;
+  if (!hash.startsWith('#strava_token=')) return;
 
   // Clean URL immediately
   window.history.replaceState({}, '', window.location.pathname);
 
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthIcon').textContent  = '🟠';
-  document.getElementById('oauthTitle').textContent = 'Connecting to Strava…';
-  document.getElementById('oauthMsg').textContent   = 'Exchanging authorization code for access token…';
-
-  const creds = getStorage('stravaCreds', {});
+  let tokenData;
   try {
-    const res = await fetch(STRAVA_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id:     creds.clientId,
-        client_secret: creds.secret,
-        code,
-        grant_type:    'authorization_code',
-        redirect_uri:  'https://macro.jeremy-39c.workers.dev'
-      })
-    });
-    const data = await res.json();
-    if (!data.access_token) throw new Error(data.message || 'Token exchange failed');
-
-    setStorage('stravaToken', {
-      accessToken:  data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt:    data.expires_at,
-      athlete:      data.athlete,
-    });
-
-    const name = `${data.athlete?.firstname || ''} ${data.athlete?.lastname || ''}`.trim() || 'Strava User';
-    document.getElementById('oauthIcon').textContent  = '✅';
-    document.getElementById('oauthTitle').textContent = 'Strava Connected!';
-    document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
-
-    setTimeout(() => {
-      document.getElementById('oauthModal').classList.remove('open');
-      updateStravaSettingsUI();
-      fetchStravaToday();
-    }, 2000);
-
-  } catch (err) {
-    document.getElementById('oauthIcon').textContent  = '❌';
-    document.getElementById('oauthTitle').textContent = 'Connection failed';
-    document.getElementById('oauthMsg').textContent   = err.message;
+    tokenData = JSON.parse(decodeURIComponent(hash.replace('#strava_token=', '')));
+  } catch (e) {
+    showToast('⚠️ Failed to parse Strava token');
+    return;
   }
+
+  setStorage('stravaToken', tokenData);
+
+  document.getElementById('oauthModal').classList.add('open');
+  document.getElementById('oauthIcon').textContent  = '✅';
+  document.getElementById('oauthTitle').textContent = 'Strava Connected!';
+  const name = `${tokenData.athlete?.firstname || ''} ${tokenData.athlete?.lastname || ''}`.trim() || 'Strava User';
+  document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
+
+  setTimeout(() => {
+    document.getElementById('oauthModal').classList.remove('open');
+    updateStravaSettingsUI();
+    fetchStravaToday();
+  }, 2000);
 }
 
 async function refreshStravaTokenIfNeeded() {
@@ -6126,33 +6072,22 @@ async function refreshStravaTokenIfNeeded() {
   // Token still valid
   if (Date.now() / 1000 < tok.expiresAt - 300) return tok.accessToken;
 
-  // Need to refresh
-  const creds = getStorage('stravaCreds', {});
-  if (!creds.clientId || !creds.secret) {
-    showToast('⚠️ Strava credentials missing — reconnect in Settings');
-    return tok.accessToken; // try with existing token
-  }
-
+  // Refresh via server-side proxy (keeps client_secret server-side)
   try {
-    const res = await fetch(STRAVA_TOKEN_URL, {
+    const res = await fetch('/api/strava/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id:     creds.clientId,
-        client_secret: creds.secret,
-        refresh_token: tok.refreshToken,
-        grant_type:    'refresh_token'
-      })
+      body: JSON.stringify({ refreshToken: tok.refreshToken })
     });
     const data = await res.json();
-    if (!data.access_token) {
+    if (!data.accessToken) {
       console.warn('Strava refresh response:', data);
       showToast('⚠️ Strava token refresh failed — try reconnecting in Settings');
       return tok.accessToken;
     }
-    const updated = { ...tok, accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at };
+    const updated = { ...tok, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt };
     setStorage('stravaToken', updated);
-    return data.access_token;
+    return data.accessToken;
   } catch(e) {
     console.warn('Strava refresh error:', e);
     return tok.accessToken;
@@ -6260,8 +6195,6 @@ function updateStravaSettingsUI() {
     const a = tok.athlete;
     document.getElementById('stravaUsername').textContent =
       a ? `${a.firstname || ''} ${a.lastname || ''}`.trim() : 'Strava User';
-    const creds = getStorage('stravaCreds', {});
-    if (creds.clientId) document.getElementById('stravaClientId').value = creds.clientId;
   } else {
     statusEl.className   = 'connect-status disconnected';
     statusEl.textContent = '⚪ Not connected';
@@ -6278,7 +6211,6 @@ function toggleStravaAutoAdjust(btn) {
 function disconnectStrava() {
   if (!confirm('Disconnect your Strava account?')) return;
   localStorage.removeItem('stravaToken');
-  localStorage.removeItem('stravaCreds');
   localStorage.removeItem('stravaToday');
   localStorage.removeItem('stravaAdjustedMacros');
   updateStravaSettingsUI();

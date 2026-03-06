@@ -118,6 +118,85 @@ export default {
       return json({ user });
     }
 
+    // ── Strava server-side OAuth ──
+
+    // Step 1: Redirect user to Strava authorization page
+    if (u.pathname === '/api/strava/auth' && req.method === 'GET') {
+      const clientId = env.STRAVA_CLIENT_ID;
+      if (!clientId) return json({ error: 'Strava not configured on server' }, 500);
+      const redirectUri = encodeURIComponent(`${u.origin}/api/strava/callback`);
+      const scope = 'read,activity:read';
+      const stravaUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&approval_prompt=auto`;
+      return Response.redirect(stravaUrl, 302);
+    }
+
+    // Step 2: Strava redirects here with ?code=...
+    if (u.pathname === '/api/strava/callback' && req.method === 'GET') {
+      const code = u.searchParams.get('code');
+      if (!code) {
+        return new Response('<h2>Strava authorization denied</h2><script>setTimeout(()=>window.close(),2000)</script>', {
+          headers: { 'content-type': 'text/html' }
+        });
+      }
+
+      try {
+        const tokenRes = await fetch('https://www.strava.com/oauth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: env.STRAVA_CLIENT_ID,
+            client_secret: env.STRAVA_CLIENT_SECRET,
+            code,
+            grant_type: 'authorization_code',
+          })
+        });
+        const data = await tokenRes.json();
+        if (!data.access_token) throw new Error(data.message || 'Token exchange failed');
+
+        // Redirect back to app with token data in hash (not query string, so it stays client-side)
+        const tokenPayload = encodeURIComponent(JSON.stringify({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: data.expires_at,
+          athlete: data.athlete,
+        }));
+        return Response.redirect(`${u.origin}/#strava_token=${tokenPayload}`, 302);
+      } catch (e) {
+        return new Response(`<h2>Strava connection failed</h2><p>${e.message}</p><script>setTimeout(()=>window.location='${u.origin}',3000)</script>`, {
+          headers: { 'content-type': 'text/html' }
+        });
+      }
+    }
+
+    // Step 3: Client-side token refresh via server (keeps secret server-side)
+    if (u.pathname === '/api/strava/refresh' && req.method === 'POST') {
+      try {
+        const { refreshToken } = await req.json();
+        if (!refreshToken) return json({ error: 'Missing refreshToken' }, 400);
+
+        const tokenRes = await fetch('https://www.strava.com/oauth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: env.STRAVA_CLIENT_ID,
+            client_secret: env.STRAVA_CLIENT_SECRET,
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token',
+          })
+        });
+        const data = await tokenRes.json();
+        if (!data.access_token) return json({ error: data.message || 'Refresh failed' }, 400);
+
+        return json({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: data.expires_at,
+        });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
     return env.ASSETS.fetch(req);
   }
 }
