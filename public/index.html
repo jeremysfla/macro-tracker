@@ -6,8 +6,8 @@
 <title>Jeremymacro</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js" defer integrity="sha384-sl2LNalPRD3qrS3TKmINXWwRcQKf9cUlNZGd8pqjlpzwbzgMsFgE+133u4kM32IR" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -4232,7 +4232,17 @@ function showToast(msg, undoFn) {
 }
 
 
-const USDA_API_KEY = 'DEMO_KEY'; // free tier: 30 req/hr, 50/day
+const USDA_API_KEY = 'DEMO_KEY'; // fallback only — production uses /api/usda/search proxy
+
+// Proxy USDA searches through backend to keep API key server-side
+async function fetchUSDA(query, opts = {}) {
+  const params = new URLSearchParams({ query });
+  if (opts.dataType) params.set('dataType', opts.dataType);
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const res = await fetch(`/api/usda/search?${params}`);
+  if (!res.ok) throw new Error(`USDA proxy error ${res.status}`);
+  return res.json();
+}
 
 // ── Barcode Scanner ──
 let scannerStream = null;
@@ -4563,7 +4573,7 @@ function showBarcodeNotFound(barcode, productName) {
         Point camera at the <b style="color:#fff">Nutrition Facts label</b> to read it automatically
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <button onclick="scanNutritionLabel('${barcode}','${productName.replace(/'/g,"\\\'")}')"
+        <button onclick="scanNutritionLabel('${esc(barcode)}','${esc(productName).replace(/'/g,"&#39;")}')"
           style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:12px;padding:12px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
           📸 Scan Nutrition Label
         </button>
@@ -4698,74 +4708,47 @@ async function lookupBarcodeMultiDB(barcode) {
     return product;
   }
 
-  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
-  try {
-    log('⏳ Searching Open Food Facts…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('OFF.net:', e); }
+  // 1-3. Search OFF.net, USDA, OFF.org in parallel — first valid result wins
+  log('⏳ Searching food databases…');
 
-  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
-  try {
-    log('⏳ Searching USDA…');
+  const offSearch = async (baseUrl, label) => {
     for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        const foods = d.foods || [];
-        // Prefer exact UPC match, fallback to first result
-        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods.find(f => f.gtinUpc);
-        if (hit) {
-          const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
+      const r = await fetch(`${baseUrl}/api/v2/product/${code}?fields=${OFF_FIELDS}`, { headers: OFF_HDR });
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = parseOFProduct(d.product);
+        if (isSaneProduct(p) && p.calories > 0) return p;
+      }
     }
-  } catch(e) { console.warn('USDA:', e); }
+    throw new Error(`${label}: not found`);
+  };
 
-  // 3. Open Food Facts .org (different CDN node, second chance)
-  try {
-    log('⏳ Searching Open Food Facts (alt)…');
+  const usdaSearch = async () => {
     for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next */ }
+      const r = await fetch(`/api/usda/search?query=${code}&dataType=Branded&pageSize=5`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const foods = d.foods || [];
+      const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+      const hit = exact || foods.find(f => f.gtinUpc);
+      if (hit) {
+        const p = parseUSDAProduct(hit);
+        if (isSaneProduct(p) && p.calories > 0) return p;
+      }
     }
-  } catch(e) { console.warn('OFF.org:', e); }
+    throw new Error('USDA: not found');
+  };
+
+  try {
+    const result = await Promise.any([
+      offSearch('https://world.openfoodfacts.net', 'OFF.net'),
+      usdaSearch(),
+      offSearch('https://world.openfoodfacts.org', 'OFF.org'),
+    ]);
+    log('✅ Found in food database');
+    return saveCache(result);
+  } catch(e) { /* all three failed, continue to fallbacks */ }
 
   // 5. UPC ItemDB → USDA name lookup
   try {
@@ -4813,8 +4796,8 @@ async function lookupBarcodeMultiDB(barcode) {
 async function searchUSDAByName(name) {
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(name)}` +
-      `&dataType=Branded,Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(name)}` +
+      `&dataType=Branded,Foundation,SR%20Legacy&pageSize=3`
     );
     const d = await r.json();
     const hit = (d.foods||[])[0];
@@ -4831,8 +4814,7 @@ async function searchFoodMultiDB(query) {
   // 1. USDA Foundation + SR Legacy (best micros)
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
-      `&dataType=Foundation,SR%20Legacy&pageSize=5&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=5`
     );
     const d = await r.json();
     (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'full'}); });
@@ -4841,8 +4823,7 @@ async function searchFoodMultiDB(query) {
   // 2. USDA Branded
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
-      `&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=5`
     );
     const d = await r.json();
     (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial'}); });
@@ -5112,10 +5093,9 @@ function usdaFoodToProduct(f) {
 // Search USDA — Foundation + SR Legacy first (best micros), then Branded
 async function searchUSDAFull(query) {
   // First: whole foods (Foundation Foods + SR Legacy) — most complete micronutrient data
-  const wholeFoodsUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${USDA_API_KEY}`;
   const [wfRes, brandedRes] = await Promise.all([
-    fetch(wholeFoodsUrl),
-    fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=6&api_key=${USDA_API_KEY}`)
+    fetch(`/api/usda/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6`),
+    fetch(`/api/usda/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=6`)
   ]);
 
   let results = [];
@@ -5703,7 +5683,15 @@ const GARMIN_REQ_URL   = GARMIN_BASE + '/oauth-service/oauth/request_token';
 const GARMIN_AUTH_URL  = 'https://connect.garmin.com/oauthConfirm';
 const GARMIN_ACCESS_URL= GARMIN_BASE + '/oauth-service/oauth/access_token';
 const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/activities';
-const CORS_PROXY       = 'https://corsproxy.io/?';
+// Garmin requests proxied through our backend to avoid third-party CORS proxy
+async function garminProxy(url, method, headers) {
+  const res = await fetch('/api/garmin/proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
+  });
+  return res;
+}
 
 function b64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function rfc3986(str) { return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
@@ -5767,9 +5755,8 @@ async function startGarminOAuth() {
     const callbackUrl = encodeURIComponent(window.location.href.split('?')[0]);
     const authHeader = await buildAuthHeader('POST', GARMIN_REQ_URL, { oauth_callback: callbackUrl }, key, secret);
 
-    const res = await fetch(CORS_PROXY + encodeURIComponent(GARMIN_REQ_URL), {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' }
+    const res = await garminProxy(GARMIN_REQ_URL, 'POST', {
+      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
     });
     const text = await res.text();
     const params = Object.fromEntries(new URLSearchParams(text));
@@ -5808,9 +5795,8 @@ async function handleOAuthCallback() {
       creds.key, creds.secret,
       reqToken.oauth_token, reqToken.oauth_token_secret
     );
-    const res = await fetch(CORS_PROXY + encodeURIComponent(GARMIN_ACCESS_URL), {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' }
+    const res = await garminProxy(GARMIN_ACCESS_URL, 'POST', {
+      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
     });
     const text = await res.text();
     const accessParams = Object.fromEntries(new URLSearchParams(text));
@@ -5894,8 +5880,8 @@ async function fetchGarminToday() {
       creds.key, creds.secret,
       tok.token, tok.secret
     );
-    const res = await fetch(CORS_PROXY + encodeURIComponent(apiUrl), {
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    const res = await garminProxy(apiUrl, 'GET', {
+      'Authorization': authHeader, 'Accept': 'application/json'
     });
     if (!res.ok) throw new Error(`Garmin API error ${res.status}`);
     const activities = await res.json();
@@ -6831,7 +6817,7 @@ async function callClaudeAPI(payload) {
 }
 
 async function searchUSDA(query, maxResults = 8) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=${maxResults}&api_key=${USDA_API_KEY}`;
+  const url = `/api/usda/search?query=${encodeURIComponent(query)}&pageSize=${maxResults}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('USDA API error');
   const data = await res.json();
@@ -6863,7 +6849,7 @@ async function runRestaurantSearch() {
   resEl.innerHTML = '';
   try {
     // Use USDA branded foods (dataType=Branded catches restaurant items)
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&dataType=Branded&pageSize=12&api_key=${USDA_API_KEY}`;
+    const url = `/api/usda/search?query=${encodeURIComponent(q)}&dataType=Branded&pageSize=12`;
     const res  = await fetch(url);
     const data = await res.json();
     const foods = (data.foods || []).map(f => {
@@ -7099,7 +7085,7 @@ async function lookupBarcodeForRecipe(barcode) {
       throw new Error('not found');
     });
 
-  const usda = fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${barcode}&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`)
+  const usda = fetch(`/api/usda/search?query=${barcode}&dataType=Branded&pageSize=5`)
     .then(r => r.json())
     .then(data => {
       const foods = data.foods || [];
@@ -7767,7 +7753,7 @@ async function handleShoePhoto(input) {
         if (match) {
           const parsed = JSON.parse(match[0]);
           const fullName = parsed.fullName||`${parsed.brand} ${parsed.model}`;
-          statusEl.innerHTML = `✅ Identified: <strong>${fullName}</strong>`;
+          statusEl.innerHTML = `✅ Identified: <strong>${esc(fullName)}</strong>`;
           statusEl.style.color = 'var(--green)';
           if (!document.getElementById('shoeNameInput').value) document.getElementById('shoeNameInput').value = fullName;
           if (!document.getElementById('shoeBrandInput').value) document.getElementById('shoeBrandInput').value = parsed.brand||'';
@@ -7892,7 +7878,7 @@ Closet shoes:\n`;
         const confColor = parsed.confidence === 'high' ? '#22c55e' : parsed.confidence === 'medium' ? '#f59e0b' : '#94a3b8';
         const confEmoji = parsed.confidence === 'high' ? '✅' : parsed.confidence === 'medium' ? '⚠️' : '❓';
         statusEl.style.color = confColor;
-        statusEl.innerHTML   = `${confEmoji} <strong>${parsed.matchedName}</strong> — ${parsed.confidence} confidence<br><span style="font-size:10px;opacity:0.8">${parsed.reasoning||''}</span>`;
+        statusEl.innerHTML   = `${confEmoji} <strong>${esc(parsed.matchedName)}</strong> — ${esc(parsed.confidence)} confidence<br><span style="font-size:10px;opacity:0.8">${esc(parsed.reasoning||'')}</span>`;
         // Visually highlight the matched button and auto-scroll to it
         document.querySelectorAll('.assign-shoe-btn').forEach(btn => {
           btn.style.border = '';
@@ -10077,7 +10063,7 @@ function formatAIResponse(text, opts) {
       else if (tl.includes('summary')) icon = '📊';
       html += `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:12px;padding:12px 14px;margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:${c.icon_color};letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-          <span>${icon}</span><span>${title}</span>
+          <span>${icon}</span><span>${esc(title)}</span>
         </div>
         <div class="_ai-section-body" style="font-size:13px;color:#cbd5e1;line-height:1.65">`;
       continue;
@@ -10447,8 +10433,41 @@ function safeCall(fn, label) {
   try { fn(); } catch(e) { console.error('[safeCall] ' + (label||fn.name||'?') + ':', e); }
 }
 
+// Prune old localStorage data to prevent quota exhaustion
+function pruneOldData() {
+  const KEEP_DAYS = 90;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - KEEP_DAYS);
+  const cutoffKey = cutoff.toISOString().slice(0, 10);
+
+  // Prune per-date food entry keys (foodEntries_YYYY-MM-DD)
+  const foodEntries = getStorage('foodEntries', {});
+  let pruned = 0;
+  Object.keys(foodEntries).forEach(date => {
+    if (date < cutoffKey && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      delete foodEntries[date];
+      localStorage.removeItem('foodEntries_' + date);
+      pruned++;
+    }
+  });
+  if (pruned > 0) {
+    setStorage('foodEntries', foodEntries);
+    console.log(`[prune] Removed ${pruned} food entry days older than ${KEEP_DAYS} days`);
+  }
+
+  // Cap barcode cache to 500 entries
+  const cache = getStorage('barcodeCache', {});
+  const cacheKeys = Object.keys(cache);
+  if (cacheKeys.length > 500) {
+    cacheKeys.slice(0, cacheKeys.length - 500).forEach(k => delete cache[k]);
+    setStorage('barcodeCache', cache);
+    console.log(`[prune] Trimmed barcode cache to 500 entries`);
+  }
+}
+
 function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
+  safeCall(pruneOldData, 'pruneOldData');
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 
@@ -10550,23 +10569,11 @@ function _initApp() {
   safeCall(scheduleMidnightRefresh, 'scheduleMidnightRefresh');
   setTimeout(renderShoePage, 0);
 
-  // Safety net: re-render Today page after browser has fully painted.
-  // Catches any edge case where initial renders wrote to elements before layout.
+  // Safety net: re-render critical above-fold elements after paint.
+  // Only rings and macros need this — other renders are stable after init.
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      safeCall(renderRings, 'renderRings-paint');
-      safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow-paint');
-      safeCall(renderFoodLog, 'renderFoodLog-paint');
-      safeCall(renderWeekStrip, 'renderWeekStrip-paint');
-      safeCall(renderWeeklyBalance, 'renderWeeklyBalance-paint');
-      safeCall(renderStreakCard, 'renderStreakCard-paint');
-      safeCall(renderProteinPace, 'renderProteinPace-paint');
-      safeCall(renderEventCountdowns, 'renderEventCountdowns-paint');
-      safeCall(renderWeightTrend, 'renderWeightTrend-paint');
-      safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner-paint');
-      safeCall(renderQuickRecs, 'renderQuickRecs-paint');
-      safeCall(renderUsualFoods, 'renderUsualFoods-paint');
-    });
+    safeCall(renderRings, 'renderRings-paint');
+    safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow-paint');
   });
 }
 
@@ -10711,8 +10718,14 @@ async function startRetroEnrichment() {
   }
 
   // 3. Look up each unique food — USDA first, AI fallback
-  // Process in small batches to avoid rate limiting
+  // Process in small batches with delay to avoid rate limiting
   const BATCH_SIZE = 3;
+  const BATCH_DELAY_MS = 500; // pause between batches to respect rate limits
+  const MAX_LOOKUPS = 150; // cap total API calls per enrichment run
+  if (needsEnrich.length > MAX_LOOKUPS) {
+    needsEnrich.length = MAX_LOOKUPS;
+    statusEl.textContent += ` (capped at ${MAX_LOOKUPS} per run)`;
+  }
   let processed = 0, usdaHits = 0, aiHits = 0, missed = 0;
   const microCache = new Map(); // food key → micros object (normalized per 100 cal proxy)
 
@@ -10730,7 +10743,7 @@ async function startRetroEnrichment() {
       const key = food.name.toLowerCase().trim();
       try {
         // Try Foundation + SR Legacy first
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(food.name)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=3&api_key=${USDA_API_KEY}`;
+        const url = `/api/usda/search?query=${encodeURIComponent(food.name)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=3`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -10757,6 +10770,10 @@ async function startRetroEnrichment() {
     }));
 
     processed += batch.length;
+    // Delay between batches to respect rate limits
+    if (i + BATCH_SIZE < needsEnrich.length) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    }
   }
 
   // 4. AI fallback for any still missing — batch them together
@@ -10885,7 +10902,7 @@ async function analyzeMealDescription() {
       ingredients.map(async ing => {
         try {
           // SR Legacy first for best micros
-          const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(ing.name)}&dataType=Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`;
+          const url = `/api/usda/search?query=${encodeURIComponent(ing.name)}&dataType=Foundation,SR%20Legacy&pageSize=3`;
           const res = await fetch(url);
           if (!res.ok) return { ing, product: null, found: false };
           const data = await res.json();
@@ -11170,6 +11187,7 @@ function logCustomSupplement() {
 
 
 // ── Claude AI Chat ──
+const CLAUDE_HISTORY_MAX = 20; // keep last 20 messages (10 exchanges)
 let claudeHistory = [];
 
 function getAppContext() {
@@ -11407,14 +11425,14 @@ function renderEventCountdowns() {
       const diff = currentWeight ? +(currentWeight - target).toFixed(1) : null;
       const color2 = '#22c55e';
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${esc(e.name)}</div>
         <div style="font-size:26px;font-weight:900;color:${color2};letter-spacing:-1px">${target}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">by ${byDate}</div>
         <div style="font-size:11px;color:${color2};font-weight:700;margin-top:2px">${diff !== null ? (diff <= 0 ? '✅ Achieved!' : diff + ' lbs to go') : daysToGoal + ' days left'}</div>
       </div>`;
     } else {
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${esc(e.name)}</div>
         <div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-1px">${days}<span style="font-size:12px;font-weight:600;color:var(--text2)"> days</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">to go</div>
         <div style="font-size:10px;color:var(--text3);margin-top:1px">${dateStr}</div>
@@ -11454,7 +11472,7 @@ function renderEventList() {
     }
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
       <div>
-        <div style="font-size:14px;font-weight:700;color:var(--text)">${emoji} ${e.name}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${emoji} ${esc(e.name)}</div>
         <div style="font-size:11px;color:${color};font-weight:600;margin-top:2px">${sub} · ${new Date(e.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
       </div>
       <div style="display:flex;gap:4px">
@@ -11641,13 +11659,17 @@ async function sendClaudeMessage() {
     document.getElementById(typingId)?.remove();
 
     claudeHistory.push({ role: 'assistant', content: reply });
+    // Cap history to prevent unbounded token growth
+    if (claudeHistory.length > CLAUDE_HISTORY_MAX) {
+      claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
+    }
     processClaudeMemory(reply);
     const displayReply = reply.replace(/REMEMBER:\s*.+/gi, '').trim();
     appendClaudeMessage('assistant', displayReply);
 
   } catch(e) {
     document.getElementById(typingId)?.remove();
-    appendClaudeMessage('assistant', '❌ Error: ' + e.message + ' | ' + e.constructor.name);
+    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error'));
   }
 
   document.getElementById('claudeSendBtn').disabled = false;
@@ -11690,7 +11712,7 @@ function appendClaudeMessage(role, text, id) {
       // Simple response - styled bubble
       const inner = document.createElement('div');
       inner.style.cssText = 'padding:11px 15px;border-radius:18px 18px 18px 4px;background:#111827;color:#e2e8f0;border:1px solid #1e293b';
-      inner.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
+      inner.innerHTML = esc(text).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
       bubble.appendChild(inner);
     }
   }

@@ -118,6 +118,42 @@ export default {
       return json({ user });
     }
 
+    // ── USDA API proxy — keeps API key server-side ──
+    if (u.pathname === '/api/usda/search' && req.method === 'GET') {
+      try {
+        const apiKey = env.USDA_API_KEY || 'DEMO_KEY';
+        const query = u.searchParams.get('query') || '';
+        const dataType = u.searchParams.get('dataType') || '';
+        const pageSize = u.searchParams.get('pageSize') || '6';
+        let usdaUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=${pageSize}&api_key=${apiKey}`;
+        if (dataType) usdaUrl += `&dataType=${encodeURIComponent(dataType)}`;
+        const r = await fetch(usdaUrl);
+        const data = await r.json();
+        return json(data, r.status);
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
+    // ── Garmin OAuth proxy — replaces third-party corsproxy.io ──
+    if (u.pathname === '/api/garmin/proxy' && req.method === 'POST') {
+      try {
+        const { url, method: m, headers: h } = await req.json();
+        // Only allow Garmin API URLs
+        if (!url || !url.startsWith('https://connectapi.garmin.com/')) {
+          return json({ error: 'Invalid Garmin URL' }, 400);
+        }
+        const r = await fetch(url, { method: m || 'POST', headers: h || {} });
+        const text = await r.text();
+        return new Response(text, {
+          status: r.status,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' }
+        });
+      } catch (e) {
+        return json({ error: e.message }, 500);
+      }
+    }
+
     // ── Strava server-side OAuth ──
 
     // Step 1: Redirect user to Strava authorization page
