@@ -579,36 +579,57 @@
   .bref-tag.std { background:#ffffff0d; color:var(--text3); }
 
   /* Login & Onboarding */
-  #login-screen, #onboarding-screen { position:fixed; inset:0; background:var(--bg); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; }
+  #login-screen, #onboarding-screen { position:fixed; inset:0; background:linear-gradient(160deg, #0d0f14 0%, #101520 40%, #0f1a1a 100%); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; overflow-y:auto; }
   #login-screen.hidden, #onboarding-screen.hidden { display:none; }
-  .login-logo { font-size:48px; margin-bottom:12px; }
-  .login-title { font-size:28px; font-weight:800; color:var(--text); margin-bottom:6px; }
-  .login-sub { font-size:14px; color:var(--text2); margin-bottom:32px; text-align:center; line-height:1.6; }
-  #g_id_signin { margin-bottom:16px; }
-  .onb-container { width:100%; max-width:440px; overflow-y:auto; max-height:100vh; padding:20px 0; }
-  .onb-title { font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; text-align:center; }
-  .onb-sub { font-size:13px; color:var(--text2); margin-bottom:24px; text-align:center; line-height:1.6; }
+
+  /* Login */
+  .login-card { text-align:center; animation:fadeSlideUp 0.5s ease; }
+  .login-logo { font-size:64px; margin-bottom:8px; filter:drop-shadow(0 4px 20px rgba(34,197,94,0.3)); }
+  .login-title { font-size:32px; font-weight:800; color:var(--text); margin-bottom:4px; letter-spacing:-0.5px; }
+  .login-accent { font-size:13px; font-weight:700; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; }
+  .login-sub { font-size:14px; color:var(--text2); margin-bottom:36px; text-align:center; line-height:1.7; max-width:320px; }
+  #g_id_signin { margin-bottom:20px; display:flex; justify-content:center; }
+  .login-features { display:flex; gap:24px; margin-top:32px; }
+  .login-feat { text-align:center; }
+  .login-feat-icon { font-size:24px; margin-bottom:6px; }
+  .login-feat-text { font-size:11px; color:var(--text3); font-weight:600; letter-spacing:0.3px; }
+
+  /* Onboarding */
+  .onb-container { width:100%; max-width:440px; padding:20px 0; animation:fadeSlideUp 0.4s ease; }
+  .onb-header { text-align:center; margin-bottom:24px; }
+  .onb-step-icon { font-size:40px; margin-bottom:8px; filter:drop-shadow(0 4px 16px rgba(34,197,94,0.2)); }
+  .onb-title { font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; letter-spacing:-0.3px; }
+  .onb-sub { font-size:13px; color:var(--text2); margin-bottom:0; text-align:center; line-height:1.6; }
+  .onb-progress { display:flex; gap:8px; justify-content:center; margin-bottom:28px; }
+  .onb-dot { width:32px; height:5px; border-radius:3px; background:var(--border); transition:all 0.3s ease; }
+  .onb-dot.active { background:var(--green); width:48px; }
   .onb-step { display:none; }
-  .onb-step.active { display:block; }
-  .onb-label { font-size:12px; font-weight:700; color:var(--text2); letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
+  .onb-step.active { display:block; animation:fadeSlideUp 0.35s ease; }
+  .onb-card { background:var(--surface); border:1.5px solid var(--border); border-radius:20px; padding:22px; box-shadow:var(--shadow); }
   .onb-field { margin-bottom:18px; }
-  .onb-select { width:100%; padding:12px 14px; background:var(--surface2); border:1.5px solid var(--border); color:var(--text); border-radius:14px; font-family:inherit; font-size:14px; font-weight:500; outline:none; appearance:none; -webkit-appearance:none; }
+  .onb-field:last-child { margin-bottom:0; }
+  .onb-label { font-size:11px; font-weight:700; color:var(--text2); letter-spacing:1.2px; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .onb-label-icon { font-size:14px; }
+  .onb-select { width:100%; padding:13px 14px; background:var(--surface2); border:1.5px solid var(--border); color:var(--text); border-radius:14px; font-family:inherit; font-size:14px; font-weight:600; outline:none; appearance:none; -webkit-appearance:none; transition:border-color 0.2s, box-shadow 0.2s; }
   .onb-select:focus { border-color:var(--green); box-shadow:0 0 0 3px rgba(34,197,94,0.12); }
-  .onb-btn-row { display:flex; gap:10px; margin-top:20px; }
-  .onb-btn { flex:1; padding:14px; border-radius:16px; font-family:inherit; font-weight:700; font-size:14px; border:none; cursor:pointer; transition:opacity 0.15s; }
+  .onb-btn-row { display:flex; gap:10px; margin-top:24px; }
+  .onb-btn { flex:1; padding:15px; border-radius:16px; font-family:inherit; font-weight:700; font-size:14px; letter-spacing:0.3px; border:none; cursor:pointer; transition:all 0.15s; }
   .onb-btn-back { background:var(--surface2); color:var(--text2); border:1.5px solid var(--border); }
-  .onb-btn-next { background:var(--green); color:#fff; box-shadow:0 4px 14px rgba(34,197,94,0.3); }
-  .onb-btn:active { opacity:0.85; }
-  .onb-progress { display:flex; gap:6px; justify-content:center; margin-bottom:20px; }
-  .onb-dot { width:10px; height:10px; border-radius:50%; background:var(--border); transition:background 0.2s; }
-  .onb-dot.active { background:var(--green); }
-  .onb-summary-row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
-  .onb-summary-label { color:var(--text2); }
+  .onb-btn-back:active { background:var(--surface3); }
+  .onb-btn-next { background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color:#fff; box-shadow:0 4px 18px rgba(34,197,94,0.35); }
+  .onb-btn-next:active { opacity:0.88; transform:scale(0.98); }
+  .onb-summary-row { display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .onb-summary-row:last-child { border-bottom:none; }
+  .onb-summary-label { color:var(--text2); font-weight:500; }
   .onb-summary-val { color:var(--text); font-weight:700; }
   .onb-macro-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; }
-  .onb-macro-card { background:var(--surface2); border-radius:16px; padding:14px; text-align:center; border:1.5px solid var(--border); }
-  .onb-macro-val { font-size:24px; font-weight:800; }
-  .onb-macro-label { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-top:4px; }
+  .onb-macro-card { background:var(--surface2); border-radius:18px; padding:18px 14px; text-align:center; border:1.5px solid var(--border); transition:border-color 0.2s; }
+  .onb-macro-card:hover { border-color:var(--border2); }
+  .onb-macro-val { font-size:28px; font-weight:800; letter-spacing:-0.5px; }
+  .onb-macro-label { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; margin-top:6px; color:var(--text2); }
+  .onb-plan-badge { display:inline-flex; align-items:center; gap:6px; background:var(--green-soft); border:1.5px solid #166534; border-radius:12px; padding:6px 14px; font-size:12px; font-weight:700; color:var(--green); margin-bottom:16px; }
+
+  @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
 </style>
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAIVElEQVR4nO3d228cZxnH8d/M7MG7a8dOYq9LSJuT4gYq0tJKVStFRAgE4hLxJ/AnRFwjuEUREveIy3LDHXcVV1RcIEFFD1LVqgWpIqUmaurE58MuFxsXe3e93pl533fG83w/UlTFbj0j+/nO+84e3EgF27nX7Rd9DihO8/5qVOTxgx+cgcckoYMIcjCGHlmEiMHrARh8uOAzBC9fmMGHDz5CcPoFGXyE4DIEJ1+IwUcRXIQQ5/0CDD+K4mL2cgXA8KNoeWcw0xLC4KOMsmyJUq8ADD/KKstspgqA4UfZpZ3RqZeMIod/bWu1qEMjh/lWt7BjT7sdmupfCj38DHw1hQ5imghqIU5kGgx99R39GRe5Ohx1aiE+r/4MPSS/MZy2Cky8CWb4EYLPWThthk+sw9fwM/iYxNdqcNJKkPulEGkw/DhN6BkZW4Xrqz+DjyxcrwbjVgHvKwDDj6xCzM5IAC6v/gw/8nI5Q+Nm29sKwPDDFZ+zdCwAV1d/hh+uuZqp4Rl3/kwwwz/w5oOWfvbX896P8+Mrm/r5t7/0fpwyWNtadX5j/NUK4OLqz/DDNxczdnTWgz4PAJSNswC4+iMUl7NWk/Jvfxj+4rz/H+k3f/7/3194RvrezeLOJ5S89wM797r95v3ViC0QTMsdAFd/FMXF7OUKgOFH0fLOYMwb3WHVzr1un3sAmJY5ALY/KIs8s8gKANMIAKZlCoDtD8om60yyAsA0AoBpBADTUgfA/h9llWU2WQFgGgHANAKAaQQA0wgAphEATCMAmEYAMI0AYBoBwDQCgGkEANMIAKYRAEwjAJhGADCNAGAaAcA0AoBpBADTCACmEQBMIwCYRgAwjQBgGgHANAKAaQQA0wgAphEATCMAmEYAMI0AYBoBwDQCgGkEANMIAKYRAEwjAJhGADCNAGAaAcA0AoBpBADTCACmEQBMIwCYRgAwjQBgGgHANAKAaQQA0wgAphEATCMAmEYAMI0AYBoBwDQCgGkEANMIAKYRAEwjAJhGADCNAGAaAcA0AoBpBADTCACmEQBMIwCYRgAwjQBgGgHANALwZL8X5jhx1A9zoIoiAE/2elGQ49REAHkQgCfre2ECSFgBciEATx7uJEGOUwvTWWURgCefbYYK4PjNRkwQqRCAJx89rgc5Tjs+HkCNn2gqfLs82NiP9M8ntSDHmo0Pjv2dANLh2+XB3x82dRDo3rQzHECYnVdlEIAHbz6YCXKcWH21hgKo8xNNhW+XYxv7kf70oBXkWOdr+xq+5+00gxy6MgjAsTc+6WhjP8xDMYu1vZGPzRFAKgTg0H+3E/3uw7lgx1tMdkc+RgDpEIAjvb70i7cXgl39JWlpaAWII6ndCHb4SiAAR379/jm99Xm4y287PtCFoQAudjRyT4DJwjxYXWEHfelX787r9590gh73ucb2yMeWZ4OeQiUQQA4fP6npl28v6B9fhN93jAugG+72ozIIIIMP1up64+OO/vhpO9gTXkfNxD1dqo/eAC8TQGoEcIJeX9rtRVrfi/XZVqJ/rdf03qO6/vJ5U59uFPttu9XcUDz0PoBOQ1oKuwurBAJ46qdvLepvD8v/EEqsvm7NbI58/PrFAk6mAngU6Iy53txWe+jlDxIBZEUAZ0gS9fVy+/HIx1t16fJC+POpAgI4Q27PrI+8/FmSvvU1KeEJgEwI4IyYiw90u7U+8vE4GgSAbAjgDIjV13fnvhj7BviVpcEjQMiGAM6AVzuPx77ysxZLr18Nfz5VQgAld7O5qW/ObIz93CuXefVnXgRQYtebW7oz++XYz52bkV55Nuz5VBEBlNS1xpbuzj4a++rOJJJ+dIs3wLvAM8El9FLriV5uPznx83eu87ofVwigROpRX3dnH419peehbyxLL14KeFIVRwAlcaWxrdc6ayO/5uSolSXp+ysBT8oAAijYXLKv19uPdXnCVV+Sbi5JP3yed3y5RgAFOZ/s6XZrXdeaW6c+EvHqc9JrV4KcljkEEFAS9fVsfUcrzc1Tr/iS1EikHzzPKz19IgDP6lFfy/UdXWts62pjS/Upf5//jYvSd27wRJdvqQOYb3W1trXq41wqYTY+0PnanpZru3qmvqvF2m6qJ1vmZ6S7N6SrF7ydYmXNt7qp/xtWgFPE6iuJpER9JdHgz0zUUzvuqRUfqBX31IkPtJDsayHZm/oKP+xiZ/DShpUlfsd/SATw1G/vPDz29z+8I/17ze8xk3hwpX9hmSt+UQggsHoifX1eurko3Vgc3OiiOJkC4D5genPNwfbm0rnB2xa7s2xxfMiy/5dYAVJLosHW5fBPLR68J7fdkDpP/znXlC60B3/qXOFLjQBO8JPbRZ8BQsj8gtqsSw7gWp5Z5BXlMC1u3l/llgwmNe+vRrlWALZBKFreGcy9BSICFMXF7HEPANNiabAXyvNFWAUQWt6ZO5x5ZysAESAUl7PGFgimfRWAi4dDWQXgm4sZOzrrzlcAIoAvPmbrWACunhQjArjmaqaGZ9zbPQARwBWfszQSgMuXRhAB8nI5Q+Nm2/ujQESArELMzolX+517Xef/C2jeRYZp+Bj8k3Y2QZ8HYDXAaULPyMT9vo9V4BCrAY7yOfiT7msnrgA+3yvAaoBDRQ2/NOUvG/a5EhxiRbAlxAVwmgt4ad4Uf/QbQgzVVMZVf+otTohV4CQEcTYVOfDTbt9T7fGLjACYVpp711QPg/IGepRd2hlN/TwAEaCsssxmrmFmS4QyyHNRzvVMMKsBipZ3BnO/FIIIUBQXs+d0eNkSIQSXF10vV29CgA8+dhtety+EABd8brOD7N8JAVmEuL8MfgNLDJgk9IMqhT+CQxC2Ff0o4v8APYf6bKG9Se0AAAAASUVORK5CYII=" />
 <link rel="apple-touch-icon" href="data:image/png;base64,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" />
@@ -641,17 +662,24 @@ PROMISE ERROR:
 </script>
 <!-- Login Screen -->
 <div id="login-screen" class="hidden">
-  <div class="login-logo">&#x1F3CB;&#xFE0F;</div>
-  <div class="login-title">Jeremy's Tracker</div>
-  <div class="login-sub">Sign in to sync your macros, workouts, and progress across all your devices.</div>
-  <div id="g_id_signin"></div>
+  <div class="login-card">
+    <div class="login-logo">&#x1F3CB;&#xFE0F;</div>
+    <div class="login-accent">Macro Tracker</div>
+    <div class="login-title">Jeremy's Tracker</div>
+    <div class="login-sub">Track macros, log workouts, and crush your goals — all in one place.</div>
+    <div id="g_id_signin"></div>
+    <div class="login-features">
+      <div class="login-feat"><div class="login-feat-icon">&#x1F34E;</div><div class="login-feat-text">Nutrition</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F4AA;</div><div class="login-feat-text">Workouts</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F4C8;</div><div class="login-feat-text">Progress</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F916;</div><div class="login-feat-text">AI Coach</div></div>
+    </div>
+  </div>
 </div>
 
 <!-- Onboarding Screen -->
 <div id="onboarding-screen" class="hidden">
   <div class="onb-container">
-    <div class="onb-title">Let's set you up</div>
-    <div class="onb-sub">Answer a few questions so we can calculate your personalized macro targets.</div>
     <div class="onb-progress">
       <div class="onb-dot active" data-step="0"></div>
       <div class="onb-dot" data-step="1"></div>
@@ -661,75 +689,105 @@ PROMISE ERROR:
 
     <!-- Step 0: Basics -->
     <div class="onb-step active" data-step="0">
-      <div class="onb-field">
-        <div class="onb-label">Gender</div>
-        <select id="onb-gender" class="onb-select">
-          <option value="">Select...</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F464;</div>
+        <div class="onb-title">About You</div>
+        <div class="onb-sub">We'll use this to calculate your metabolic rate.</div>
       </div>
-      <div class="onb-field">
-        <div class="onb-label">Age</div>
-        <input type="number" id="onb-age" placeholder="e.g. 28" />
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x2642;&#xFE0F;</span> Gender</div>
+          <select id="onb-gender" class="onb-select">
+            <option value="">Select...</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F382;</span> Age</div>
+          <input type="number" id="onb-age" placeholder="e.g. 28" />
+        </div>
       </div>
       <div class="onb-btn-row">
-        <button class="onb-btn onb-btn-next" onclick="onbNext(0)">Next</button>
+        <button class="onb-btn onb-btn-next" onclick="onbNext(0)">Continue</button>
       </div>
     </div>
 
     <!-- Step 1: Body -->
     <div class="onb-step" data-step="1">
-      <div class="onb-field">
-        <div class="onb-label">Height (inches)</div>
-        <input type="number" id="onb-height" placeholder="e.g. 70 (5'10&quot;)" />
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F4CF;</div>
+        <div class="onb-title">Your Body</div>
+        <div class="onb-sub">Height and weight help us dial in your calorie needs.</div>
       </div>
-      <div class="onb-field">
-        <div class="onb-label">Current Weight (lbs)</div>
-        <input type="number" id="onb-weight" placeholder="e.g. 175" />
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F4CF;</span> Height (inches)</div>
+          <input type="number" id="onb-height" placeholder="e.g. 70 (5'10&quot;)" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x2696;&#xFE0F;</span> Current Weight (lbs)</div>
+          <input type="number" id="onb-weight" placeholder="e.g. 175" />
+        </div>
       </div>
       <div class="onb-btn-row">
         <button class="onb-btn onb-btn-back" onclick="onbBack(1)">Back</button>
-        <button class="onb-btn onb-btn-next" onclick="onbNext(1)">Next</button>
+        <button class="onb-btn onb-btn-next" onclick="onbNext(1)">Continue</button>
       </div>
     </div>
 
     <!-- Step 2: Goals -->
     <div class="onb-step" data-step="2">
-      <div class="onb-field">
-        <div class="onb-label">Goal Weight (lbs)</div>
-        <input type="number" id="onb-goal-weight" placeholder="e.g. 163" />
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F3AF;</div>
+        <div class="onb-title">Your Goals</div>
+        <div class="onb-sub">Set a target and we'll calculate your daily deficit.</div>
       </div>
-      <div class="onb-field">
-        <div class="onb-label">Goal Date</div>
-        <input type="date" id="onb-goal-date" />
-      </div>
-      <div class="onb-field">
-        <div class="onb-label">Activity Level</div>
-        <select id="onb-activity" class="onb-select">
-          <option value="">Select...</option>
-          <option value="sedentary">Sedentary (desk job, little exercise)</option>
-          <option value="light">Lightly Active (1-3 days/week)</option>
-          <option value="moderate">Moderately Active (3-5 days/week)</option>
-          <option value="active">Very Active (6-7 days/week)</option>
-          <option value="extra">Extra Active (athlete / physical job)</option>
-        </select>
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F3C1;</span> Goal Weight (lbs)</div>
+          <input type="number" id="onb-goal-weight" placeholder="e.g. 163" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F4C5;</span> Goal Date</div>
+          <input type="date" id="onb-goal-date" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F525;</span> Activity Level</div>
+          <select id="onb-activity" class="onb-select">
+            <option value="">Select...</option>
+            <option value="sedentary">Sedentary (desk job, little exercise)</option>
+            <option value="light">Lightly Active (1-3 days/week)</option>
+            <option value="moderate">Moderately Active (3-5 days/week)</option>
+            <option value="active">Very Active (6-7 days/week)</option>
+            <option value="extra">Extra Active (athlete / physical job)</option>
+          </select>
+        </div>
       </div>
       <div class="onb-btn-row">
         <button class="onb-btn onb-btn-back" onclick="onbBack(2)">Back</button>
-        <button class="onb-btn onb-btn-next" onclick="onbNext(2)">Next</button>
+        <button class="onb-btn onb-btn-next" onclick="onbNext(2)">Calculate My Plan</button>
       </div>
     </div>
 
     <!-- Step 3: Review -->
     <div class="onb-step" data-step="3">
-      <div style="font-size:13px;font-weight:700;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;text-align:center">Your Plan</div>
-      <div id="onb-summary"></div>
-      <div class="onb-macro-grid" id="onb-macros"></div>
-      <div id="onb-deficit-note" style="font-size:12px;color:var(--text2);text-align:center;line-height:1.6;margin-bottom:16px"></div>
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x2728;</div>
+        <div class="onb-title">Your Plan</div>
+        <div class="onb-sub">Here are your personalized daily targets.</div>
+      </div>
+      <div class="onb-card">
+        <div style="text-align:center;margin-bottom:12px">
+          <div class="onb-plan-badge">&#x2705; Calculated for you</div>
+        </div>
+        <div id="onb-summary"></div>
+        <div class="onb-macro-grid" id="onb-macros"></div>
+        <div id="onb-deficit-note" style="font-size:12px;color:var(--text2);text-align:center;line-height:1.6"></div>
+      </div>
       <div class="onb-btn-row">
         <button class="onb-btn onb-btn-back" onclick="onbBack(3)">Back</button>
-        <button class="onb-btn onb-btn-next" onclick="onbFinish()">Start Tracking</button>
+        <button class="onb-btn onb-btn-next" onclick="onbFinish()">&#x1F680; Start Tracking</button>
       </div>
     </div>
   </div>
