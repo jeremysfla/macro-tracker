@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" width="400" height="420">
+  <defs>
+    <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="coreGrad" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Glow behind core -->
+  <ellipse cx="200" cy="185" rx="90" ry="90" fill="url(#orbGlow)"/>
+
+  <!-- Orbit 1: orange dashed ellipse (tilted left) -->
+  <ellipse cx="200" cy="185" rx="150" ry="65" fill="none" stroke="#b45309" stroke-width="1.2" stroke-dasharray="6,8" stroke-opacity="0.5" transform="rotate(-30,200,185)"/>
+
+  <!-- Orbit 2: cyan dashed ellipse (tilted right) -->
+  <ellipse cx="200" cy="185" rx="155" ry="70" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="8,6" stroke-opacity="0.7" transform="rotate(25,200,185)"/>
+
+  <!-- Orbit 3: purple dashed ellipse (more tilted) -->
+  <ellipse cx="200" cy="185" rx="145" ry="60" fill="none" stroke="#8b5cf6" stroke-width="1.2" stroke-dasharray="5,10" stroke-opacity="0.5" transform="rotate(-5,200,185)"/>
+
+  <!-- Core: dark ring -->
+  <circle cx="200" cy="185" r="38" fill="#0f0f1a" stroke="#1a1a2e" stroke-width="8"/>
+
+  <!-- Core: purple gradient sphere -->
+  <circle cx="200" cy="185" r="28" fill="url(#coreGrad)"/>
+
+  <!-- Core: white highlight dot -->
+  <circle cx="192" cy="177" r="7" fill="white" opacity="0.9"/>
+
+  <!-- Orbiting dot: green (top) -->
+  <circle cx="230" cy="95" r="7" fill="#34d399"/>
+  <circle cx="230" cy="95" r="10" fill="#34d399" opacity="0.2"/>
+
+  <!-- Orbiting dot: purple/lavender (right) -->
+  <circle cx="320" cy="200" r="6" fill="#c4b5fd"/>
+  <circle cx="320" cy="200" r="9" fill="#c4b5fd" opacity="0.2"/>
+
+  <!-- Text: MACRO -->
+  <text x="200" y="310" text-anchor="middle" font-family="'Inter','SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="56" font-weight="800" fill="white" letter-spacing="12">MACRO</text>
+
+  <!-- Text: AI -->
+  <text x="200" y="340" text-anchor="middle" font-family="'SF Mono','Fira Code','Courier New',monospace" font-size="20" font-weight="700" fill="#67e8f9" letter-spacing="8">AI</text>
+
+  <!-- Divider line -->
+  <line x1="150" y1="355" x2="250" y2="355" stroke="#374151" stroke-width="1"/>
+
+  <!-- Text: HEALTH OPTIMIZER -->
+  <text x="200" y="378" text-anchor="middle" font-family="'SF Mono','Fira Code','Courier New',monospace" font-size="12" font-weight="500" fill="#6b7280" letter-spacing="4">HEALTH OPTIMIZER</text>
+</svg>
