@@ -4232,9 +4232,7 @@ function showToast(msg, undoFn) {
 }
 
 
-const USDA_API_KEY = 'DEMO_KEY'; // fallback only — production uses /api/usda/search proxy
-
-// Proxy USDA searches through backend to keep API key server-side
+// All USDA searches go through /api/usda/search backend proxy (API key stays server-side)
 async function fetchUSDA(query, opts = {}) {
   const params = new URLSearchParams({ query });
   if (opts.dataType) params.set('dataType', opts.dataType);
