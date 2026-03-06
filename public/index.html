@@ -4019,13 +4019,13 @@ function logScannedFood() {
 // ── Sanity-check a parsed product ──
 function isSaneProduct(p) {
   if (!p || !p.name) return false;
-  if (p.calories < 0 || p.calories > 3000) return false;
-  if (p.protein  < 0 || p.protein  > 250)  return false;
-  if (p.carbs    < 0 || p.carbs    > 400)  return false;
-  if (p.fat      < 0 || p.fat      > 200)  return false;
-  // Macro-calorie cross-check (within 40% tolerance)
+  if (p.calories < 0 || p.calories > 5000) return false;
+  if (p.protein  < 0 || p.protein  > 400)  return false;
+  if (p.carbs    < 0 || p.carbs    > 600)  return false;
+  if (p.fat      < 0 || p.fat      > 400)  return false;
+  // Only cross-check if we have all macros and meaningful calories
   const calc = p.protein * 4 + p.carbs * 4 + p.fat * 9;
-  if (p.calories > 15 && calc > 0 && (calc / p.calories < 0.5 || calc / p.calories > 2.2)) return false;
+  if (p.calories > 50 && calc > 0 && (calc / p.calories < 0.3 || calc / p.calories > 3.0)) return false;
   return true;
 }
 
@@ -4034,54 +4034,37 @@ function parseOFProduct(p) {
   const n = p.nutriments || {};
   const servingQty = parseFloat(p.serving_quantity) || 0;
   const scale = servingQty > 0 ? servingQty / 100 : 1;
-  const dataPerServing = (p.nutrition_data_per === 'serving');
 
-  function getBest(base) {
-    const alts = [base, base.replace('-','_'), base.replace('_','-')];
-
-    let servingVal = null, per100Val = null;
-    for (const b of alts) {
-      const sv = n[`${b}_serving`];
-      if (sv != null && sv !== '' && !isNaN(+sv) && +sv > 0 && servingVal === null) servingVal = +sv;
-      const v = n[`${b}_100g`];
-      if (v != null && v !== '' && !isNaN(+v) && +v > 0 && per100Val === null) per100Val = +v;
+  function get(base) {
+    const keys = [base, base.replace('-','_'), base.replace('_','-')];
+    for (const k of keys) {
+      const sv = n[`${k}_serving`];
+      if (sv != null && !isNaN(+sv) && +sv >= 0) return +sv;
     }
-
-    // If OFF marks nutrition as per-serving, _100g fields hold per-serving values
-    if (dataPerServing && per100Val !== null) return per100Val;
-
-    if (servingVal !== null) {
-      // OFF auto-computes _serving = _100g * scale — detect this by checking if they match
-      // If _serving ≈ _100g * scale, the _100g value IS the true per-serving value
-      if (per100Val !== null && scale > 1 && servingQty >= 100) {
-        const autoComputed = Math.abs(servingVal - per100Val * scale) < 2;
-        if (autoComputed) {
-          // _100g is actually the per-serving value stored incorrectly
-          return per100Val;
-        }
-      }
-      return servingVal;
+    for (const k of keys) {
+      const v = n[`${k}_100g`];
+      if (v != null && !isNaN(+v) && +v >= 0) return +v * scale;
     }
-
-    if (per100Val !== null) return per100Val * scale;
+    for (const k of keys) {
+      if (n[k] != null && !isNaN(+n[k]) && +n[k] >= 0) return +n[k];
+    }
     return 0;
   }
 
-  let cals = getBest('energy-kcal');
-  if (cals === 0) { const kj = getBest('energy'); if (kj > 0) cals = kj / 4.184; }
+  let cals = get('energy-kcal');
+  if (cals === 0) { const kj = get('energy'); if (kj > 0) cals = kj / 4.184; }
 
   return {
     name:        p.product_name_en || p.product_name || p.abbreviated_product_name || '',
     brand:       p.brands || '',
     calories:    Math.round(cals),
-    protein:     Math.round(getBest('proteins') * 10) / 10,
-    carbs:       Math.round(getBest('carbohydrates') * 10) / 10,
-    fat:         Math.round(getBest('fat') * 10) / 10,
+    protein:     Math.round(get('proteins') * 10) / 10,
+    carbs:       Math.round(get('carbohydrates') * 10) / 10,
+    fat:         Math.round(get('fat') * 10) / 10,
     servingSize: p.serving_size || (servingQty > 0 ? `${servingQty}g` : '1 serving'),
     source:      'Open Food Facts',
   };
 }
-
 // ── Parse USDA FoodData Central product (search result) ──
 function parseUSDAProduct(f) {
   const nutr = id => {
@@ -4162,7 +4145,7 @@ function showBarcodeNotFound(barcode, productName) {
     </div>`;
 }
 
-function scanNutritionLabel(barcode, productName) {
+async function scanNutritionLabel(barcode, productName) {
   // Open a camera input specifically for reading the nutrition label
   const input = document.createElement('input');
   input.type = 'file';
@@ -4269,7 +4252,7 @@ async function lookupBarcodeMultiDB(barcode) {
     'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
     'Accept': 'application/json',
   };
-  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per';
+  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
 
   // Cache check
   const cache = getStorage('barcodeCache', {});
@@ -4305,27 +4288,23 @@ async function lookupBarcodeMultiDB(barcode) {
     }
   } catch(e) { console.warn('OFF.net:', e); }
 
-  // 2. USDA FoodData Central — POST search for exact gtinUpc match
+  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
   try {
     log('⏳ Searching USDA…');
     for (const code of allCodes) {
       try {
         const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: code, dataType: ['Branded'], pageSize: 5 })
-          }
+          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
         );
         if (!r.ok) continue;
         const d = await r.json();
         const foods = d.foods || [];
-        const exact = foods.find(f => allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods[0];
+        // Prefer exact UPC match, fallback to first result
+        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+        const hit   = exact || foods.find(f => f.gtinUpc);
         if (hit) {
           const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p)) {
+          if (isSaneProduct(p) && p.calories > 0) {
             log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
             return saveCache(p);
           }
@@ -8596,7 +8575,7 @@ function handleBloodDrop(e) {
   if (file) handleBloodFile(file);
 }
 
-function handleBloodFile(file) {
+async function handleBloodFile(file) {
   if (!file) return;
   const nameEl   = document.getElementById('bloodUploadName');
   const statusEl = document.getElementById('bloodUploadStatus');
@@ -10745,7 +10724,7 @@ function logCustomSupplement() {
 // ── One-time seed: Labcorp Oct 2024 results ──
 (function seedLabcorpOct2024() {
   try {
-    const existing = JSON.parse(localStorage.getItem('bloodResults') || '[]');
+    const existing = getStorage('bloodResults', []);
     if (existing.some(r => r.date === '2024-10-11')) return;
     const entry = {
       id: 1728691200000,
@@ -10794,9 +10773,9 @@ function logCustomSupplement() {
       ],
       uploadedAt: new Date().toISOString(),
     };
-    const all = JSON.parse(localStorage.getItem('bloodResults') || '[]');
+    const all = getStorage('bloodResults', []);
     all.unshift(entry);
-    localStorage.setItem('bloodResults', JSON.stringify(all));
+    setStorage('bloodResults', all);
     console.log('✅ Seeded Labcorp Oct 2024 (39 markers)');
   } catch(e) { console.warn('Seed failed:', e); }
 })();
