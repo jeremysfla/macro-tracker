@@ -596,24 +596,6 @@
     background:#500724;
     transform:scale(1.15);
   }
-  /* Compact mood bar variant */
-  .mood-btn-sm {
-    font-size:16px;
-    background:transparent;
-    border:2px solid transparent;
-    border-radius:8px;
-    width:30px;height:30px;
-    cursor:pointer;
-    transition:all 0.15s;
-    display:flex;align-items:center;justify-content:center;
-    padding:0;
-    line-height:1;
-  }
-  .mood-btn-sm.active {
-    border-color:#f472b6;
-    background:#500724;
-    transform:scale(1.1);
-  }
 
   /* ── Supplement checklist ── */
   .supp-row {
@@ -654,6 +636,29 @@
   .bp-elevated { background:#451a03;color:#fb923c; }
   .bp-high { background:#450a0a;color:#f87171; }
 
+
+  /* ── Mood check-in buttons ── */
+  .mck-btn {
+    font-size:18px;
+    background:transparent;
+    border:2px solid transparent;
+    border-radius:8px;
+    width:36px;
+    height:30px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    line-height:1;
+    transition:all 0.12s;
+    flex-shrink:0;
+  }
+  .mck-btn.active {
+    border-color:#f472b6;
+    background:#500724;
+    transform:scale(1.15);
+  }
 </style>
 <link rel="icon" type="image/png" href="data:image/png;base64,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" />
 <link rel="apple-touch-icon" href="data:image/png;base64,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" />
@@ -722,31 +727,30 @@ PROMISE ERROR:
       <!-- 2. Week strip -->
       <div class="week-strip" id="weekStrip"></div>
 
-      <!-- 2b. Daily Check-in (mood/energy compact bar) -->
-      <div id="moodCard" style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:7px 10px;margin-bottom:10px;box-shadow:var(--shadow)">
-        <div style="font-size:10px;font-weight:700;color:#f472b6;letter-spacing:0.8px;text-transform:uppercase;white-space:nowrap;margin-right:2px">Check-in</div>
-        <div style="display:flex;align-items:center;gap:2px;flex:1">
-          <div style="font-size:9px;color:var(--text3);font-weight:600;margin-right:2px;white-space:nowrap">⚡</div>
-          <div id="energyBtns" style="display:flex;gap:2px">
-            <button onclick="setMood('energy',1)" data-val="1" class="mood-btn-sm" title="Exhausted">😴</button>
-            <button onclick="setMood('energy',2)" data-val="2" class="mood-btn-sm" title="Low">😕</button>
-            <button onclick="setMood('energy',3)" data-val="3" class="mood-btn-sm" title="Okay">😐</button>
-            <button onclick="setMood('energy',4)" data-val="4" class="mood-btn-sm" title="Good">🙂</button>
-            <button onclick="setMood('energy',5)" data-val="5" class="mood-btn-sm" title="Great">💪</button>
+      <!-- Daily Check-in bar -->
+      <div id="moodCard" style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:8px 12px;margin-bottom:10px;box-shadow:var(--shadow)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="font-size:10px;font-weight:700;color:#f472b6;letter-spacing:0.8px;text-transform:uppercase;width:44px;flex-shrink:0">⚡ Energy</span>
+          <div id="energyBtns" style="display:flex;gap:3px;flex:1;justify-content:space-between">
+            <button onclick="setMood('energy',1)" data-val="1" class="mck-btn" title="Exhausted">😴</button>
+            <button onclick="setMood('energy',2)" data-val="2" class="mck-btn" title="Low">😕</button>
+            <button onclick="setMood('energy',3)" data-val="3" class="mck-btn" title="Okay">😐</button>
+            <button onclick="setMood('energy',4)" data-val="4" class="mck-btn" title="Good">🙂</button>
+            <button onclick="setMood('energy',5)" data-val="5" class="mck-btn" title="Great">💪</button>
           </div>
+          <div id="moodSavedMsg" style="display:none;font-size:11px;color:#f472b6;font-weight:800;width:16px;text-align:center;flex-shrink:0">✓</div>
         </div>
-        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
-        <div style="display:flex;align-items:center;gap:2px;flex:1">
-          <div style="font-size:9px;color:var(--text3);font-weight:600;margin-right:2px;white-space:nowrap">😊</div>
-          <div id="moodBtns" style="display:flex;gap:2px">
-            <button onclick="setMood('mood',1)" data-val="1" class="mood-btn-sm" title="Rough">😣</button>
-            <button onclick="setMood('mood',2)" data-val="2" class="mood-btn-sm" title="Meh">😞</button>
-            <button onclick="setMood('mood',3)" data-val="3" class="mood-btn-sm" title="Okay">😐</button>
-            <button onclick="setMood('mood',4)" data-val="4" class="mood-btn-sm" title="Good">😊</button>
-            <button onclick="setMood('mood',5)" data-val="5" class="mood-btn-sm" title="Great">😄</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-weight:700;color:#f472b6;letter-spacing:0.8px;text-transform:uppercase;width:44px;flex-shrink:0">😊 Mood</span>
+          <div id="moodBtns" style="display:flex;gap:3px;flex:1;justify-content:space-between">
+            <button onclick="setMood('mood',1)" data-val="1" class="mck-btn" title="Rough">😣</button>
+            <button onclick="setMood('mood',2)" data-val="2" class="mck-btn" title="Meh">😞</button>
+            <button onclick="setMood('mood',3)" data-val="3" class="mck-btn" title="Okay">😐</button>
+            <button onclick="setMood('mood',4)" data-val="4" class="mck-btn" title="Good">😊</button>
+            <button onclick="setMood('mood',5)" data-val="5" class="mck-btn" title="Great">😄</button>
           </div>
+          <div style="width:16px;flex-shrink:0"></div>
         </div>
-        <div id="moodSavedMsg" style="display:none;font-size:10px;color:#f472b6;font-weight:700;flex-shrink:0">✓</div>
       </div>
 
       <!-- 3. Workout streak -->
@@ -948,6 +952,8 @@ PROMISE ERROR:
           <span>🧠</span><div id="adaptiveMacroText"></div>
         </div>
       </div>
+
+
 
       <!-- 10. Workout nutrition prompt -->
       <div id="workoutNutritionBanner" style="display:none;background:linear-gradient(135deg,#1a1030,#0d1e3d);border:1.5px solid #2a1f4a;border-radius:16px;padding:12px 16px;margin-bottom:14px">
@@ -4294,17 +4300,12 @@ function logScannedFood() {
 function isSaneProduct(p) {
   if (!p || !p.name) return false;
   if (p.calories < 0 || p.calories > 5000) return false;
-  if (p.protein  < 0 || p.protein  > 500)  return false;
-  if (p.carbs    < 0 || p.carbs    > 700)  return false;
-  if (p.fat      < 0 || p.fat      > 500)  return false;
-  // Ratio check: skip if calories are very low (beverages, condiments)
-  // or if macros sum to 0 (incomplete data we'll still show)
+  if (p.protein  < 0 || p.protein  > 400)  return false;
+  if (p.carbs    < 0 || p.carbs    > 600)  return false;
+  if (p.fat      < 0 || p.fat      > 400)  return false;
+  // Only cross-check if we have all macros and meaningful calories
   const calc = p.protein * 4 + p.carbs * 4 + p.fat * 9;
-  if (p.calories > 30 && calc > 10) {
-    const ratio = calc / p.calories;
-    // Allow wider range: 0.2–4.0 to accommodate high-protein/high-fat foods
-    if (ratio < 0.2 || ratio > 4.0) return false;
-  }
+  if (p.calories > 50 && calc > 0 && (calc / p.calories < 0.3 || calc / p.calories > 3.0)) return false;
   return true;
 }
 
@@ -4524,140 +4525,137 @@ function extractServingGrams(servingStr) {
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-
-  // Normalise: UPC-A (12 digits) vs EAN-13 (13 digits)
+  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
   const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
   const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
   const allCodes = [...new Set([barcode, ean13, upcA])];
 
-  const OFF_HDR = { 'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)', 'Accept': 'application/json' };
-  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments';
+  // OFF requires User-Agent header to avoid bot-detection bans
+  const OFF_HDR = {
+    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
+    'Accept': 'application/json',
+  };
+  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
 
-  // Cache check — includes all code variants
+  // Cache check
   const cache = getStorage('barcodeCache', {});
   for (const code of allCodes) {
-    if (cache[code] && cache[code]._ts && (Date.now() - cache[code]._ts < 7 * 86400000)) {
-      log('✅ Found (cached)'); return cache[code];
-    }
+    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
   }
 
   function saveCache(product) {
-    const entry = { ...product, _ts: Date.now() };
-    allCodes.forEach(c => { cache[c] = entry; });
+    allCodes.forEach(c => { cache[c] = product; });
     setStorage('barcodeCache', cache);
     return product;
   }
 
-  // ── Helper: fetch OFF for one code, return parsed product or null ──
-  async function tryOFF(baseUrl, code) {
-    try {
-      const r = await fetch(`${baseUrl}/api/v2/product/${code}?fields=${OFF_FIELDS}`, { headers: OFF_HDR });
-      if (!r.ok) return null;
-      const d = await r.json();
-      if (d.status === 1 && d.product) {
-        const p = parseOFProduct(d.product);
-        if (isSaneProduct(p)) return p;
-      }
-    } catch(e) {}
-    return null;
-  }
-
-  // ── Helper: fetch USDA by gtinUpc for one code, return parsed product or null ──
-  async function tryUSDA(code) {
-    try {
-      // Try direct gtinUpc parameter first (most accurate)
-      const r = await fetch(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded,Foundation&pageSize=10`
-      );
-      if (!r.ok) return null;
-      const d = await r.json();
-      const foods = d.foods || [];
-      // Prefer exact UPC match
-      const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-      // Also accept partial: barcode appears anywhere in gtinUpc (leading-zero issues)
-      const partial = !exact && foods.find(f => f.gtinUpc && (f.gtinUpc.endsWith(upcA) || allCodes.some(c => f.gtinUpc.includes(c))));
-      const hit = exact || partial || foods[0];
-      if (hit) {
-        const p = parseUSDAProduct(hit);
-        if (isSaneProduct(p)) return { ...p, _exact: !!exact };
-      }
-    } catch(e) {}
-    return null;
-  }
-
-  // ── ROUND 1: Parallel — OFF.net + USDA simultaneously ──
-  log('⏳ Looking up barcode…');
+  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
   try {
-    const [offNet, usda] = await Promise.allSettled([
-      tryOFF('https://world.openfoodfacts.net', ean13),
-      tryUSDA(upcA),
-    ]);
-    // Prefer OFF if found and has decent data; USDA is more reliable for US branded
-    const offResult  = offNet.status  === 'fulfilled' ? offNet.value  : null;
-    const usdaResult = usda.status    === 'fulfilled' ? usda.value    : null;
-
-    // Pick best: prefer USDA exact match, then OFF (usually has better serving data), then USDA partial
-    const best = (usdaResult?._exact ? usdaResult : null) || offResult || usdaResult;
-    if (best) {
-      const src = best === usdaResult ? (usdaResult._exact ? '✅ Found — USDA (exact)' : '✅ Found — USDA') : '✅ Found — Open Food Facts';
-      log(src);
-      return saveCache(best);
+    log('⏳ Searching Open Food Facts…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next code */ }
     }
-  } catch(e) {}
+  } catch(e) { console.warn('OFF.net:', e); }
 
-  // ── ROUND 2: Try alternate UPC codes on OFF.net ──
-  log('⏳ Trying alternate codes…');
-  for (const code of allCodes) {
-    const p = await tryOFF('https://world.openfoodfacts.net', code);
-    if (p) { log('✅ Found — Open Food Facts'); return saveCache(p); }
-  }
-
-  // ── ROUND 3: OFF.org (different CDN, second chance) ──
-  log('⏳ Checking backup database…');
-  for (const code of allCodes) {
-    const p = await tryOFF('https://world.openfoodfacts.org', code);
-    if (p) { log('✅ Found — Open Food Facts'); return saveCache(p); }
-  }
-
-  // ── ROUND 4: UPC ItemDB → name → USDA name search ──
-  log('⏳ Searching UPC registry…');
+  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
   try {
+    log('⏳ Searching USDA…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        const foods = d.foods || [];
+        // Prefer exact UPC match, fallback to first result
+        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+        const hit   = exact || foods.find(f => f.gtinUpc);
+        if (hit) {
+          const p = parseUSDAProduct(hit);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next code */ }
+    }
+  } catch(e) { console.warn('USDA:', e); }
+
+  // 3. Open Food Facts .org (different CDN node, second chance)
+  try {
+    log('⏳ Searching Open Food Facts (alt)…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next */ }
+    }
+  } catch(e) { console.warn('OFF.org:', e); }
+
+  // 5. UPC ItemDB → USDA name lookup
+  try {
+    log('⏳ Searching UPC database…');
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
     if (r.ok) {
       const d = await r.json();
       const item = (d.items || [])[0];
-      if (item?.title) {
-        log(`⏳ Found "${item.title.slice(0,28)}" — looking up nutrition…`);
+      if (item && item.title) {
+        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
         const usdaHit = await searchUSDAByName(item.title);
         if (usdaHit) {
           usdaHit.name  = item.title;
           usdaHit.brand = item.brand || '';
-          log('✅ Found via UPC registry + USDA');
+          log('✅ Found via UPC + USDA');
           return saveCache(usdaHit);
         }
-        // Return name-only stub so user can at least see what it is
         return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
     }
   } catch(e) { console.warn('UPCItemDB:', e); }
 
-  // ── ROUND 5: AI identification ──
-  log('⏳ Asking AI to identify product…');
+  // 6. AI fallback
   try {
+    log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode ${barcode} is a US grocery product. Identify it and give accurate nutrition per serving. ` +
-        `Return ONLY valid JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
+        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
+        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
       }]
     });
     const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
     const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
-    if (parsed?.name && parsed.calories > 0) {
+    if (parsed && parsed.name && parsed.calories > 0) {
       log('✅ AI identified product');
       return saveCache({ ...parsed, source: 'AI Est' });
     }
-  } catch(e) {}
+  } catch(e) { /* optional */ }
 
   return null;
 }
@@ -12384,7 +12382,7 @@ function renderMoodBtns() {
   ['energy', 'mood'].forEach(type => {
     const container = document.getElementById(type + 'Btns');
     if (!container) return;
-    container.querySelectorAll('.mood-btn, .mood-btn-sm').forEach(btn => {
+    container.querySelectorAll('.mood-btn, .mck-btn').forEach(btn => {
       const v = parseInt(btn.dataset.val);
       btn.classList.toggle('active', today[type] === v);
     });
