@@ -47,13 +47,13 @@
   .content { padding: 18px 16px; }
 
   /* Cards */
-  .card { background: var(--surface); border: none; border-radius: 20px; padding: 18px; margin-bottom: 14px; box-shadow: 0 2px 20px rgba(0,0,0,0.45); }
-  .card-label { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; color: var(--text2); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .card-label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; color: var(--text2); }
 
 
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
-  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size:11px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
   .tab-btn.active { color: var(--green); }
   .tab-btn.active .tab-icon { transform: scale(1.1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18)); }
   .tab-icon { font-size: 22px; transition: transform 0.2s, filter 0.2s; display: block; }
@@ -71,14 +71,14 @@
   /* Macro grid */
   .macro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
   .macro-tile { background: var(--surface2); border-radius: 16px; padding: 14px; border: 1.5px solid var(--border); }
-  .macro-tile-label { font-size:12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .macro-tile-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
   .macro-tile-val { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; margin-top: 5px; color: var(--text); }
   .macro-tile-note { font-size: 11px; color: var(--text3); margin-top: 3px; }
 
   /* Rings */
   .rings-row { display: flex; justify-content: space-around; align-items: center; padding: 4px 0; }
   .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .ring-lbl { font-size:12px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text2); }
+  .ring-lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text2); }
 
   /* Week strip */
   .week-strip { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
@@ -87,10 +87,10 @@
   .week-day:active { transform: scale(0.94); }
   .week-day.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
   .week-day.today-card { background: var(--surface2); }
-  .week-day-name { font-size:12px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+  .week-day-name { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
   .week-day-name.active-name { color: var(--text); }
   .week-day-icon { font-size: 20px; line-height: 1; }
-  .week-day-sess { font-size:12px; font-weight: 800; margin-top: 4px; letter-spacing: 0.3px; }
+  .week-day-sess { font-size: 9px; font-weight: 800; margin-top: 4px; letter-spacing: 0.3px; }
 
   /* Session tabs */
   .session-tabs { display: flex; gap: 8px; margin-bottom: 16px; background: var(--surface2); border-radius: 18px; padding: 4px; }
@@ -108,7 +108,7 @@
   .ex-suggestion-text { font-size: 12px; color: #d4a017; font-weight: 500; flex: 1; line-height: 1.6; }
   .ex-suggestion-text strong { color: #f59e0b; font-weight: 700; }
   .set-col-headers { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; padding: 0 2px; }
-  .set-col-lbl { font-size:12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; }
+  .set-col-lbl { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; }
   .set-rows { display: flex; flex-direction: column; gap: 7px; }
   .set-row { display: flex; align-items: center; gap: 8px; }
   .set-label { font-size: 11px; font-weight: 700; color: var(--text3); width: 36px; flex-shrink: 0; }
@@ -186,7 +186,7 @@
   .blood-marker-val.status-ok   { color:#22c55e; }
   .blood-marker-val.status-warn { color:#f59e0b; }
   .blood-marker-val.status-bad  { color:#ef4444; }
-  .blood-marker-flag { font-size:12px; font-weight:800; padding:2px 6px; border-radius:20px; }
+  .blood-marker-flag { font-size:9px; font-weight:800; padding:2px 6px; border-radius:20px; }
   .blood-marker-flag.H, .blood-marker-flag.HH { background:#450a0a; color:#ef4444; }
   .blood-marker-flag.L, .blood-marker-flag.LL { background:#0c1a4e; color:#60a5fa; }
   .blood-marker-trend { font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
@@ -198,13 +198,13 @@
   .blood-range-bar { height:6px; background:var(--surface2); border-radius:3px; position:relative; margin-top:4px; overflow:visible; }
   .blood-range-zone { position:absolute; top:0; height:6px; background:#22c55e22; border-radius:3px; }
   .blood-range-dot  { position:absolute; top:50%; transform:translate(-50%,-50%); width:10px; height:10px; border-radius:50%; border:2px solid var(--bg); z-index:2; }
-  .blood-range-labels { display:flex; justify-content:space-between; font-size:12px; color:var(--text3); margin-top:3px; }
+  .blood-range-labels { display:flex; justify-content:space-between; font-size:9px; color:var(--text3); margin-top:3px; }
 
   /* Summary dashboard */
   .blood-summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
   .blood-summary-tile { background:var(--surface2); border-radius:14px; padding:10px 8px; text-align:center; }
   .blood-summary-num  { font-size:24px; font-weight:800; line-height:1; }
-  .blood-summary-lbl  { font-size:12px; color:var(--text3); margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+  .blood-summary-lbl  { font-size:10px; color:var(--text3); margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
 
   /* Out of range strip */
   .blood-oob-strip { background:#450a0a; border:1px solid #ef444430; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
@@ -224,7 +224,7 @@
 
   /* Comparison table */
   .bcomp-table { width:100%; border-collapse:collapse; font-size:12px; }
-  .bcomp-table th { padding:8px 6px; text-align:left; color:var(--text3); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
+  .bcomp-table th { padding:8px 6px; text-align:left; color:var(--text3); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
   .bcomp-table td { padding:8px 6px; border-bottom:1px solid var(--border)10; vertical-align:middle; }
   .bcomp-table tr:last-child td { border-bottom:none; }
   .bcomp-table tr.row-bad  td { background:#ef444410; }
@@ -233,9 +233,9 @@
   .blood-status-ok   { color:#22c55e; }
   .blood-status-warn { color:#f59e0b; }
   .blood-status-bad  { color:#ef4444; }
-  .blood-trend-up   { font-size:12px; margin-left:4px; color:#ef4444; }
-  .blood-trend-down { font-size:12px; margin-left:4px; color:#22c55e; }
-  .blood-date-badge { font-size:12px; background:#1e293b; color:#64748b; padding:3px 10px; border-radius:20px; font-weight:600; }
+  .blood-trend-up   { font-size:10px; margin-left:4px; color:#ef4444; }
+  .blood-trend-down { font-size:10px; margin-left:4px; color:#22c55e; }
+  .blood-date-badge { font-size:10px; background:#1e293b; color:#64748b; padding:3px 10px; border-radius:20px; font-weight:600; }
 
   /* Nutrition report */
   .nr-btn { padding:7px 14px; border:1.5px solid var(--border); border-radius:20px; background:transparent; color:var(--text2); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }
@@ -252,7 +252,7 @@
   .quote-card { background: linear-gradient(135deg, #1a1d2e, #2d1f4e); border-radius: 0; padding: 16px 20px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
   .quote-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
   .quote-text { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.65; flex: 1; font-style: italic; }
-  .quote-author { font-size:12px; font-weight: 700; color: #8b5cf6; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; }
+  .quote-author { font-size: 10px; font-weight: 700; color: #8b5cf6; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; }
   .quote-loading { opacity: 0.45; font-style: italic; }
   @keyframes quoteFade { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
   .quote-animate { animation: quoteFade 0.5s ease forwards; }
@@ -267,7 +267,7 @@
   .shoe-avatar { width:52px;height:52px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:26px; }
   .shoe-name { font-size:15px;font-weight:800;color:var(--text);line-height:1.2; }
   .shoe-brand { font-size:11px;color:var(--text3);font-weight:600;margin-top:2px; }
-  .shoe-status-badge { font-size:12px;font-weight:800;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:1px; }
+  .shoe-status-badge { font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:1px; }
   .shoe-status-active { background:#0d2d1a;color:#22c55e; }
   .shoe-status-retired { background:#2d0f0f;color:#f87171; }
   .shoe-mileage-bar-track { height:8px;background:var(--surface2);border-radius:99px;overflow:hidden;margin-bottom:6px; }
@@ -275,7 +275,7 @@
   .shoe-stats-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px; }
   .shoe-stat { text-align:center;background:var(--surface2);border-radius:10px;padding:8px 4px; }
   .shoe-stat-val { font-size:13px;font-weight:800;color:var(--text); }
-  .shoe-stat-lbl { font-size:12px;color:var(--text3);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px; }
+  .shoe-stat-lbl { font-size:9px;color:var(--text3);font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px; }
   .shoe-run-row { display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border); }
   .shoe-run-row:last-child { border-bottom:none; }
   .shoe-run-date { font-size:11px;color:var(--text3);font-weight:600;min-width:72px; }
@@ -293,7 +293,7 @@
   .workout-timer-stats { display:flex; gap:14px; }
   .workout-timer-stat { text-align:center; }
   .workout-timer-stat-val { font-size:14px; font-weight:800; color:var(--text); }
-  .workout-timer-stat-lbl { font-size:12px; color:var(--text3); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; }
+  .workout-timer-stat-lbl { font-size:9px; color:var(--text3); font-weight:700; text-transform:uppercase; letter-spacing:0.8px; }
 
   /* ── Rest Timer Overlay ── */
   .rest-timer-overlay { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); z-index:200; background:linear-gradient(135deg,#0d2d1a,#0d1e3d); border:2px solid #22c55e; border-radius:20px; padding:14px 22px; display:flex; align-items:center; gap:14px; box-shadow:0 8px 32px rgba(0,0,0,0.5); min-width:260px; }
@@ -311,7 +311,7 @@
   .pr-flash-sub { font-size:11px; color:#d97706; font-weight:600; }
 
   /* ── Set type badge ── */
-  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:12px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:10px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
   .set-type-btn.warmup { background:#051e26; border-color:#0e4d6e; color:#06b6d4; }
   .set-type-btn.drop { background:#1a1030; border-color:#4c1d95; color:#a78bfa; }
   .set-type-btn.failure { background:#2d0f0f; border-color:#7f1d1d; color:#f87171; }
@@ -334,7 +334,7 @@
   .workout-complete-stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%; max-width:340px; margin-bottom:24px; }
   .wc-stat { background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px; text-align:center; }
   .wc-stat-val { font-size:24px; font-weight:800; color:var(--text); letter-spacing:-0.5px; }
-  .wc-stat-lbl { font-size:12px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+  .wc-stat-lbl { font-size:10px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
   .wc-prs { background:linear-gradient(135deg,#3d2e00,#2d1f05); border:1.5px solid #f59e0b; border-radius:16px; padding:14px 18px; width:100%; max-width:340px; margin-bottom:20px; }
   .wc-pr-item { font-size:13px; font-weight:700; color:#f59e0b; padding:4px 0; }
 
@@ -347,7 +347,7 @@
   .ex-stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px; }
   .ex-stat-box { background:var(--surface2); border-radius:12px; padding:10px; text-align:center; }
   .ex-stat-val { font-size:16px; font-weight:800; color:var(--text); }
-  .ex-stat-lbl { font-size:12px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }
+  .ex-stat-lbl { font-size:9px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }
 
   /* Shared search pill row */
   .feature-tabs { display:flex; gap:6px; margin-bottom:14px; background:var(--surface2); border-radius:18px; padding:4px; }
@@ -382,8 +382,8 @@
   .month-bar-chart { display:flex; align-items:flex-end; gap:4px; height:100px; padding:0 2px; }
   .month-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; min-width:18px; }
   .month-bar { width:100%; border-radius:5px 5px 0 0; min-height:3px; transition:height 0.3s; }
-  .month-bar-lbl { font-size:11px; color:var(--text3); font-weight:600; text-align:center; }
-  .month-bar-val { font-size:11px; color:var(--text3); font-weight:700; text-align:center; }
+  .month-bar-lbl { font-size:8px; color:var(--text3); font-weight:600; text-align:center; }
+  .month-bar-val { font-size:7px; color:var(--text3); font-weight:700; text-align:center; }
   .chart-tab-row { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
   .chart-tab { padding:5px 12px; border-radius:20px; border:1.5px solid var(--border); background:var(--surface2); font-family:inherit; font-size:11px; font-weight:700; color:var(--text2); cursor:pointer; transition:all 0.15s; }
   .chart-tab.active { background:var(--purple-soft); border-color:#4c1d95; color:#a78bfa; }
@@ -392,29 +392,29 @@
   .week-balance-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 16px; }
   .wbd { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; border-radius: 8px; padding: 4px 2px; transition: background 0.15s; }
   .wbd:hover { background: var(--surface2); }
-  .wbd-name { font-size:12px; font-weight: 700; color: var(--text3); letter-spacing: 0.5px; text-transform: uppercase; }
+  .wbd-name { font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: 0.5px; text-transform: uppercase; }
   .wbd-bar-wrap { width: 100%; height: 52px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
   .wbd-bar { width: 80%; border-radius: 4px 4px 0 0; min-height: 3px; transition: height 0.3s; }
   .wbd-bar.surplus { background: var(--red); }
   .wbd-bar.deficit { background: var(--green); }
   .wbd-bar.none    { background: var(--border); }
-  .wbd-val { font-size:12px; font-weight: 800; margin-top: 1px; text-align: center; line-height: 1.2; }
+  .wbd-val { font-size: 9px; font-weight: 800; margin-top: 1px; text-align: center; line-height: 1.2; }
   .wbd-val.surplus { color: var(--red); }
   .wbd-val.deficit { color: var(--green); }
   .wbd-val.none    { color: var(--text3); }
-  .wbd-cals { font-size:11px; color: var(--text3); font-weight: 600; text-align: center; line-height: 1.2; }
+  .wbd-cals { font-size: 8px; color: var(--text3); font-weight: 600; text-align: center; line-height: 1.2; }
   .wbd-today { outline: 2px solid var(--blue); border-radius: 8px; }
   .wbd-selected { background: var(--surface2); outline: 2px solid #8b5cf6; border-radius: 8px; }
   .wbd-detail { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; animation: fadeIn 0.2s ease; }
-  .wbd-detail-title { font-size:12px; font-weight: 800; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+  .wbd-detail-title { font-size: 10px; font-weight: 800; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
   .wbd-detail-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .wbd-detail-cell { text-align: center; }
   .wbd-detail-val { font-size: 16px; font-weight: 800; color: var(--text); }
-  .wbd-detail-lbl { font-size:12px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .wbd-detail-lbl { font-size: 9px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
   .weekly-summary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
   .weekly-stat { background: var(--surface2); border-radius: 12px; padding: 10px 8px; border: 1.5px solid var(--border); text-align: center; }
   .weekly-stat-val { font-size: 16px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; }
-  .weekly-stat-lbl { font-size:11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+  .weekly-stat-lbl { font-size: 8px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
 
   /* Misc */
   .empty-state { text-align: center; color: var(--text3); padding: 48px 20px; font-size: 14px; line-height: 1.8; }
@@ -430,7 +430,7 @@
   .garmin-activity-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .garmin-stat { flex: 1; min-width: 70px; background: var(--surface2); border-radius: 12px; padding: 10px 8px; text-align: center; border: 1px solid var(--border); }
   .garmin-stat-val { font-size: 16px; font-weight: 700; color: var(--text); }
-  .garmin-stat-lbl { font-size:12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .garmin-stat-lbl { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
   .macro-adj-banner { background: var(--green-soft); border: 1.5px solid #166534; border-radius: 12px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #4ade80; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .settings-btn { background: none; border: none; font-size: 22px; cursor: pointer; padding: 4px; line-height: 1; }
   /* ── Settings redesign ── */
@@ -441,7 +441,7 @@
   .settings-row-label { font-size:14px;font-weight:600;color:var(--text); }
   .settings-row-sub { font-size:11px;color:var(--text3);margin-top:2px;font-weight:400; }
   .s-card { background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px; }
-  .s-label { font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:5px; }
+  .s-label { font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:5px; }
   .s-input { width:100%;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s; }
   .s-input:focus { border-color:var(--blue); }
   .s-input-sm { width:90px;text-align:center; }
@@ -454,7 +454,7 @@
   .oauth-step-text { font-size:13px;color:var(--text2);line-height:1.6;flex:1; }
   .oauth-step-text a { color:var(--blue);font-weight:600; }
   .key-input-group { margin-bottom:10px; }
-  .key-input-label { font-size:12px;font-weight:800;color:var(--text3);margin-bottom:5px;letter-spacing:1px;text-transform:uppercase; }
+  .key-input-label { font-size:10px;font-weight:800;color:var(--text3);margin-bottom:5px;letter-spacing:1px;text-transform:uppercase; }
   .connect-status { display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;margin-bottom:12px; }
   .connect-status.connected { background:var(--green-soft);color:#4ade80;border:1.5px solid #166534; }
   .connect-status.disconnected { background:var(--surface2);color:var(--text3);border:1.5px solid var(--border); }
@@ -465,7 +465,7 @@
   .quick-food-chip:active { background: var(--green-soft); border-color: var(--green); }
   .qfc-name { font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .qfc-cal { font-size: 11px; color: var(--text3); font-weight: 500; margin-top: 2px; }
-  .qfc-delete { font-size:12px; color: var(--red); margin-top: 4px; cursor: pointer; font-weight: 600; }
+  .qfc-delete { font-size: 10px; color: var(--red); margin-top: 4px; cursor: pointer; font-weight: 600; }
 
   /* Saved foods bottom sheet */
   .save-food-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
@@ -501,7 +501,7 @@
   .food-macros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
   .food-macro-chip { background: var(--surface); border-radius: 12px; padding: 10px 6px; text-align: center; border: 1px solid var(--border); }
   .food-macro-chip-val { font-size: 15px; font-weight: 700; color: var(--text); }
-  .food-macro-chip-lbl { font-size:12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .food-macro-chip-lbl { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
   .servings-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 14px; padding: 10px 14px; border: 1.5px solid var(--border); }
   .servings-label { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
   .servings-ctrl { display: flex; align-items: center; gap: 10px; }
@@ -518,7 +518,7 @@
   .weight-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
   .weight-stat { text-align: right; }
   .weight-stat-val { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
-  .weight-stat-lbl { font-size:12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
+  .weight-stat-lbl { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
   .weight-chart { width: 100%; height: 60px; }
   .weight-badges { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .weight-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
@@ -539,7 +539,7 @@
   .log-entry-info { flex:1; min-width:0; }
   .log-entry-name { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .log-entry-macros { font-size:11px; color:var(--text3); margin-top:2px; font-weight:500; }
-  .log-entry-time { font-size:12px; color:var(--text3); font-weight:500; margin-top:1px; }
+  .log-entry-time { font-size:10px; color:var(--text3); font-weight:500; margin-top:1px; }
   .log-entry-actions { display:flex; gap:6px; flex-shrink:0; }
   .log-action-btn { width:30px; height:30px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
   .log-action-btn:active { transform:scale(0.92); }
@@ -553,7 +553,7 @@
   .uf-info { flex:1; min-width:0; }
   .uf-name { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .uf-macros { font-size:11px; color:var(--text3); font-weight:500; margin-top:1px; }
-  .uf-badge { font-size:12px; font-weight:700; color:#f97316; background:#2d1a0e; border:1px solid #3d2e00; border-radius:8px; padding:2px 6px; flex-shrink:0; }
+  .uf-badge { font-size:9px; font-weight:700; color:#f97316; background:#2d1a0e; border:1px solid #3d2e00; border-radius:8px; padding:2px 6px; flex-shrink:0; }
   .uf-stepper { display:none; align-items:center; gap:6px; flex-shrink:0; }
   .uf-stepper.active { display:flex; }
   .uf-step-btn { width:28px; height:28px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); color:var(--text); font-size:16px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; transition:all 0.15s; }
@@ -570,10 +570,10 @@
 
   /* Edit entry modal */
   .edit-macro-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; }
-  .edit-macro-field label { font-size:12px; font-weight:700; color:var(--text2); letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:5px; }
+  .edit-macro-field label { font-size:10px; font-weight:700; color:var(--text2); letter-spacing:1px; text-transform:uppercase; display:block; margin-bottom:5px; }
 
   .blood-marker-refs-row { display:flex; gap:5px; margin-top:5px; flex-wrap:wrap; }
-  .bref-tag { font-size:12px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+  .bref-tag { font-size:10px; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; }
   .bref-tag.opt { background:#22c55e18; color:#4ade80; }
   .bref-tag.std { background:#ffffff0d; color:var(--text3); }
 
@@ -631,7 +631,7 @@
   /* ── BP history table ── */
   .bp-row { display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2); }
   .bp-val { font-weight:700;color:var(--text); }
-  .bp-cat { font-size:12px;padding:2px 6px;border-radius:6px;font-weight:700; }
+  .bp-cat { font-size:10px;padding:2px 6px;border-radius:6px;font-weight:700; }
   .bp-normal { background:#052e16;color:#4ade80; }
   .bp-elevated { background:#451a03;color:#fb923c; }
   .bp-high { background:#450a0a;color:#f87171; }
@@ -696,7 +696,7 @@ PROMISE ERROR:
         <button onclick="shiftSelectedDay(-1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:2px 8px;border-radius:10px;transition:background 0.15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">‹</button>
         <div style="text-align:center;flex:1">
           <div id="selectedDayLabel" style="font-size:14px;font-weight:700;color:var(--text)"></div>
-          <div id="selectedDaySub" style="font-size:12px;color:var(--text3);font-weight:600;margin-top:2px"></div>
+          <div id="selectedDaySub" style="font-size:10px;color:var(--text3);font-weight:600;margin-top:2px"></div>
         </div>
         <button onclick="shiftSelectedDay(1)" id="nextDayBtn" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:2px 8px;border-radius:10px;transition:background 0.15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">›</button>
       </div>
@@ -705,7 +705,7 @@ PROMISE ERROR:
       <div class="week-strip" id="weekStrip"></div>
 
       <!-- 3. Workout streak -->
-      <div id="streakCard" class="card" style="padding:12px 18px;margin-bottom:14px;display:none;align-items:center;gap:14px">
+      <div id="streakCard" class="card" style="padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">
         <div style="font-size:36px;line-height:1">🔥</div>
         <div style="flex:1">
           <div style="font-size:11px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Workout Streak</div>
@@ -719,8 +719,8 @@ PROMISE ERROR:
       <div id="dailyBriefCard" style="display:none;background:linear-gradient(135deg,#1e1b4b,#2d1f63);border:1.5px solid #4c1d95;border-radius:18px;padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div>
-            <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase" id="dailyBriefGreeting">Good Morning 👋</div>
-            <div id="dailyBriefDate" style="font-size:12px;color:#7c3aed;font-weight:600;margin-top:1px"></div>
+            <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">Good Morning 👋</div>
+            <div id="dailyBriefDate" style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px"></div>
           </div>
           <button onclick="regenerateDailyBrief()" style="background:#2d1f63;border:1px solid #4c1d95;border-radius:10px;color:#a78bfa;font-size:14px;width:30px;height:30px;cursor:pointer" title="Refresh">🔄</button>
         </div>
@@ -732,31 +732,35 @@ PROMISE ERROR:
 
       <!-- 4. Today's Nutrition -->
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="card-label" style="color:#22c55e;margin-bottom:0">Today's Nutrition</div>
-          <button id="ringModeGear" onclick="cycleRingMode()" title="Toggle consumed/remaining" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:5px 10px;font-size:12px;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:700" id="ringModeLabel">Consumed ↕</button>
+        <div class="card-label" style="color:#22c55e">Today's Nutrition</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;background:var(--surface2);border-radius:20px;padding:3px;border:1px solid var(--border)">
+            <button id="toggleConsumed" onclick="setRingMode('consumed')" style="padding:5px 14px;border-radius:16px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:var(--green);color:#fff;transition:all 0.2s">Consumed</button>
+            <button id="toggleRemaining" onclick="setRingMode('remaining')" style="padding:5px 14px;border-radius:16px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:var(--text3);transition:all 0.2s">Remaining</button>
+          </div>
+          <div id="ringModeLabel" style="font-size:11px;color:var(--text3);font-weight:500"></div>
         </div>
         <div class="rings-row" id="ringsRow"></div>
         <div id="macroTargetsRow" style="display:flex;justify-content:space-between;background:var(--surface2);border-radius:12px;padding:8px 12px;margin-bottom:12px;border:1px solid var(--border)">
           <div style="text-align:center">
             <div style="font-size:11px;font-weight:700;color:#f59e0b" id="targetCalories">—</div>
-            <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:1px">kcal target</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">kcal target</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:11px;font-weight:700;color:#22c55e" id="targetProtein">—</div>
-            <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:1px">protein g</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">protein g</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:11px;font-weight:700;color:#3b82f6" id="targetCarbs">—</div>
-            <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:1px">carbs g</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">carbs g</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:11px;font-weight:700;color:#ef4444" id="targetFat">—</div>
-            <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:1px">fat g</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">fat g</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:11px;font-weight:600;color:var(--text3)" id="targetSource">Base</div>
-            <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:1px">source</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">source</div>
           </div>
         </div>
         <!-- WHOOP day badge -->
@@ -803,7 +807,7 @@ PROMISE ERROR:
       <div id="quickRecsCard" class="card" style="display:none">
         <div class="meal-time-label"><span class="meal-time-dot"></span><span id="mealTimeLabel">Breakfast suggestions</span></div>
         <div class="quick-foods-scroll" id="quickFoodsRow"></div>
-        <div style="font-size:12px;color:var(--text3);font-weight:500;margin-top:4px">Tap to quick-add · Based on your usual <span id="mealTimeHint"></span> foods</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:500;margin-top:4px">Tap to quick-add · Based on your usual <span id="mealTimeHint"></span> foods</div>
       </div>
 
       <!-- 5b. My Usual Foods — top 10 last 30 days -->
@@ -811,22 +815,22 @@ PROMISE ERROR:
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div>
             <div class="card-label" style="color:#f97316;margin-bottom:2px">⚡ My Usual Foods</div>
-            <div id="usualFoodsSubtitle" style="font-size:12px;color:var(--text3);font-weight:600"></div>
+            <div id="usualFoodsSubtitle" style="font-size:10px;color:var(--text3);font-weight:600"></div>
           </div>
-          <div style="font-size:12px;color:var(--text3);font-weight:600" id="usualFoodsTimeLabel"></div>
+          <div style="font-size:10px;color:var(--text3);font-weight:600" id="usualFoodsTimeLabel"></div>
         </div>
         <!-- Yesterday same-time repeat banner -->
         <div id="yesterdayRepeatBanner" style="display:none;background:linear-gradient(135deg,#1a2e1a,#0d1e0d);border:1.5px solid #166534;border-radius:12px;padding:10px 12px;margin-bottom:10px">
-          <div style="font-size:12px;font-weight:700;color:#4ade80;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">🔁 Same time yesterday</div>
+          <div style="font-size:10px;font-weight:700;color:#4ade80;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">🔁 Same time yesterday</div>
           <div id="yesterdayRepeatList"></div>
         </div>
         <div id="usualFoodsList"></div>
       </div>
 
       <!-- 6. Protein pace bar -->
-      <div id="proteinPaceCard" class="card collapsible-card" style="padding:14px 18px;margin-bottom:14px;display:none">
+      <div id="proteinPaceCard" class="card" style="padding:14px 18px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:11px;font-weight:700;color:#4ade80;letter-spacing:1px;text-transform:uppercase">💪 Protein — on track?</div>
+          <div style="font-size:11px;font-weight:700;color:#4ade80;letter-spacing:1px;text-transform:uppercase">💪 Protein Pace</div>
           <div style="font-size:11px;color:var(--text3);font-weight:600" id="proteinPaceLabel">—</div>
         </div>
         <div style="background:var(--surface2);border-radius:8px;height:10px;overflow:hidden;margin-bottom:8px">
@@ -835,11 +839,47 @@ PROMISE ERROR:
         <div style="font-size:11px;color:var(--text2);font-weight:500" id="proteinPaceHint"></div>
       </div>
 
-            <!-- 8. Weekly Balance (compact) -->
-      <div id="weeklyInlineBar" style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:12px;padding:9px 14px;margin-bottom:14px;border:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:700;color:var(--text2)">📊 Week so far</div>
-        <div id="weeklyInlineStat" style="font-size:13px;font-weight:800;color:var(--text)">—</div>
-        <button onclick="switchTab('history',document.getElementById('tabbtn-history'));setTimeout(()=>switchHistoryTab('trends'),100)" style="font-size:11px;font-weight:700;color:#8b5cf6;background:none;border:none;cursor:pointer;padding:2px 0">Details →</button>
+      <!-- 7. Daily Targets -->
+      <div class="card">
+        <div class="card-label" style="color:#3b82f6">Daily Targets</div>
+        <div class="macro-grid">
+          <div class="macro-tile" style="border-color:#3d2e00">
+            <div class="macro-tile-label" style="color:#f59e0b">Calories</div>
+            <div class="macro-tile-val" id="tileCalories">—</div>
+            <div class="macro-tile-note" id="tileCaloriesNote">—</div>
+          </div>
+          <div class="macro-tile" style="border-color:#166534">
+            <div class="macro-tile-label" style="color:#22c55e">Protein</div>
+            <div class="macro-tile-val" id="tileProtein">—</div>
+            <div class="macro-tile-note">Protect muscle in deficit</div>
+          </div>
+          <div class="macro-tile" style="border-color:#1e3a5f">
+            <div class="macro-tile-label" style="color:#3b82f6">Carbs</div>
+            <div class="macro-tile-val" id="tileCarbs">—</div>
+            <div class="macro-tile-note" id="tileCarbsNote">Base target</div>
+          </div>
+          <div class="macro-tile" style="border-color:#7f1d1d">
+            <div class="macro-tile-label" style="color:#ef4444">Fat</div>
+            <div class="macro-tile-val" id="tileFat">—</div>
+            <div class="macro-tile-note">Hormone support</div>
+          </div>
+        </div>
+        <div class="tip-box" id="macroTipBox">
+          💡 Loading targets…
+        </div>
+      </div>
+
+      <!-- 8. Weekly Calorie Balance -->
+      <div class="card" id="weeklyBalanceCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="card-label" style="color:#8b5cf6;margin-bottom:0">📊 Weekly Calorie Balance</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div id="weekRangeLabel" style="font-size:10px;color:var(--text3);font-weight:600"></div>
+          </div>
+        </div>
+        <div class="week-balance-grid" id="weekBalanceGrid"></div>
+        <div id="wbdDetailPanel" style="display:none" class="wbd-detail"></div>
+        <div class="weekly-summary-row" id="weeklySummaryRow"></div>
       </div>
 
       <!-- 9. Weight trend -->
@@ -869,7 +909,7 @@ PROMISE ERROR:
         <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
-            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
             <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
               <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
               <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
@@ -879,7 +919,7 @@ PROMISE ERROR:
             </div>
           </div>
           <div>
-            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
             <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
               <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
               <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
@@ -922,28 +962,44 @@ PROMISE ERROR:
       <!-- 11b. Hydration Tracker -->
       <div class="card" id="waterCard" style="padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:18px">💧</span>
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#0d9488" id="waterOzDisplay">0 oz</div>
-              <div style="font-size:11px;color:var(--text3);font-weight:600" id="waterGoalLabel">of 100 oz goal</div>
+          <div class="card-label" style="color:#0d9488;margin-bottom:0">💧 Hydration</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2)" id="waterGoalLabel">Goal: 100 oz</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <!-- Water ring -->
+          <div style="flex-shrink:0;position:relative;width:68px;height:68px">
+            <svg width="68" height="68" viewBox="0 0 68 68">
+              <circle cx="34" cy="34" r="28" fill="none" stroke="#1e293b" stroke-width="7"/>
+              <circle id="waterRingArc" cx="34" cy="34" r="28" fill="none" stroke="#0d9488" stroke-width="7"
+                stroke-dasharray="175.93" stroke-dashoffset="175.93"
+                stroke-linecap="round" transform="rotate(-90 34 34)"
+                style="transition:stroke-dashoffset 0.5s ease"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+              <div style="font-size:13px;font-weight:800;color:#0d9488" id="waterOzDisplay">0</div>
+              <div style="font-size:9px;color:var(--text2);font-weight:600">oz</div>
             </div>
           </div>
-          <button onclick="openWaterGoalModal()" style="font-size:11px;font-weight:700;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:8px;background:var(--surface2)">Edit goal</button>
+          <!-- Buttons -->
+          <div style="flex:1">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+              <button onclick="addWater(8)" style="background:#0d9488;border:none;border-radius:10px;padding:8px 0;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+8 oz</button>
+              <button onclick="addWater(16)" style="background:#0d9488;border:none;border-radius:10px;padding:8px 0;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+16 oz</button>
+              <button onclick="addWater(32)" style="background:#0d9488;border:none;border-radius:10px;padding:8px 0;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">+32 oz</button>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input id="waterCustomInput" type="number" min="1" max="200" placeholder="Custom oz"
+                style="flex:1;padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+              <button onclick="addWaterCustom()" style="background:#134e4a;border:1.5px solid #0d9488;border-radius:10px;padding:7px 12px;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Add</button>
+              <button onclick="resetWater()" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:7px 10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺</button>
+            </div>
+          </div>
         </div>
-        <div style="background:var(--surface2);border-radius:10px;height:12px;overflow:hidden;margin-bottom:12px">
-          <div id="waterProgressBar" style="height:100%;background:linear-gradient(90deg,#0d9488,#14b8a6);border-radius:10px;transition:width 0.4s ease;width:0%"></div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button onclick="addWater(8)"  style="flex:1;padding:10px 0;background:#0d1f1e;border:1.5px solid #0d9488;border-radius:12px;color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+8 oz</button>
-          <button onclick="addWater(16)" style="flex:1;padding:10px 0;background:#0d1f1e;border:1.5px solid #0d9488;border-radius:12px;color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+16 oz</button>
-          <button onclick="addWater(20)" style="flex:1;padding:10px 0;background:#0d1f1e;border:1.5px solid #0d9488;border-radius:12px;color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+20 oz</button>
-          <button onclick="openWaterCustom()" style="flex:1;padding:10px 0;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;color:var(--text2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ oz</button>
-        </div>
+        <div id="waterStatusMsg" style="margin-top:8px;font-size:11px;color:var(--text2);text-align:center;min-height:14px"></div>
       </div>
 
-<!-- FEATURE: Today's Micronutrients -->
-      <div class="card collapsible-card" style="display:none" style="margin-bottom:14px">
+      <!-- FEATURE: Today's Micronutrients -->
+      <div class="card" style="margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="card-label" style="color:#06b6d4;margin-bottom:0">🔬 Today's Micros</div>
           <button onclick="renderMicronutrients()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit">↻ Refresh</button>
@@ -954,7 +1010,7 @@ PROMISE ERROR:
       </div>
 
       <!-- FEATURE: Meal Suggestions -->
-      <div class="card collapsible-card" style="display:none" style="margin-bottom:14px">
+      <div class="card" style="margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="card-label" style="color:#f59e0b;margin-bottom:0">🍽️ Meal Ideas</div>
           <button onclick="getMealSuggestions()" style="padding:5px 12px;background:linear-gradient(135deg,#451a03,#7c2d12);border:1px solid #f59e0b;border-radius:10px;color:#f59e0b;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Get Ideas</button>
@@ -974,19 +1030,19 @@ PROMISE ERROR:
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
           <div style="text-align:center;background:#1e1b4b;border-radius:12px;padding:8px 4px">
             <div style="font-size:16px;font-weight:800;color:#e2e8f0" id="sleepTotal">—</div>
-            <div style="font-size:12px;color:#818cf8;font-weight:600;margin-top:2px">Total</div>
+            <div style="font-size:9px;color:#818cf8;font-weight:600;margin-top:2px">Total</div>
           </div>
           <div style="text-align:center;background:#1e1b4b;border-radius:12px;padding:8px 4px">
             <div style="font-size:16px;font-weight:800;color:#6366f1" id="sleepDeep">—</div>
-            <div style="font-size:12px;color:#818cf8;font-weight:600;margin-top:2px">Deep</div>
+            <div style="font-size:9px;color:#818cf8;font-weight:600;margin-top:2px">Deep</div>
           </div>
           <div style="text-align:center;background:#1e1b4b;border-radius:12px;padding:8px 4px">
             <div style="font-size:16px;font-weight:800;color:#8b5cf6" id="sleepREM">—</div>
-            <div style="font-size:12px;color:#818cf8;font-weight:600;margin-top:2px">REM</div>
+            <div style="font-size:9px;color:#818cf8;font-weight:600;margin-top:2px">REM</div>
           </div>
           <div style="text-align:center;background:#1e1b4b;border-radius:12px;padding:8px 4px">
             <div style="font-size:16px;font-weight:800;color:#a78bfa" id="sleepScore">—</div>
-            <div style="font-size:12px;color:#818cf8;font-weight:600;margin-top:2px">Score</div>
+            <div style="font-size:9px;color:#818cf8;font-weight:600;margin-top:2px">Score</div>
           </div>
         </div>
       </div>
@@ -1003,11 +1059,6 @@ PROMISE ERROR:
         <div id="foodLogList"></div>
       </div>
 
-    <!-- Show More / Less Toggle for Today -->
-    <div id="todayMoreToggle" style="text-align:center;padding:4px 0 16px">
-      <button onclick="toggleTodayMore()" id="todayMoreBtn" style="background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:7px 20px;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Show More ↓</button>
-    </div>
-
     </div>
 
     <!-- WORKOUT PAGE -->
@@ -1015,7 +1066,7 @@ PROMISE ERROR:
       <!-- Live workout timer bar -->
       <div class="workout-timer-bar" id="workoutTimerBar">
         <div>
-          <div style="font-size:12px;color:#60a5fa;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">Duration</div>
+          <div style="font-size:9px;color:#60a5fa;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">Duration</div>
           <div class="workout-timer-elapsed" id="workoutTimerDisplay">0:00</div>
         </div>
         <div class="workout-timer-stats">
@@ -1073,7 +1124,7 @@ PROMISE ERROR:
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
         <button id="htab-lift"    class="htab-btn"             onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
-        <button id="htab-whoop"   class="htab-btn"             onclick="switchHistoryTab('whoop')">💍 Recovery</button>
+        <button id="htab-whoop"   class="htab-btn"             onclick="switchHistoryTab('whoop')">💍 WHOOP</button>
       </div>
 
       <!-- WHOOP DASHBOARD -->
@@ -1166,19 +1217,19 @@ PROMISE ERROR:
           <div id="bodyCompLatest" style="font-size:13px;color:var(--text2);margin-bottom:10px">No measurements logged yet.</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
             <div>
-              <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Body Fat %</div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Body Fat %</div>
               <input type="number" id="bodyFatPct" placeholder="e.g. 18.5" step="0.1" style="width:100%;padding:8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:inherit;box-sizing:border-box" />
             </div>
             <div>
-              <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Muscle Mass (lbs)</div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Muscle Mass (lbs)</div>
               <input type="number" id="muscleMass" placeholder="e.g. 145" step="0.1" style="width:100%;padding:8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:inherit;box-sizing:border-box" />
             </div>
             <div>
-              <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Waist (in)</div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Waist (in)</div>
               <input type="number" id="waistIn" placeholder="e.g. 34" step="0.25" style="width:100%;padding:8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:inherit;box-sizing:border-box" />
             </div>
             <div>
-              <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Source</div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Source</div>
               <select id="bodyCompSource" style="width:100%;padding:8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box">
                 <option value="dexa">DEXA Scan</option>
                 <option value="scale">Smart Scale</option>
@@ -1245,17 +1296,6 @@ PROMISE ERROR:
 
       <!-- TRENDS TAB -->
       <div id="historyTab-trends" style="display:none">
-        <!-- Weekly Calorie Balance (moved from Today) -->
-        <div class="card" id="weeklyBalanceCard">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div class="card-label" style="color:#8b5cf6;margin-bottom:0">📊 Weekly Calorie Balance</div>
-            <div id="weekRangeLabel" style="font-size:12px;color:var(--text3);font-weight:600"></div>
-          </div>
-          <div class="week-balance-grid" id="weekBalanceGrid"></div>
-          <div id="wbdDetailPanel" style="display:none" class="wbd-detail"></div>
-          <div class="weekly-summary-row" id="weeklySummaryRow"></div>
-        </div>
-
         <div class="card">
           <div class="section-title" style="margin-bottom:6px">📈 Monthly Trends</div>
           <div class="chart-tab-row" id="trendChartTabs">
@@ -1312,7 +1352,7 @@ PROMISE ERROR:
     <div id="page-shoes" class="page">
       <div class="card" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:none;color:#fff;position:relative;overflow:hidden">
         <div style="position:absolute;top:-20px;right:-20px;font-size:100px;opacity:0.07;line-height:1">👟</div>
-        <div style="font-size:12px;font-weight:700;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin-bottom:4px">Shoe Tracker</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#94a3b8;text-transform:uppercase;margin-bottom:4px">Shoe Tracker</div>
         <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:2px">Mileage Garage</div>
         <div style="font-size:12px;color:#94a3b8" id="shoeGarageSummary">Track every mile on every pair</div>
         <button onclick="openAddShoeModal()" style="margin-top:14px;padding:10px 20px;background:#f97316;color:#fff;border:none;border-radius:14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(249,115,22,0.4)">+ Add New Shoe</button>
@@ -1479,7 +1519,7 @@ PROMISE ERROR:
     <input type="hidden" id="editEntryId" />
 
     <div style="margin-bottom:12px">
-      <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Food Name</div>
+      <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Food Name</div>
       <input type="text" id="editEntryName" placeholder="Food name" />
     </div>
 
@@ -1487,7 +1527,7 @@ PROMISE ERROR:
     <div id="editServingsRow" style="display:none;align-items:center;justify-content:space-between;background:var(--surface2);border:1.5px solid var(--border);border-radius:14px;padding:10px 16px;margin-bottom:14px">
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--text)">Servings</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px" id="editServingBaseLabel"></div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px" id="editServingBaseLabel"></div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <button class="srv-btn" onclick="adjustEditServings(-0.5)">−</button>
@@ -1497,7 +1537,7 @@ PROMISE ERROR:
     </div>
 
     <!-- Macro fields — auto-update with servings, or editable directly -->
-    <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" id="editMacroLabel">Macros per serving</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px" id="editMacroLabel">Macros per serving</div>
     <div class="edit-macro-grid">
       <div class="edit-macro-field">
         <label style="color:#f59e0b">CALORIES (kcal)</label>
@@ -1519,7 +1559,7 @@ PROMISE ERROR:
 
     <!-- Live total preview -->
     <div id="editTotalPreview" style="display:none;background:var(--surface2);border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;font-weight:700;color:var(--text);justify-content:space-between;align-items:center">
-      <span style="color:var(--text3);font-size:12px;text-transform:uppercase;letter-spacing:1px">Total</span>
+      <span style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px">Total</span>
       <span id="editTotalText"></span>
     </div>
 
@@ -1726,22 +1766,22 @@ PROMISE ERROR:
         <div class="macro-cell">
           <div class="s-label" style="color:#f59e0b">Calories</div>
           <input type="number" id="settingCalories" placeholder="1500" />
-          <div style="font-size:12px;color:var(--text3);text-align:center;margin-top:2px">kcal</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">kcal</div>
         </div>
         <div class="macro-cell">
           <div class="s-label" style="color:#4ade80">Protein</div>
           <input type="number" id="settingProtein" placeholder="165" />
-          <div style="font-size:12px;color:var(--text3);text-align:center;margin-top:2px">g</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">g</div>
         </div>
         <div class="macro-cell">
           <div class="s-label" style="color:#60a5fa">Carbs</div>
           <input type="number" id="settingCarbs" placeholder="86" />
-          <div style="font-size:12px;color:var(--text3);text-align:center;margin-top:2px">g</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">g</div>
         </div>
         <div class="macro-cell">
           <div class="s-label" style="color:#f87171">Fat</div>
           <input type="number" id="settingFat" placeholder="55" />
-          <div style="font-size:12px;color:var(--text3);text-align:center;margin-top:2px">g</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">g</div>
         </div>
       </div>
       <button class="btn-green" onclick="saveGoalSettings()">💾 Save Goals &amp; Macros</button>
@@ -1980,33 +2020,14 @@ PROMISE ERROR:
       </div>
     </div>
 
-<!-- Floating Add Button -->
-<button id="fabAdd" onclick="openScanner()" title="Log food" style="position:fixed;bottom:calc(60px + env(safe-area-inset-bottom) + 12px);right:16px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:#fff;font-size:24px;cursor:pointer;z-index:90;box-shadow:0 4px 20px rgba(34,197,94,0.45);display:flex;align-items:center;justify-content:center;transition:all 0.2s" onmousedown="this.style.transform='scale(0.92)'" onmouseup="this.style.transform='scale(1)'" ontouchstart="this.style.transform='scale(0.92)'" ontouchend="this.style.transform='scale(1)'">+</button>
-
 <div class="tab-bar">
-  <button class="tab-btn active" id="tabbtn-today"   onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
-  <button class="tab-btn"        id="tabbtn-lift"    onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
-  <button class="tab-btn"        id="tabbtn-history" onclick="switchTab('history',this)"><span class="tab-icon">📊</span>History</button>
-  <button class="tab-btn"        id="tabbtn-claude"  onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
-  <button class="tab-btn"        id="tabbtn-more"    onclick="openMoreSheet()"><span class="tab-icon">⋯</span>More</button>
-</div>
-
-<!-- More Sheet -->
-<div id="moreSheet" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.6)" onclick="if(event.target===this)closeMoreSheet()">
-  <div id="moreSheetPanel" style="position:absolute;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform 0.28s cubic-bezier(0.32,0.72,0,1)">
-    <div style="width:36px;height:4px;background:var(--border2);border-radius:4px;margin:0 auto 16px"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <button onclick="closeMoreSheet();switchTab('recipes',document.getElementById('tabbtn-more'))" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;cursor:pointer;font-family:inherit">
-        <span style="font-size:24px">🍽️</span><span style="font-size:12px;font-weight:700;color:var(--text)">Recipes</span>
-      </button>
-      <button onclick="closeMoreSheet();switchTab('shoes',document.getElementById('tabbtn-more'))" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;cursor:pointer;font-family:inherit">
-        <span style="font-size:24px">👟</span><span style="font-size:12px;font-weight:700;color:var(--text)">Shoes</span>
-      </button>
-      <button onclick="closeMoreSheet();switchTab('program',document.getElementById('tabbtn-more'))" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;cursor:pointer;font-family:inherit">
-        <span style="font-size:24px">📋</span><span style="font-size:12px;font-weight:700;color:var(--text)">Program</span>
-      </button>
-    </div>
-  </div>
+  <button class="tab-btn active" onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
+  <button class="tab-btn" onclick="switchTab('recipes',this)"><span class="tab-icon">🍽️</span>Recipes</button>
+  <button class="tab-btn" onclick="switchTab('shoes',this)"><span class="tab-icon">👟</span>Shoes</button>
+  <button class="tab-btn" onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
+  <button class="tab-btn" onclick="switchTab('program',this)"><span class="tab-icon">📋</span>Program</button>
+  <button class="tab-btn" onclick="switchTab('history',this)"><span class="tab-icon">🗓️</span>History</button>
+  <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
 <script>
@@ -2230,14 +2251,8 @@ let ringMode = 'consumed'; // 'consumed' | 'remaining'
 
 function setRingMode(mode) {
   ringMode = mode;
-  // Update gear button label (old toggle buttons removed)
-  const gear = document.getElementById('ringModeGear');
-  if (gear) gear.textContent = mode === 'consumed' ? 'Consumed ↕' : 'Remaining ↕';
-  // Support old toggle buttons if still present
-  const tc = document.getElementById('toggleConsumed');
-  const tr = document.getElementById('toggleRemaining');
-  if (tc) tc.style.background = mode === 'consumed' ? 'var(--green)' : 'transparent';
-  if (tr) tr.style.background = mode === 'remaining' ? 'var(--blue)' : 'transparent';
+  document.getElementById('toggleConsumed').style.cssText  = `padding:5px 14px;border-radius:16px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:${mode==='consumed'?'var(--green)':'transparent'};color:${mode==='consumed'?'#fff':'var(--text3)'}`;
+  document.getElementById('toggleRemaining').style.cssText = `padding:5px 14px;border-radius:16px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:${mode==='remaining'?'var(--blue)':'transparent'};color:${mode==='remaining'?'#fff':'var(--text3)'}`;
   renderRings();
 }
 
@@ -2306,7 +2321,7 @@ function renderWeekStrip() {
     const subLabel = s.type === 'optional'
       ? `<div class="week-day-sess" style="color:#8b5cf6">OPT</div>`
       : s.type === 'longrun' && s.optLift
-        ? `<div class="week-day-sess" style="color:#f59e0b">LONG</div><div style="font-size:11px;color:#8b5cf6;font-weight:800;margin-top:1px">+B OPT</div>`
+        ? `<div class="week-day-sess" style="color:#f59e0b">LONG</div><div style="font-size:7px;color:#8b5cf6;font-weight:800;margin-top:1px">+B OPT</div>`
       : s.type === 'longrun'
         ? `<div class="week-day-sess" style="color:#f59e0b">LONG</div>`
       : s.type === 'recoveryrun'
@@ -2520,7 +2535,7 @@ function openSetTypeMenu(key, si, btnEl) {
       <span style="font-size:11px;font-weight:800;width:20px;color:${type==='warmup'?'#06b6d4':type==='drop'?'#a78bfa':type==='failure'?'#f87171':'var(--text3)'}">${info.title.slice(0,1)}</span>
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--text)">${info.title}</div>
-        <div style="font-size:12px;color:var(--text3)">${info.desc}</div>
+        <div style="font-size:10px;color:var(--text3)">${info.desc}</div>
       </div>
     </div>`
   ).join('');
@@ -2648,7 +2663,7 @@ function buildSetRows(sessKey, exIdx, numSets, targetReps, lastSets, suggested, 
       <span style="font-size:15px">🧠</span>
       <div class="ex-suggestion-text">
         Last: <strong>${lastWeights}</strong> · ${lastRepsStr}${lastRPE ? ' · RPE '+lastRPE : ''}${prStr}<br>
-        ${suggested ? `Target: <strong>${trend}${suggested} lbs</strong>` : 'No suggestion yet'} <span style="font-size:12px;color:#60a5fa">· tap for chart →</span>
+        ${suggested ? `Target: <strong>${trend}${suggested} lbs</strong>` : 'No suggestion yet'} <span style="font-size:10px;color:#60a5fa">· tap for chart →</span>
       </div></div>`;
   } else {
     suggestionHtml = `<div class="ex-suggestion">
@@ -2669,7 +2684,7 @@ function buildSetRows(sessKey, exIdx, numSets, targetReps, lastSets, suggested, 
 
   const setRowsHtml = sets.map((s, si) => buildOneSetRow(key, si, targetReps)).join('');
 
-  const rpeHtml = `<div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:0.8px;text-transform:uppercase;margin-top:12px;margin-bottom:5px">How hard? (RPE)</div>
+  const rpeHtml = `<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:0.8px;text-transform:uppercase;margin-top:12px;margin-bottom:5px">How hard? (RPE)</div>
     <div class="rpe-row" id="rpe-${key}">
       ${[5,6,7,8,9,10].map(r =>
         `<button class="rpe-btn${currentRPE[key]===r?' active':''}" onclick="setRPE('${key}',${r})">${r}</button>`
@@ -2873,7 +2888,7 @@ function openAddExerciseModal() {
     <div id="_exLibraryList" style="flex:1;overflow-y:auto;padding:8px 14px 80px">
       ${cats.map(cat => `
         <div class="_exCatSection">
-          <div style="font-size:12px;font-weight:700;color:#475569;letter-spacing:1.5px;text-transform:uppercase;padding:10px 0 6px">${cat}</div>
+          <div style="font-size:10px;font-weight:700;color:#475569;letter-spacing:1.5px;text-transform:uppercase;padding:10px 0 6px">${cat}</div>
           ${EXERCISE_LIBRARY[cat].map(ex => `
             <div class="_exRow" data-name="${ex.name}" data-cat="${cat}" data-reps="${ex.reps}" data-notes="${ex.notes || ''}"
               onclick="selectExerciseToAdd('${ex.name.replace(/'/g,"\'")}','${ex.reps}','${ex.notes.replace(/'/g,"\'")||''}')"
@@ -2943,7 +2958,7 @@ function renderWorkoutPage() {
   startWorkoutTimer();
 
   document.getElementById('sessionTabs').innerHTML = ['A','B','C'].map(k =>
-    `<button class="sess-btn ${activeSession===k?'active':''}" onclick="setSession('${k}')">${k}<br><span style="font-size:12px">${PROGRAM[k].name.split(' ').slice(0,2).join(' ')}</span></button>`
+    `<button class="sess-btn ${activeSession===k?'active':''}" onclick="setSession('${k}')">${k}<br><span style="font-size:9px">${PROGRAM[k].name.split(' ').slice(0,2).join(' ')}</span></button>`
   ).join('');
 
   const sess = PROGRAM[activeSession];
@@ -2966,7 +2981,7 @@ function renderWorkoutPage() {
     const removeCall = ex._added
       ? `removeExercise('${activeSession}', -1, true, '${ex.name.replace(/'/g,"\\'")}')`
       : `removeExercise('${activeSession}', ${ex._progIdx}, false, '')`;
-    const addedBadge = ex._added ? ' <span style="font-size:12px;background:#1e3a5f;color:#60a5fa;border-radius:6px;padding:2px 6px;font-weight:700;margin-left:4px">+ADDED</span>' : '';
+    const addedBadge = ex._added ? ' <span style="font-size:9px;background:#1e3a5f;color:#60a5fa;border-radius:6px;padding:2px 6px;font-weight:700;margin-left:4px">+ADDED</span>' : '';
     return `<div class="ex-card" id="excard-${key}">
       <div class="ex-header" style="display:flex;align-items:center">
         <div style="cursor:pointer;display:flex;align-items:center;flex:1;gap:8px" onclick="openExChart('${ex.name.replace(/'/g,"\\'")}')">
@@ -2975,7 +2990,7 @@ function renderWorkoutPage() {
             <div class="ex-name">${esc(ex.name)}${addedBadge}</div>
             <div class="ex-meta">${ex.sets} × ${ex.reps}</div>
           </div>
-          <div style="font-size:12px;color:#60a5fa;font-weight:600">📈</div>
+          <div style="font-size:10px;color:#60a5fa;font-weight:600">📈</div>
         </div>
         <button onclick="${removeCall}" title="Remove"
           style="background:none;border:none;color:#ef4444;font-size:16px;cursor:pointer;padding:4px 8px;opacity:0.6;flex-shrink:0"
@@ -3267,7 +3282,7 @@ function renderHistoryPage() {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
           <span style="padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;background:${badgeBg};color:${badgeColor}">Day ${log.session}</span>
-          ${vol > 0 ? `<span style="font-size:12px;font-weight:700;color:var(--text3)">${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : Math.round(vol)} lbs</span>` : ''}
+          ${vol > 0 ? `<span style="font-size:10px;font-weight:700;color:var(--text3)">${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : Math.round(vol)} lbs</span>` : ''}
         </div>
       </div>
       ${rows || '<div style="font-size:12px;color:var(--text3)">No sets recorded</div>'}
@@ -3298,7 +3313,6 @@ function renderProgramPage() {
 function switchTab(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  updateFABVisibility(name);
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
@@ -3453,8 +3467,6 @@ function renderStreakCard() {
     }
   }
 
-  const streakCard = document.getElementById('streakCard');
-  if (streakCard) streakCard.style.display = streak > 0 ? 'flex' : 'none';
   streakEl.textContent = streak;
   subEl.textContent    = streak === 0
     ? 'Log a workout or run to start your streak!'
@@ -3485,7 +3497,7 @@ function renderStreakCard() {
   const doneDays    = workoutDays.filter(d => d.done).length;
 
   dotRow.innerHTML =
-    `<div style="font-size:12px;color:var(--text3);font-weight:700;margin-bottom:4px;letter-spacing:1px">THIS WEEK</div>` +
+    `<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px;letter-spacing:1px">THIS WEEK</div>` +
     `<div style="display:flex;gap:5px;align-items:center">` +
     weekDots.map(d => {
       if (d.isRest) {
@@ -3505,9 +3517,9 @@ function renderStreakCard() {
     }).join('') +
     `</div>` +
     `<div style="display:flex;gap:10px;margin-top:4px">` +
-    `<div style="font-size:12px;color:var(--text3);font-weight:600">${doneDays}/${workoutDays.length} done this week</div>` +
-    `<div style="font-size:12px;color:#22c55e;font-weight:600">🏋️ lifts</div>` +
-    `<div style="font-size:12px;color:#3b82f6;font-weight:600">🏃 runs</div>` +
+    `<div style="font-size:9px;color:var(--text3);font-weight:600">${doneDays}/${workoutDays.length} done this week</div>` +
+    `<div style="font-size:9px;color:#22c55e;font-weight:600">🏋️ lifts</div>` +
+    `<div style="font-size:9px;color:#3b82f6;font-weight:600">🏃 runs</div>` +
     `</div>`;
 }
 
@@ -3575,7 +3587,7 @@ function renderFoodLog() {
     <div class="log-entry" id="entry-${e.id}">
       <div class="log-entry-icon">${e.icon || '🍽️'}</div>
       <div class="log-entry-info">
-        <div class="log-entry-name">${esc(e.name)}${e.servings && e.servings !== 1 ? `<span style="font-size:12px;color:var(--text3);font-weight:600;margin-left:6px">×${e.servings}</span>` : ''}</div>
+        <div class="log-entry-name">${esc(e.name)}${e.servings && e.servings !== 1 ? `<span style="font-size:10px;color:var(--text3);font-weight:600;margin-left:6px">×${e.servings}</span>` : ''}</div>
         <div class="log-entry-macros">${e.calories} kcal · ${e.protein}g P · ${e.carbs}g C · ${e.fat}g F</div>
         <div class="log-entry-time">${e.time || ''}</div>
       </div>
@@ -3853,7 +3865,7 @@ function renderUsualFoods() {
         <div style="font-size:20px;width:28px;text-align:center">${e.icon || '🍽️'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.name)}</div>
-          <div style="font-size:12px;color:var(--text3)">${Math.round(e.calories)} kcal · ${e.protein}g pro${servings > 1 ? ' · ' + servings + '×' : ''}</div>
+          <div style="font-size:10px;color:var(--text3)">${Math.round(e.calories)} kcal · ${e.protein}g pro${servings > 1 ? ' · ' + servings + '×' : ''}</div>
         </div>
         <button onclick="quickAddUsual(${yi})" style="padding:5px 10px;background:var(--green-soft);border:1.5px solid var(--green);border-radius:9px;color:#4ade80;font-size:11px;font-weight:700;cursor:pointer">+ Add</button>
       </div>`;
@@ -4217,7 +4229,7 @@ function renderFoodResult() {
      <span style="color:#3b82f6">P: ${prot}g</span> &nbsp;
      <span style="color:#f59e0b">C: ${carbs}g</span> &nbsp;
      <span style="color:#22c55e">F: ${fat}g</span>
-     <div style="font-size:12px;color:var(--text3);margin-top:4px">per serving · ${p.servingSize||''} · via ${p.source||'DB'}</div>`;
+     <div style="font-size:10px;color:var(--text3);margin-top:4px">per serving · ${p.servingSize||''} · via ${p.source||'DB'}</div>`;
   // Sanity warning if macros look off
   const warn = document.getElementById('scanMacroWarning');
   if (warn) warn.style.display = 'none';
@@ -4489,141 +4501,114 @@ function extractServingGrams(servingStr) {
 // ── Enhanced AI nutrition prompt with multi-database knowledge ──
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
-  const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
+  const log = msg => { const el = document.getElementById('scanStatus'); if (el) el.textContent = msg; };
+
+  // Normalise codes — try both UPC-A (12) and EAN-13 (13) variants
   const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
   const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
   const allCodes = [...new Set([barcode, ean13, upcA])];
 
-  // OFF requires User-Agent header to avoid bot-detection bans
-  const OFF_HDR = {
-    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
-    'Accept': 'application/json',
-  };
-  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
-
-  // Cache check
+  // ── Cache check (7-day TTL) ───────────────────────────────────────────────
   const cache = getStorage('barcodeCache', {});
+  const nowMs = Date.now();
   for (const code of allCodes) {
-    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
+    const entry = cache[code];
+    if (entry && entry._p && (!entry._ts || nowMs - entry._ts < 7 * 86400000)) {
+      log('✅ Found (cached)');
+      return entry._p;
+    }
+    // Legacy cache entries (no _p wrapper)
+    if (entry && entry.name && (!entry._ts || nowMs - entry._ts < 7 * 86400000)) {
+      log('✅ Found (cached)');
+      return entry;
+    }
   }
 
   function saveCache(product) {
-    allCodes.forEach(c => { cache[c] = product; });
+    const entry = { _p: product, _ts: nowMs };
+    allCodes.forEach(c => { cache[c] = entry; });
     setStorage('barcodeCache', cache);
     return product;
   }
 
-  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
+  // ── Round 1: Cloudflare Worker proxy (server-side, no CORS/User-Agent issues) ──
+  // The Worker hits OFF and USDA with a real User-Agent and no browser restrictions.
+  log('⏳ Looking up barcode…');
   try {
-    log('⏳ Searching Open Food Facts…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('OFF.net:', e); }
-
-  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
-  try {
-    log('⏳ Searching USDA…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        const foods = d.foods || [];
-        // Prefer exact UPC match, fallback to first result
-        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods.find(f => f.gtinUpc);
-        if (hit) {
-          const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('USDA:', e); }
-
-  // 3. Open Food Facts .org (different CDN node, second chance)
-  try {
-    log('⏳ Searching Open Food Facts (alt)…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next */ }
-    }
-  } catch(e) { console.warn('OFF.org:', e); }
-
-  // 5. UPC ItemDB → USDA name lookup
-  try {
-    log('⏳ Searching UPC database…');
-    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
+    const r = await fetch(`/api/barcode?code=${encodeURIComponent(barcode)}`);
     if (r.ok) {
       const d = await r.json();
-      const item = (d.items || [])[0];
-      if (item && item.title) {
-        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
-        const usdaHit = await searchUSDAByName(item.title);
-        if (usdaHit) {
-          usdaHit.name  = item.title;
-          usdaHit.brand = item.brand || '';
-          log('✅ Found via UPC + USDA');
-          return saveCache(usdaHit);
+      if (d.found && d.product) {
+        const p = d.product;
+        // Map to internal schema
+        const product = {
+          name:        p.name || '',
+          brand:       p.brand || '',
+          calories:    p.calories || 0,
+          protein:     p.protein  || 0,
+          carbs:       p.carbs    || 0,
+          fat:         p.fat      || 0,
+          fiber:       p.fiber    || 0,
+          sodium:      p.sodium   || 0,
+          servingSize: p.servingSize || '1',
+          servingUnit: p.servingUnit || 'serving',
+          source:      p.source || 'Database',
+          incomplete:  p.incomplete || false,
+        };
+        if (isSaneProduct(product)) {
+          log('✅ Found — ' + product.source);
+          return saveCache(product);
         }
-        return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
     }
-  } catch(e) { console.warn('UPCItemDB:', e); }
+  } catch (e) { console.warn('Worker barcode proxy failed:', e); }
 
-  // 6. AI fallback
+  // ── Round 2: Direct OFF .org from browser (fallback if Worker fails) ────────
+  // Note: browsers silently ignore the User-Agent header we try to set here.
+  // OFF may occasionally block but .org is more permissive than .net for reads.
+  log('⏳ Trying alternate lookup…');
+  const OFF_FIELDS = 'product_name,product_name_en,brands,serving_size,serving_quantity,nutriments';
+  for (const code of allCodes) {
+    try {
+      const r = await fetch(
+        `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+        { headers: { 'Accept': 'application/json' } }  // User-Agent forbidden in browsers
+      );
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = parseOFProduct(d.product);
+        if (isSaneProduct(p) && p.calories > 0) {
+          log('✅ Found — Open Food Facts');
+          return saveCache(p);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ── Round 3: AI fallback ──────────────────────────────────────────────────
   try {
     log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
-        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
+        `Barcode ${barcode} is a US grocery product. Identify it and give estimated nutrition per serving. ` +
+        `Return ONLY valid JSON (no markdown): {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1","servingUnit":"serving"} ` +
+        `or null if completely unknown.`
       }]
     });
     const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
     const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
     if (parsed && parsed.name && parsed.calories > 0) {
-      log('✅ AI identified product');
-      return saveCache({ ...parsed, source: 'AI Est' });
+      log('✅ AI identified product (estimate)');
+      const p = { ...parsed, source: 'AI Estimate' };
+      return saveCache(p);
     }
-  } catch(e) { /* optional */ }
+  } catch (_) {}
 
   return null;
 }
+
 
 // ── USDA name search (used by UPC fallback) ──
 async function searchUSDAByName(name) {
@@ -5038,8 +5023,8 @@ function renderAISearchResults(results) {
           <span style="color:#22c55e">P ${r.protein}g</span> ·
           <span style="color:#3b82f6">C ${r.carbs}g</span> ·
           <span style="color:#ef4444">F ${r.fat}g</span>
-          <span style="margin-left:6px;font-size:12px;background:${srcBg};color:${srcCol};padding:2px 6px;border-radius:8px;font-weight:700">${r.source === 'usda' ? 'USDA' : 'AI'}</span>
-          <span style="margin-left:4px;font-size:12px;color:var(--text3)">${microLabel}</span>
+          <span style="margin-left:6px;font-size:9px;background:${srcBg};color:${srcCol};padding:2px 6px;border-radius:8px;font-weight:700">${r.source === 'usda' ? 'USDA' : 'AI'}</span>
+          <span style="margin-left:4px;font-size:9px;color:var(--text3)">${microLabel}</span>
         </div>
       </div>
       <div class="search-result-arrow">›</div>
@@ -5235,7 +5220,7 @@ function renderAIMacroChips() {
     <div class="food-macro-chip">
       <div class="food-macro-chip-val" style="color:${m.color}">${m.val}</div>
       <div class="food-macro-chip-lbl">${m.label}</div>
-      <div style="font-size:12px;color:var(--text3)">${m.unit}</div>
+      <div style="font-size:9px;color:var(--text3)">${m.unit}</div>
     </div>`).join('');
 }
 
@@ -5464,7 +5449,7 @@ function autoCalcTDEE() {
           document.getElementById('settingCalories').value = refinedCals;
           refinedSection = `
             <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:10px;border:1px solid #4ade8044">
-              <div style="font-size:12px;font-weight:800;color:#4ade80;margin-bottom:4px">🧠 REFINED FROM YOUR ACTUAL LOGS</div>
+              <div style="font-size:10px;font-weight:800;color:#4ade80;margin-bottom:4px">🧠 REFINED FROM YOUR ACTUAL LOGS</div>
               <div style="font-size:11px;color:var(--text2)">
                 Based on ${span} days (${keys.length} food logs + ${recentWeights.length} weigh-ins)<br>
                 Avg eaten: <strong>${Math.round(avgEaten)} kcal</strong> · Fat loss est: <strong>${clampedLoss.toFixed(1)} lbs</strong><br>
@@ -5476,7 +5461,7 @@ function autoCalcTDEE() {
           // Show note but don't override — too much water weight noise
           refinedSection = `
             <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:10px;border:1px solid #f59e0b44">
-              <div style="font-size:12px;font-weight:800;color:#f59e0b;margin-bottom:4px">⚠️ LOG DATA NOISY</div>
+              <div style="font-size:10px;font-weight:800;color:#f59e0b;margin-bottom:4px">⚠️ LOG DATA NOISY</div>
               <div style="font-size:11px;color:var(--text3)">
                 Inferred TDEE (${inferredTDEE.toLocaleString()} kcal) is too far from your baseline (${baseTDEE.toLocaleString()} kcal) —
                 likely water weight from starting your cut. Using forward-looking plan instead.
@@ -5505,7 +5490,7 @@ function autoCalcTDEE() {
       Required daily deficit: <strong>${dailyDeficit.toLocaleString()} kcal</strong><br>
       Base TDEE: <strong>${baseTDEE.toLocaleString()} kcal</strong> → <strong style="color:#f59e0b">Calorie target: ${Math.max(1200, recommendedCals).toLocaleString()} kcal/day</strong>
       ${refinedSection}
-      <div style="margin-top:8px;font-size:12px;color:var(--text3)">Calorie target updated above. Hit <strong>Save</strong> to apply.</div>
+      <div style="margin-top:8px;font-size:10px;color:var(--text3)">Calorie target updated above. Hit <strong>Save</strong> to apply.</div>
     </div>`;
 }
 
@@ -6320,7 +6305,7 @@ function renderWhoopDayBadge() {
   el.innerHTML = `<div style="background:${c.bg};border:1.5px solid ${c.border};border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="switchTab('history');switchHistoryTab('whoop')">
     <div style="text-align:center;flex-shrink:0">
       <div style="font-size:18px;font-weight:900;color:${c.text}">${rec}</div>
-      <div style="font-size:12px;font-weight:700;color:${c.text};text-transform:uppercase">Recovery</div>
+      <div style="font-size:9px;font-weight:700;color:${c.text};text-transform:uppercase">Recovery</div>
     </div>
     <div style="flex:1;display:flex;gap:12px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text2)">💚 HRV <b style="color:#22c55e">${hrv}</b></span>
@@ -6328,7 +6313,7 @@ function renderWhoopDayBadge() {
       <span style="font-size:11px;color:var(--text2)">⚡ Strain <b style="color:#3b82f6">${strain}</b></span>
       <span style="font-size:11px;color:var(--text2)">😴 Sleep <b style="color:#f59e0b">${sleep}</b>${debt?' · '+debt:''}</span>
     </div>
-    <div style="font-size:12px;color:${c.text};opacity:0.7">💍</div>
+    <div style="font-size:9px;color:${c.text};opacity:0.7">💍</div>
   </div>`;
 }
 
@@ -6453,7 +6438,7 @@ Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
     renderQuote(fb.quote, fb.author);
     // Show error hint under quote so we can diagnose
     const authorEl = document.getElementById('dailyQuoteAuthor');
-    if (authorEl) authorEl.innerHTML += `<span style="font-size:12px;color:var(--text3);display:block;margin-top:4px">⚠️ ${e.message.slice(0,80)}</span>`;
+    if (authorEl) authorEl.innerHTML += `<span style="font-size:9px;color:var(--text3);display:block;margin-top:4px">⚠️ ${e.message.slice(0,80)}</span>`;
   }
 }
 
@@ -6664,11 +6649,11 @@ function selectWeekDay(key) {
     <div style="display:flex;gap:8px;margin-top:10px">
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${balColor}">${balVal}</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs Maintenance (${baseTDEE.toLocaleString()}${burn > 0 ? ' + 🏃' + burn.toLocaleString() : ''} kcal)</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">vs Maintenance (${baseTDEE.toLocaleString()}${burn > 0 ? ' + 🏃' + burn.toLocaleString() : ''} kcal)</div>
       </div>
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:8px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:${lbsColor}">${lbsStr}</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">Est. Weight Impact</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">Est. Weight Impact</div>
       </div>
     </div>`}`;
 }
@@ -6753,7 +6738,7 @@ async function runRestaurantSearch() {
           <div class="db-result-name">${esc(f.name)}</div>
           <div class="db-result-meta">${f.brand ? esc(f.brand) + ' · ' : ''}${f.protein}g P · ${f.carbs}g C · ${f.fat}g F · per ${f.servingSize}${f.servingUnit}</div>
         </div>
-        <div class="db-result-kcal">${f.calories}<br><span style="font-size:12px;color:var(--text3);font-weight:600">kcal</span></div>
+        <div class="db-result-kcal">${f.calories}<br><span style="font-size:9px;color:var(--text3);font-weight:600">kcal</span></div>
       </div>`).join('');
   } catch(e) {
     loadEl.style.display = 'none';
@@ -7754,7 +7739,7 @@ Closet shoes:\n`;
         const confColor = parsed.confidence === 'high' ? '#22c55e' : parsed.confidence === 'medium' ? '#f59e0b' : '#94a3b8';
         const confEmoji = parsed.confidence === 'high' ? '✅' : parsed.confidence === 'medium' ? '⚠️' : '❓';
         statusEl.style.color = confColor;
-        statusEl.innerHTML   = `${confEmoji} <strong>${parsed.matchedName}</strong> — ${parsed.confidence} confidence<br><span style="font-size:12px;opacity:0.8">${parsed.reasoning||''}</span>`;
+        statusEl.innerHTML   = `${confEmoji} <strong>${parsed.matchedName}</strong> — ${parsed.confidence} confidence<br><span style="font-size:10px;opacity:0.8">${parsed.reasoning||''}</span>`;
         // Visually highlight the matched button and auto-scroll to it
         document.querySelectorAll('.assign-shoe-btn').forEach(btn => {
           btn.style.border = '';
@@ -7771,7 +7756,7 @@ Closet shoes:\n`;
             if (!btn.querySelector('.match-badge')) {
               const badge = document.createElement('div');
               badge.className = 'match-badge';
-              badge.style.cssText = `position:absolute;top:-8px;right:8px;background:${confColor};color:#000;font-size:12px;font-weight:800;padding:2px 7px;border-radius:8px;letter-spacing:0.5px`;
+              badge.style.cssText = `position:absolute;top:-8px;right:8px;background:${confColor};color:#000;font-size:9px;font-weight:800;padding:2px 7px;border-radius:8px;letter-spacing:0.5px`;
               badge.textContent  = `${confEmoji} ${parsed.confidence.toUpperCase()} MATCH`;
               btn.style.position = 'relative';
               btn.appendChild(badge);
@@ -7917,22 +7902,22 @@ function _renderShoeDetail(shoeId) {
             <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Edit Run</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
               <div>
-                <div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Date</div>
+                <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Date</div>
                 <input type="date" id="re-date-${r.id}" value="${r.date}"
                   style="width:100%;padding:8px 10px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;font-weight:600"/>
               </div>
               <div>
-                <div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Miles</div>
+                <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Miles</div>
                 <input type="number" step="0.01" id="re-miles-${r.id}" value="${(r.miles||0).toFixed(2)}"
                   style="width:100%;padding:8px 10px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;font-weight:700"/>
               </div>
               <div>
-                <div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Duration (min)</div>
+                <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Duration (min)</div>
                 <input type="number" step="1" id="re-dur-${r.id}" value="${r.duration ? Math.round(r.duration/60) : ''}" placeholder="—"
                   style="width:100%;padding:8px 10px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;font-weight:700"/>
               </div>
               <div>
-                <div style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Calories</div>
+                <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Calories</div>
                 <input type="number" step="1" id="re-cal-${r.id}" value="${r.calories || ''}" placeholder="—"
                   style="width:100%;padding:8px 10px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;font-weight:700"/>
               </div>
@@ -8277,7 +8262,7 @@ function renderWhoopToday(data) {
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
       <div style="width:80px;height:80px;border-radius:50%;background:${c.bg};border:3px solid ${c.border};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
         <div style="font-size:22px;font-weight:900;color:${c.text}">${rec}%</div>
-        <div style="font-size:12px;color:${c.text};font-weight:700;text-transform:uppercase">Recovery</div>
+        <div style="font-size:9px;color:${c.text};font-weight:700;text-transform:uppercase">Recovery</div>
       </div>
       <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${wStatTile('HRV', hrv + 'ms', hrv >= avgHRV ? '↑' : '↓', hrv >= avgHRV ? '#22c55e' : '#f59e0b', `avg ${avgHRV.toFixed(0)}ms`)}
@@ -8293,7 +8278,7 @@ function wStatTile(label, val, arrow, color, sub) {
   return `<div style="background:var(--surface2);border-radius:10px;padding:8px 10px">
     <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:2px">${label}</div>
     <div style="font-size:16px;font-weight:800;color:${color}">${arrow} ${val}</div>
-    <div style="font-size:12px;color:var(--text3)">${sub}</div>
+    <div style="font-size:10px;color:var(--text3)">${sub}</div>
   </div>`;
 }
 
@@ -8320,7 +8305,7 @@ function renderWhoopSparklines(data) {
       return `<div style="width:10px;height:${h}px;background:${fill};border-radius:2px;align-self:flex-end;opacity:0.85"></div>`;
     }).join('');
     return `<div class="card" style="padding:12px 14px">
-      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${m.label} (14d)</div>
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${m.label} (14d)</div>
       <div style="font-size:20px;font-weight:900;color:${m.key==='recovery'?wrecoveryColor(latest).text:m.color};margin-bottom:8px">${typeof latest==='number'?latest.toFixed(m.key==='hrv'?0:1):latest}${m.unit}</div>
       <div style="display:flex;gap:3px;align-items:flex-end;height:40px">${sparkBars}</div>
     </div>`;
@@ -8387,7 +8372,7 @@ function renderWhoopSleep(data) {
 function wBigStat(val, label, color) {
   return `<div style="text-align:center;background:var(--surface2);border-radius:12px;padding:10px 8px">
     <div style="font-size:20px;font-weight:900;color:${color}">${val}</div>
-    <div style="font-size:12px;color:var(--text3);font-weight:600;margin-top:2px">${label}</div>
+    <div style="font-size:10px;color:var(--text3);font-weight:600;margin-top:2px">${label}</div>
   </div>`;
 }
 function wSleepBar(val, total, color, label) {
@@ -9531,27 +9516,27 @@ function renderBloodPanels(idx) {
     <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
         <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmLow}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">Low</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Low</div>
       </div>
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #60a5fa30">
         <div class="blood-summary-num" style="color:#60a5fa;font-size:18px">${belowOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">Below Opt</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Below Opt</div>
       </div>
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #22c55e30">
         <div class="blood-summary-num" style="color:#22c55e;font-size:18px">${optimal}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">Optimal</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Optimal</div>
       </div>
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #f59e0b30">
         <div class="blood-summary-num" style="color:#f59e0b;font-size:18px">${aboveOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">Above Opt</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Above Opt</div>
       </div>
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
         <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmHigh}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">High</div>
+        <div class="blood-summary-lbl" style="font-size:8px">High</div>
       </div>
       <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid var(--border)">
         <div class="blood-summary-num" style="color:var(--text);font-size:18px">${totalM}</div>
-        <div class="blood-summary-lbl" style="font-size:11px">Total</div>
+        <div class="blood-summary-lbl" style="font-size:8px">Total</div>
       </div>
     </div>`;
 
@@ -9666,13 +9651,13 @@ function renderBloodPanels(idx) {
           <div class="blood-marker-top">
             <div style="flex:1;min-width:0">
               <div class="blood-marker-name">${name}</div>
-              <div style="font-size:12px;color:var(--text3);margin-top:1px">${ref ? (ref[4]||unit) : unit}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:1px">${ref ? (ref[4]||unit) : unit}</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
               ${trend}
               <div style="text-align:right">
                 <div class="blood-marker-val status-${status}">${m.value}</div>
-                <div style="font-size:12px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</div>
+                <div style="font-size:9px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:0.5px">${statusLabel}</div>
               </div>
             </div>
           </div>
@@ -9781,9 +9766,9 @@ function renderBloodPanels(idx) {
               <polyline points="${points}" fill="none" stroke="#475569" stroke-width="1.5" stroke-linejoin="round"/>
               ${dots}
             </svg>
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:4px">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px">
               <span>${sorted[0].date}</span>
-              <span style="color:#22c55e;font-size:12px">▬ normal range</span>
+              <span style="color:#22c55e;font-size:9px">▬ normal range</span>
               <span>${sorted[sorted.length-1].date}</span>
             </div>
           </div>`;
@@ -9810,7 +9795,7 @@ function renderBloodPanels(idx) {
 
     const sortedResults = [...results].sort((a,b) => b.date.localeCompare(a.date));
     const dateHeaders = sortedResults.map(r =>
-      `<th style="text-align:right;min-width:70px">${r.date.slice(5)}<br><span style="font-size:12px;font-weight:400">${r.date.slice(0,4)}</span></th>`
+      `<th style="text-align:right;min-width:70px">${r.date.slice(5)}<br><span style="font-size:9px;font-weight:400">${r.date.slice(0,4)}</span></th>`
     ).join('');
 
     const rows = sortedKeys.map(key => {
@@ -9842,7 +9827,7 @@ function renderBloodPanels(idx) {
             const good = lb ? diff < 0 : hb ? diff > 0 : null;
             if (Math.abs(parseFloat(pct)) >= 1) {
               const arrColor = good === true ? '#22c55e' : good === false ? '#ef4444' : '#94a3b8';
-              trendHtml = `<span style="font-size:12px;color:${arrColor}">${diff>0?'↑':'↓'}</span>`;
+              trendHtml = `<span style="font-size:9px;color:${arrColor}">${diff>0?'↑':'↓'}</span>`;
             }
           }
         }
@@ -9856,11 +9841,11 @@ function renderBloodPanels(idx) {
       return `<tr class="${rowClass}">
         <td style="font-size:11px;font-weight:600;color:var(--text)">
           <span class="bcomp-dot" style="background:${dotCol}"></span>${name}
-          <div style="font-size:12px;color:var(--text3);margin-top:1px;padding-left:12px">${unit}</div>
+          <div style="font-size:9px;color:var(--text3);margin-top:1px;padding-left:12px">${unit}</div>
         </td>
         ${cells}
-        <td style="text-align:center;font-size:12px;color:#22c55e;white-space:nowrap">${refText}</td>
-        <td style="text-align:center;font-size:12px;color:var(--text3);white-space:nowrap">${stdText}</td>
+        <td style="text-align:center;font-size:10px;color:#22c55e;white-space:nowrap">${refText}</td>
+        <td style="text-align:center;font-size:10px;color:var(--text3);white-space:nowrap">${stdText}</td>
       </tr>`;
     }).join('');
 
@@ -9872,8 +9857,8 @@ function renderBloodPanels(idx) {
           <thead><tr>
             <th>Marker</th>
             ${dateHeaders}
-            <th style="text-align:center;color:#22c55e;font-size:12px">Optimal</th>
-            <th style="text-align:center;color:var(--text3);font-size:12px">Standard</th>
+            <th style="text-align:center;color:#22c55e;font-size:10px">Optimal</th>
+            <th style="text-align:center;color:var(--text3);font-size:10px">Standard</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -10266,15 +10251,15 @@ function renderNutritionReport(days) {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;text-align:center">
         <div style="background:var(--surface2);border-radius:12px;padding:12px">
           <div style="font-size:22px;font-weight:800;color:#22c55e">${optimal}</div>
-          <div style="font-size:12px;color:var(--text3)">Optimal</div>
+          <div style="font-size:10px;color:var(--text3)">Optimal</div>
         </div>
         <div style="background:var(--surface2);border-radius:12px;padding:12px">
           <div style="font-size:22px;font-weight:800;color:#f59e0b">${low.length}</div>
-          <div style="font-size:12px;color:var(--text3)">Low</div>
+          <div style="font-size:10px;color:var(--text3)">Low</div>
         </div>
         <div style="background:var(--surface2);border-radius:12px;padding:12px">
           <div style="font-size:22px;font-weight:800;color:var(--text2)">${tracked}</div>
-          <div style="font-size:12px;color:var(--text3)">Tracked</div>
+          <div style="font-size:10px;color:var(--text3)">Tracked</div>
         </div>
       </div>
       ${low.length > 0 ? `<div style="background:#1c0e00;border:1px solid #92400e;border-radius:12px;padding:12px">
@@ -10824,10 +10809,10 @@ async function analyzeMealDescription() {
       <div style="background:var(--surface2);border-radius:14px;padding:14px;margin-bottom:12px">
         <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">${_mealAnalysisData.name}</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
-          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#f59e0b">${Math.round(totals.calories)}</div><div style="font-size:12px;color:var(--text3)">kcal</div></div>
-          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${totals.protein.toFixed(1)}g</div><div style="font-size:12px;color:var(--text3)">protein</div></div>
-          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#3b82f6">${totals.carbs.toFixed(1)}g</div><div style="font-size:12px;color:var(--text3)">carbs</div></div>
-          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${totals.fat.toFixed(1)}g</div><div style="font-size:12px;color:var(--text3)">fat</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#f59e0b">${Math.round(totals.calories)}</div><div style="font-size:10px;color:var(--text3)">kcal</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#22c55e">${totals.protein.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">protein</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#3b82f6">${totals.carbs.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">carbs</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${totals.fat.toFixed(1)}g</div><div style="font-size:10px;color:var(--text3)">fat</div></div>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${foundCount}/${ingredients.length} ingredients found · ${microCount} micronutrients captured</div>
         ${lookupResults.map(r => `
@@ -11250,10 +11235,7 @@ function renderEventCountdowns() {
   const events = getEvents().filter(e => daysUntil(e.date) >= 0);
   const currentWeight = getLatestWeight();
 
-  if (!events.length) {
-    container.innerHTML = '<div onclick="openAddEventModal()" style="text-align:center;padding:8px 0 4px;cursor:pointer"><span style="font-size:12px;color:var(--text3);font-weight:600">+ Add a race or goal</span></div>';
-    return;
-  }
+  if (!events.length) { container.innerHTML = ''; return; }
 
   // Build items for each event
   const items = events.map(e => {
@@ -11274,17 +11256,17 @@ function renderEventCountdowns() {
       const diff = currentWeight ? +(currentWeight - target).toFixed(1) : null;
       const color2 = '#22c55e';
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:12px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
         <div style="font-size:26px;font-weight:900;color:${color2};letter-spacing:-1px">${target}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">by ${byDate}</div>
         <div style="font-size:11px;color:${color2};font-weight:700;margin-top:2px">${diff !== null ? (diff <= 0 ? '✅ Achieved!' : diff + ' lbs to go') : daysToGoal + ' days left'}</div>
       </div>`;
     } else {
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:12px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
         <div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-1px">${days}<span style="font-size:12px;font-weight:600;color:var(--text2)"> days</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">to go</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:1px">${dateStr}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:1px">${dateStr}</div>
       </div>`;
     }
   });
@@ -11681,7 +11663,7 @@ function renderSleepCard() {
     const pct = totalMin > 0 ? Math.round((min/totalMin)*100) : 0;
     return `
       <div style="margin-bottom:4px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:2px">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2);margin-bottom:2px">
           <span>${label}</span><span>${Math.floor(min/60)}h ${min%60}m (${pct}%)</span>
         </div>
         <div style="background:#1e293b;border-radius:4px;height:6px;overflow:hidden">
@@ -11698,7 +11680,7 @@ function renderSleepCard() {
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
       <div style="text-align:center;flex-shrink:0">
         <div style="font-size:28px;font-weight:800;color:#6366f1">${totalHrs}</div>
-        <div style="font-size:12px;color:var(--text2);font-weight:600">hrs slept</div>
+        <div style="font-size:10px;color:var(--text2);font-weight:600">hrs slept</div>
       </div>
       <div style="flex:1">
         ${stageBar('🌊 Deep', deepMin, '#6366f1')}
@@ -11766,12 +11748,12 @@ function renderBPSection() {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${cat.bg};border:1px solid ${cat.color}33;border-radius:10px;margin-bottom:6px">
         <div>
           <span style="font-size:18px;font-weight:800;color:${cat.color}">${e.sys}/${e.dia}</span>
-          <span style="font-size:12px;color:var(--text2);margin-left:8px">mmHg</span>
+          <span style="font-size:10px;color:var(--text2);margin-left:8px">mmHg</span>
           ${e.hr ? `<span style="font-size:11px;color:var(--text2);margin-left:8px">· ${e.hr} bpm</span>` : ''}
         </div>
         <div style="text-align:right">
-          <div style="font-size:12px;font-weight:700;color:${cat.color};background:${cat.color}22;padding:2px 8px;border-radius:10px;margin-bottom:3px">${cat.label}</div>
-          <div style="font-size:12px;color:var(--text2)">${e.date} ${e.time||''}</div>
+          <div style="font-size:10px;font-weight:700;color:${cat.color};background:${cat.color}22;padding:2px 8px;border-radius:10px;margin-bottom:3px">${cat.label}</div>
+          <div style="font-size:10px;color:var(--text2)">${e.date} ${e.time||''}</div>
         </div>
         <button onclick="deleteBP(${e.id})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px;margin-left:8px">✕</button>
       </div>`;
@@ -11820,15 +11802,15 @@ function renderBodyCompLatest() {
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
       ${currentWt ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
         <div style="font-size:20px;font-weight:800;color:var(--text)">${currentWt}</div>
-        <div style="font-size:12px;color:var(--text2);font-weight:600">lbs</div></div>` : ''}
+        <div style="font-size:10px;color:var(--text2);font-weight:600">lbs</div></div>` : ''}
       ${latest.bodyFat ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
         <div style="font-size:20px;font-weight:800;color:#f59e0b">${latest.bodyFat}%</div>
-        <div style="font-size:12px;color:var(--text2);font-weight:600">Body Fat</div></div>` : ''}
+        <div style="font-size:10px;color:var(--text2);font-weight:600">Body Fat</div></div>` : ''}
       ${latest.leanMass ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
         <div style="font-size:20px;font-weight:800;color:#22c55e">${latest.leanMass}</div>
-        <div style="font-size:12px;color:var(--text2);font-weight:600">Lean Mass lbs</div></div>` : ''}
+        <div style="font-size:10px;color:var(--text2);font-weight:600">Lean Mass lbs</div></div>` : ''}
     </div>
-    <div style="font-size:12px;color:var(--text2);text-align:center;margin-top:6px">Last updated: ${latest.date}</div>`;
+    <div style="font-size:10px;color:var(--text2);text-align:center;margin-top:6px">Last updated: ${latest.date}</div>`;
 }
 
 
@@ -12077,10 +12059,10 @@ function formatNarrative(n) {
       : `<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:4px">${line}</div>`;
   });
   html += `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-    ${n.stats?.avgCals ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--text2)">${n.stats.avgCals} kcal avg</span>` : ''}
-    ${n.stats?.totalMiles ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--text2)">${n.stats.totalMiles} mi</span>` : ''}
-    ${n.stats?.avgSleep ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--text2)">${n.stats.avgSleep}h sleep avg</span>` : ''}
-    ${n.stats?.wtChange !== null && n.stats?.wtChange !== undefined ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;color:var(--text2)">${n.stats.wtChange > 0 ? '+' : ''}${n.stats.wtChange} lbs</span>` : ''}
+    ${n.stats?.avgCals ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;color:var(--text2)">${n.stats.avgCals} kcal avg</span>` : ''}
+    ${n.stats?.totalMiles ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;color:var(--text2)">${n.stats.totalMiles} mi</span>` : ''}
+    ${n.stats?.avgSleep ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;color:var(--text2)">${n.stats.avgSleep}h sleep avg</span>` : ''}
+    ${n.stats?.wtChange !== null && n.stats?.wtChange !== undefined ? `<span style="background:var(--surface2);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;color:var(--text2)">${n.stats.wtChange > 0 ? '+' : ''}${n.stats.wtChange} lbs</span>` : ''}
   </div>`;
   return html;
 }
@@ -12154,7 +12136,7 @@ function renderSuppLog() {
           <div style="font-size:13px;font-weight:700;color:${isTaken ? '#16a34a' : 'var(--text)'}">${s.name}</div>
           <div style="font-size:11px;color:var(--text2)">${s.dose}</div>
         </div>
-        ${streak > 0 ? `<div style="font-size:12px;font-weight:700;color:#f59e0b;background:#f59e0b22;padding:3px 8px;border-radius:8px">🔥 ${streak}d</div>` : ''}
+        ${streak > 0 ? `<div style="font-size:10px;font-weight:700;color:#f59e0b;background:#f59e0b22;padding:3px 8px;border-radius:8px">🔥 ${streak}d</div>` : ''}
       </div>`;
   }).join('');
 
@@ -12482,11 +12464,6 @@ async function generateDailyBrief(force = false) {
     card.style.display = 'block';
     el.innerHTML = cached;
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-  const greetEl = document.getElementById('dailyBriefGreeting');
-  if (greetEl) {
-    const hr = nowEST().getHours();
-    greetEl.textContent = hr < 12 ? 'Good Morning 👋' : hr < 17 ? 'Good Afternoon 👋' : 'Good Evening 👋';
-  }
     return;
   }
 
@@ -12587,7 +12564,6 @@ Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 a
 // INIT: Call all render functions on app startup
 // ════════════════════════════════════════════════════════════════
 function initNewFeatures() {
-  renderWeeklyInlineStat();
   renderWater();
   renderSleepPanel();
   renderMoodBtns();
@@ -12703,92 +12679,6 @@ function renderMicronutrients() {
 })();
 
 
-
-// ── More Sheet ──
-function openMoreSheet() {
-  const sheet = document.getElementById('moreSheet');
-  const panel = document.getElementById('moreSheetPanel');
-  if (!sheet || !panel) return;
-  sheet.style.display = 'block';
-  requestAnimationFrame(() => { panel.style.transform = 'translateY(0)'; });
-}
-function closeMoreSheet() {
-  const sheet = document.getElementById('moreSheet');
-  const panel = document.getElementById('moreSheetPanel');
-  if (!panel) return;
-  panel.style.transform = 'translateY(100%)';
-  setTimeout(() => { if (sheet) sheet.style.display = 'none'; }, 300);
-}
-
-// ── Cycle ring mode (replaces toggle buttons) ──
-function cycleRingMode() {
-  const current = getStorage('ringMode', 'consumed');
-  const next = current === 'consumed' ? 'remaining' : 'consumed';
-  setStorage('ringMode', next);
-  const btn = document.getElementById('ringModeGear');
-  if (btn) btn.textContent = next === 'consumed' ? 'Consumed ↕' : 'Remaining ↕';
-  renderRings();
-}
-
-// ── Show more / less on Today tab ──
-let _todayMoreVisible = false;
-function toggleTodayMore() {
-  _todayMoreVisible = !_todayMoreVisible;
-  const btn = document.getElementById('todayMoreBtn');
-  const cards = document.querySelectorAll('.collapsible-card');
-  cards.forEach(c => { c.style.display = _todayMoreVisible ? '' : 'none'; });
-  if (btn) btn.textContent = _todayMoreVisible ? 'Show Less ↑' : 'Show More ↓';
-}
-
-// ── Weekly inline stat ──
-function renderWeeklyInlineStat() {
-  const el = document.getElementById('weeklyInlineStat');
-  if (!el) return;
-  const now = nowEST();
-  let total = 0, days = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(now); d.setDate(d.getDate() - i);
-    const k = dateToKey(d);
-    const entries = (getStorage('macroLog', {}))[k] || [];
-    const cal = entries.reduce((s, e) => s + (e.calories || 0), 0);
-    if (cal > 0) { total += cal; days++; }
-  }
-  if (days === 0) { el.textContent = 'No data yet'; return; }
-  const target = (getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || {calories: 1500}).calories;
-  const diff = total - (target * days);
-  const sign = diff > 0 ? '+' : '';
-  el.textContent = `${sign}${Math.round(diff).toLocaleString()} kcal vs target`;
-  el.style.color = diff <= 0 ? '#22c55e' : '#f87171';
-}
-
-// ── Simplified water render ──
-function renderWater() {
-  const oz   = getTodayWaterOz ? getTodayWaterOz() : 0;
-  const goal = getWaterGoal ? getWaterGoal() : 100;
-  const pct  = Math.min(100, Math.round((oz / goal) * 100));
-  const disp = document.getElementById('waterOzDisplay');
-  const bar  = document.getElementById('waterProgressBar');
-  const lbl  = document.getElementById('waterGoalLabel');
-  if (disp) disp.textContent = oz + ' oz';
-  if (lbl)  lbl.textContent  = `of ${goal} oz goal  ·  ${pct}%`;
-  if (bar)  bar.style.width  = pct + '%';
-}
-
-// ── openWaterGoalModal alias ──
-function openWaterGoalModal() {
-  const inp = document.getElementById('waterGoalInput');
-  if (inp) inp.value = getWaterGoal ? getWaterGoal() : 100;
-  const m = document.getElementById('waterGoalModal');
-  if (m) m.classList.add('open');
-}
-
-// ── FAB visibility: hide on non-Today tabs ──
-function updateFABVisibility(tabName) {
-  const fab = document.getElementById('fabAdd');
-  if (!fab) return;
-  fab.style.display = tabName === 'today' ? 'flex' : 'none';
-}
-
 </script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
@@ -12880,12 +12770,12 @@ function updateFABVisibility(tabName) {
     <input type="text" id="shoeNameInput" placeholder="e.g. Brooks Ghost 15 — Race Pair" style="margin-bottom:8px" />
     <input type="text" id="shoeBrandInput" placeholder="Brand (e.g. Brooks, Nike, ASICS)" style="margin-bottom:8px" />
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-      <div><div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Starting Miles</div><input type="number" id="shoeStartMiles" placeholder="0" value="0" min="0" /></div>
-      <div><div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Retire At (mi)</div><input type="number" id="shoeRetireMiles" placeholder="400" value="400" min="100" /></div>
+      <div><div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Starting Miles</div><input type="number" id="shoeStartMiles" placeholder="0" value="0" min="0" /></div>
+      <div><div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Retire At (mi)</div><input type="number" id="shoeRetireMiles" placeholder="400" value="400" min="100" /></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
-      <div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Color</div><input type="text" id="shoeColorInput" placeholder="e.g. Blue/White" /></div>
-      <div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Status</div>
+      <div style="flex:1"><div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Color</div><input type="text" id="shoeColorInput" placeholder="e.g. Blue/White" /></div>
+      <div style="flex:1"><div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Status</div>
         <select id="shoeStatusInput" style="width:100%;padding:11px 12px;border-radius:14px;border:1.5px solid var(--border);background:var(--surface2);font-family:inherit;font-size:13px;color:var(--text)">
           <option value="active">Active</option><option value="retired">Retired</option>
         </select>
