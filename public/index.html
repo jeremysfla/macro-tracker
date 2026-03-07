@@ -586,7 +586,9 @@
     background:var(--surface2);
     border:2px solid transparent;
     border-radius:10px;
-    width:42px;height:42px;
+    flex:1;
+    min-width:0;
+    height:44px;
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
@@ -594,7 +596,7 @@
   .mood-btn.active {
     border-color:#f472b6;
     background:#500724;
-    transform:scale(1.15);
+    transform:scale(1.1);
   }
 
   /* ── Supplement checklist ── */
@@ -906,11 +908,12 @@ PROMISE ERROR:
 
       <!-- FEATURE: Mood & Energy Check-in -->
       <div class="card" id="moodCard" style="margin-bottom:14px">
-        <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
+        <div class="card-label" style="color:#f472b6;margin-bottom:12px">💜 Daily Check-in</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <!-- Energy row -->
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:0.5px;text-transform:uppercase;width:52px;flex-shrink:0">⚡ Energy</div>
+            <div style="display:flex;flex:1;gap:6px" id="energyBtns">
               <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
               <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
               <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
@@ -918,9 +921,10 @@ PROMISE ERROR:
               <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
             </div>
           </div>
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
+          <!-- Mood row -->
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:0.5px;text-transform:uppercase;width:52px;flex-shrink:0">😊 Mood</div>
+            <div style="display:flex;flex:1;gap:6px" id="moodBtns">
               <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
               <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
               <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
@@ -4502,65 +4506,100 @@ function extractServingGrams(servingStr) {
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-
-  // Normalise: OFF canonical = EAN-13 (13 digits)
-  const ean13    = barcode.length === 12 ? '0' + barcode : barcode;
-  const upcA     = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
+  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
+  const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
+  const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
   const allCodes = [...new Set([barcode, ean13, upcA])];
 
-  // ── Cache check ──────────────────────────────────────────────────
+  // OFF requires User-Agent header to avoid bot-detection bans
+  const OFF_HDR = {
+    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
+    'Accept': 'application/json',
+  };
+  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
+
+  // Cache check
   const cache = getStorage('barcodeCache', {});
   for (const code of allCodes) {
-    const hit = cache[code];
-    if (hit && hit._ts && (Date.now() - hit._ts) < 7 * 86400000) {
-      log('✅ Found (cached)');
-      return hit;
-    }
+    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
   }
 
   function saveCache(product) {
-    const stamped = { ...product, _ts: Date.now() };
-    allCodes.forEach(c => { cache[c] = stamped; });
+    allCodes.forEach(c => { cache[c] = product; });
     setStorage('barcodeCache', cache);
     return product;
   }
 
-  // ── STEP 1: Worker server-side lookup (no CORS, real User-Agent, no rate limit) ──
-  log('⏳ Looking up barcode…');
+  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
   try {
-    const r = await fetch(`/api/barcode?code=${encodeURIComponent(barcode)}`);
-    if (r.ok) {
-      const d = await r.json();
-      if (d.found && d.product && isSaneProduct(d.product) && d.product.calories > 0) {
-        log('✅ Found — ' + (d.product.source || 'database'));
-        return saveCache(d.product);
-      }
-    }
-  } catch(e) { console.warn('Worker barcode lookup failed:', e); }
-
-  // ── STEP 2: Direct Open Food Facts (fallback if worker unreachable) ──
-  const OFF_HDR = { 'Accept': 'application/json' };
-  const OFF_FIELDS = 'product_name,product_name_en,brands,serving_size,serving_quantity,nutriments';
-  for (const code of allCodes) {
-    try {
-      log('⏳ Searching Open Food Facts…');
-      const r = await fetch(
-        `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-        { headers: OFF_HDR }
-      );
-      if (!r.ok) continue;
-      const d = await r.json();
-      if (d.status === 1 && d.product) {
-        const p = parseOFProduct(d.product);
-        if (isSaneProduct(p) && p.calories > 0) {
-          log('✅ Found — Open Food Facts');
-          return saveCache(p);
+    log('⏳ Searching Open Food Facts…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
         }
-      }
-    } catch(e) { /* try next */ }
-  }
+      } catch(e) { /* try next code */ }
+    }
+  } catch(e) { console.warn('OFF.net:', e); }
 
-  // ── STEP 3: UPC ItemDB name lookup → AI nutrition estimate ──
+  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
+  try {
+    log('⏳ Searching USDA…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        const foods = d.foods || [];
+        // Prefer exact UPC match, fallback to first result
+        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+        const hit   = exact || foods.find(f => f.gtinUpc);
+        if (hit) {
+          const p = parseUSDAProduct(hit);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next code */ }
+    }
+  } catch(e) { console.warn('USDA:', e); }
+
+  // 3. Open Food Facts .org (different CDN node, second chance)
+  try {
+    log('⏳ Searching Open Food Facts (alt)…');
+    for (const code of allCodes) {
+      try {
+        const r = await fetch(
+          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+          { headers: OFF_HDR }
+        );
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d.status === 1 && d.product) {
+          const p = parseOFProduct(d.product);
+          if (isSaneProduct(p) && p.calories > 0) {
+            log('✅ Found — Open Food Facts');
+            return saveCache(p);
+          }
+        }
+      } catch(e) { /* try next */ }
+    }
+  } catch(e) { console.warn('OFF.org:', e); }
+
+  // 5. UPC ItemDB → USDA name lookup
   try {
     log('⏳ Searching UPC database…');
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
@@ -4568,58 +4607,36 @@ async function lookupBarcodeMultiDB(barcode) {
       const d = await r.json();
       const item = (d.items || [])[0];
       if (item && item.title) {
-        log(`⏳ Found "${item.title.slice(0,30)}" — estimating nutrition…`);
-        // Use AI to estimate nutrition for the named product (no API key needed)
-        try {
-          const aiResp = await callClaudeAPI({
-            model: 'claude-haiku-4-5-20251001', max_tokens: 250,
-            messages: [{ role: 'user', content:
-              `Estimate nutrition facts per serving for this grocery product: "${item.title}" by ${item.brand || 'unknown brand'}.` +
-              ` Return ONLY valid JSON (no markdown): {"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"servingSize":"1","servingUnit":"serving"}` +
-              ` Use realistic values based on typical products of this type. Never return all zeros.`
-            }]
-          });
-          const txt = (aiResp.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g,'').trim();
-          const nutr = JSON.parse(txt);
-          if (nutr && nutr.calories > 0) {
-            const prod = {
-              name: item.title, brand: item.brand || '',
-              calories: nutr.calories, protein: nutr.protein || 0,
-              carbs: nutr.carbs || 0, fat: nutr.fat || 0,
-              fiber: nutr.fiber || 0, sodium: nutr.sodium || 0,
-              servingSize: nutr.servingSize || '1',
-              servingUnit: nutr.servingUnit || 'serving',
-              source: 'UPC + AI Est'
-            };
-            log('✅ Found via UPC + AI estimate');
-            return saveCache(prod);
-          }
-        } catch(e) { /* AI failed, return name-only */ }
+        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
+        const usdaHit = await searchUSDAByName(item.title);
+        if (usdaHit) {
+          usdaHit.name  = item.title;
+          usdaHit.brand = item.brand || '';
+          log('✅ Found via UPC + USDA');
+          return saveCache(usdaHit);
+        }
         return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
     }
   } catch(e) { console.warn('UPCItemDB:', e); }
 
-  // ── STEP 4: Pure AI identification by barcode ──
+  // 6. AI fallback
   try {
     log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode: ${barcode}. If you recognize this UPC/EAN barcode as a specific grocery product, ` +
-        `return ONLY valid JSON (no markdown): {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} ` +
-        `with realistic nutrition per serving. If you don't recognize it, return null.`
+        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
+        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
       }]
     });
-    const txt = (aiResp.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g,'').trim();
-    if (txt && txt !== 'null') {
-      const parsed = JSON.parse(txt);
-      if (parsed && parsed.name && parsed.calories > 0) {
-        log('✅ AI identified product');
-        return saveCache({ ...parsed, source: 'AI Est' });
-      }
+    const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
+    const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
+    if (parsed && parsed.name && parsed.calories > 0) {
+      log('✅ AI identified product');
+      return saveCache({ ...parsed, source: 'AI Est' });
     }
-  } catch(e) { /* silent */ }
+  } catch(e) { /* optional */ }
 
   return null;
 }
