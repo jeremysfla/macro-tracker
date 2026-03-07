@@ -4502,100 +4502,65 @@ function extractServingGrams(servingStr) {
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
-  const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
-  const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
+
+  // Normalise: OFF canonical = EAN-13 (13 digits)
+  const ean13    = barcode.length === 12 ? '0' + barcode : barcode;
+  const upcA     = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
   const allCodes = [...new Set([barcode, ean13, upcA])];
 
-  // OFF requires User-Agent header to avoid bot-detection bans
-  const OFF_HDR = {
-    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
-    'Accept': 'application/json',
-  };
-  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
-
-  // Cache check
+  // ── Cache check ──────────────────────────────────────────────────
   const cache = getStorage('barcodeCache', {});
   for (const code of allCodes) {
-    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
+    const hit = cache[code];
+    if (hit && hit._ts && (Date.now() - hit._ts) < 7 * 86400000) {
+      log('✅ Found (cached)');
+      return hit;
+    }
   }
 
   function saveCache(product) {
-    allCodes.forEach(c => { cache[c] = product; });
+    const stamped = { ...product, _ts: Date.now() };
+    allCodes.forEach(c => { cache[c] = stamped; });
     setStorage('barcodeCache', cache);
     return product;
   }
 
-  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
+  // ── STEP 1: Worker server-side lookup (no CORS, real User-Agent, no rate limit) ──
+  log('⏳ Looking up barcode…');
   try {
-    log('⏳ Searching Open Food Facts…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
+    const r = await fetch(`/api/barcode?code=${encodeURIComponent(barcode)}`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.found && d.product && isSaneProduct(d.product) && d.product.calories > 0) {
+        log('✅ Found — ' + (d.product.source || 'database'));
+        return saveCache(d.product);
+      }
     }
-  } catch(e) { console.warn('OFF.net:', e); }
+  } catch(e) { console.warn('Worker barcode lookup failed:', e); }
 
-  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
-  try {
-    log('⏳ Searching USDA…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        const foods = d.foods || [];
-        // Prefer exact UPC match, fallback to first result
-        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods.find(f => f.gtinUpc);
-        if (hit) {
-          const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
-            return saveCache(p);
-          }
+  // ── STEP 2: Direct Open Food Facts (fallback if worker unreachable) ──
+  const OFF_HDR = { 'Accept': 'application/json' };
+  const OFF_FIELDS = 'product_name,product_name_en,brands,serving_size,serving_quantity,nutriments';
+  for (const code of allCodes) {
+    try {
+      log('⏳ Searching Open Food Facts…');
+      const r = await fetch(
+        `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+        { headers: OFF_HDR }
+      );
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = parseOFProduct(d.product);
+        if (isSaneProduct(p) && p.calories > 0) {
+          log('✅ Found — Open Food Facts');
+          return saveCache(p);
         }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('USDA:', e); }
+      }
+    } catch(e) { /* try next */ }
+  }
 
-  // 3. Open Food Facts .org (different CDN node, second chance)
-  try {
-    log('⏳ Searching Open Food Facts (alt)…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next */ }
-    }
-  } catch(e) { console.warn('OFF.org:', e); }
-
-  // 5. UPC ItemDB → USDA name lookup
+  // ── STEP 3: UPC ItemDB name lookup → AI nutrition estimate ──
   try {
     log('⏳ Searching UPC database…');
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
@@ -4603,36 +4568,58 @@ async function lookupBarcodeMultiDB(barcode) {
       const d = await r.json();
       const item = (d.items || [])[0];
       if (item && item.title) {
-        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
-        const usdaHit = await searchUSDAByName(item.title);
-        if (usdaHit) {
-          usdaHit.name  = item.title;
-          usdaHit.brand = item.brand || '';
-          log('✅ Found via UPC + USDA');
-          return saveCache(usdaHit);
-        }
+        log(`⏳ Found "${item.title.slice(0,30)}" — estimating nutrition…`);
+        // Use AI to estimate nutrition for the named product (no API key needed)
+        try {
+          const aiResp = await callClaudeAPI({
+            model: 'claude-haiku-4-5-20251001', max_tokens: 250,
+            messages: [{ role: 'user', content:
+              `Estimate nutrition facts per serving for this grocery product: "${item.title}" by ${item.brand || 'unknown brand'}.` +
+              ` Return ONLY valid JSON (no markdown): {"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"servingSize":"1","servingUnit":"serving"}` +
+              ` Use realistic values based on typical products of this type. Never return all zeros.`
+            }]
+          });
+          const txt = (aiResp.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g,'').trim();
+          const nutr = JSON.parse(txt);
+          if (nutr && nutr.calories > 0) {
+            const prod = {
+              name: item.title, brand: item.brand || '',
+              calories: nutr.calories, protein: nutr.protein || 0,
+              carbs: nutr.carbs || 0, fat: nutr.fat || 0,
+              fiber: nutr.fiber || 0, sodium: nutr.sodium || 0,
+              servingSize: nutr.servingSize || '1',
+              servingUnit: nutr.servingUnit || 'serving',
+              source: 'UPC + AI Est'
+            };
+            log('✅ Found via UPC + AI estimate');
+            return saveCache(prod);
+          }
+        } catch(e) { /* AI failed, return name-only */ }
         return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
     }
   } catch(e) { console.warn('UPCItemDB:', e); }
 
-  // 6. AI fallback
+  // ── STEP 4: Pure AI identification by barcode ──
   try {
     log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
-        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
+        `Barcode: ${barcode}. If you recognize this UPC/EAN barcode as a specific grocery product, ` +
+        `return ONLY valid JSON (no markdown): {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} ` +
+        `with realistic nutrition per serving. If you don't recognize it, return null.`
       }]
     });
-    const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
-    const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
-    if (parsed && parsed.name && parsed.calories > 0) {
-      log('✅ AI identified product');
-      return saveCache({ ...parsed, source: 'AI Est' });
+    const txt = (aiResp.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g,'').trim();
+    if (txt && txt !== 'null') {
+      const parsed = JSON.parse(txt);
+      if (parsed && parsed.name && parsed.calories > 0) {
+        log('✅ AI identified product');
+        return saveCache({ ...parsed, source: 'AI Est' });
+      }
     }
-  } catch(e) { /* optional */ }
+  } catch(e) { /* silent */ }
 
   return null;
 }
@@ -12525,10 +12512,10 @@ Write 2-3 sentences. Be direct, specific, encouraging. Reference actual data. No
   try {
     const resp = await callClaudeAPI({ model:'claude-sonnet-4-20250514', max_tokens:150, messages:[{role:'user',content:prompt}] });
     const text = resp?.content?.[0]?.text || 'Have a great day, Jeremy!';
-    el.innerHTML = `<div style="font-size:14px;color:#e2e8f0;line-height:1.65;letter-spacing:0.01em">${text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>')}</div>`;
+    el.textContent = text;
     setStorage(cacheKey, el.innerHTML);
   } catch(e) {
-    el.innerHTML = `<div style="font-size:14px;color:#e2e8f0;line-height:1.65">Stay on track today — every good choice compounds. 💪</div>`;
+    el.textContent = 'Stay on track today — every good choice compounds. 💪';
   }
 }
 
@@ -12617,106 +12604,12 @@ async
 // ══════════════════════════════════════════════════════
 // FEATURE: Meal Suggestions
 // ══════════════════════════════════════════════════════
-async function formatMealIdeas(text) {
-  // Parse structured meal suggestion response into beautiful cards
-  const mealColors = [
-    { grad: 'linear-gradient(135deg,#0c1f12,#0d2a18)', border: '#14532d', accent: '#22c55e', badge: '#15803d' },
-    { grad: 'linear-gradient(135deg,#0d1a2e,#0f2744)', border: '#1e3a5f', accent: '#60a5fa', badge: '#1d4ed8' },
-    { grad: 'linear-gradient(135deg,#1f0d2e,#2a1048)', border: '#4c1d95', accent: '#a78bfa', badge: '#6d28d9' },
-  ];
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  let meals = [];
-  let current = null;
-
-  for (const line of lines) {
-    // Detect meal header: "Option 1:", "**Option 1:", numbered, or bold title
-    const headerMatch = line.match(/^(?:\*{0,2})(?:Option\s*\d+|Meal\s*\d+|\d+[\.\)])\s*[:\-–]?\s*(.+?)(?:\*{0,2})$/)
-      || line.match(/^#{1,3}\s+(.+)/);
-    if (headerMatch) {
-      if (current) meals.push(current);
-      current = { title: headerMatch[1].replace(/\*\*/g,'').trim(), items: [], note: '' };
-      continue;
-    }
-    // Bullet item
-    const bulletMatch = line.match(/^[-•*▸→]\s+(.+)/);
-    if (bulletMatch && current) {
-      current.items.push(bulletMatch[1]);
-      continue;
-    }
-    // Closing note / summary line (no bullet, after items)
-    if (current && current.items.length > 0 && !line.match(/^[-•*▸→]/)) {
-      current.note = line.replace(/\*\*/g,'');
-      continue;
-    }
-    // If no current meal yet, treat as preamble
-  }
-  if (current) meals.push(current);
-
-  // If parsing yielded nothing useful, fall back to formatAIResponse
-  if (meals.length === 0) return formatAIResponse(text);
-
-  // Build macro pill parser: "(284 cal, 53g protein, 0g carbs, 6g fat)"
-  function parseMacros(str) {
-    const cal = (str.match(/(\d+)\s*cal/) || [])[1];
-    const pro = (str.match(/(\d+)g?\s*protein/) || [])[1];
-    const carb = (str.match(/(\d+)g?\s*carb/) || [])[1];
-    const fat = (str.match(/(\d+)g?\s*fat/) || [])[1];
-    return { cal, pro, carb, fat };
-  }
-
-  function macroTag(val, label, color) {
-    if (!val) return '';
-    return `<span style="display:inline-flex;align-items:center;gap:2px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;color:${color};white-space:nowrap">${val}<span style="font-weight:400;opacity:0.7;margin-left:2px">${label}</span></span>`;
-  }
-
-  let html = '';
-  meals.forEach((meal, i) => {
-    const c = mealColors[i % mealColors.length];
-    const itemsHtml = meal.items.map(item => {
-      // Split item name from macro info in parens
-      const parenMatch = item.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-      let itemName = item, macroPart = '';
-      if (parenMatch) {
-        itemName = parenMatch[1];
-        const m = parseMacros(parenMatch[2]);
-        const pills = [
-          macroTag(m.cal, 'cal', '#fbbf24'),
-          macroTag(m.pro, 'g P', '#34d399'),
-          macroTag(m.carb, 'g C', '#60a5fa'),
-          macroTag(m.fat, 'g F', '#f87171'),
-        ].filter(Boolean).join('');
-        if (pills) macroPart = `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">${pills}</div>`;
-      }
-      return `<div style="padding:8px 10px;background:rgba(0,0,0,0.25);border-radius:10px;margin-bottom:6px">
-        <div style="font-size:13px;color:#e2e8f0;font-weight:500;line-height:1.4">${itemName.replace(/\*\*/g,'')}</div>
-        ${macroPart}
-      </div>`;
-    }).join('');
-
-    html += `<div style="background:${c.grad};border:1px solid ${c.border};border-radius:14px;padding:13px 14px;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:800;color:${c.accent};letter-spacing:0.8px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-        <span style="width:20px;height:20px;background:${c.badge};border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">${i+1}</span>
-        ${meal.title}
-      </div>
-      <div>${itemsHtml}</div>
-      ${meal.note ? `<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:4px;font-style:italic">${meal.note}</div>` : ''}
-    </div>`;
-  });
-
-  return html;
-}
-
 async function getMealSuggestions() {
   const el = document.getElementById('mealSuggestionsOutput');
   if (!el) return;
+  el.innerHTML = '<span style="color:#f59e0b">🤖 Generating suggestions…</span>';
 
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:14px 0;color:#f59e0b">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="animation:spin 1s linear infinite;flex-shrink:0">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round"/>
-    </svg>
-    <span style="font-size:13px;font-weight:600">Building personalized meal ideas…</span>
-  </div>`;
-
+  const goals = getStorage('userGoals', {});
   const today = todayKey();
   const log = getStorage('foodEntries', {})[today] || [];
   const eaten = log.reduce((a,e) => ({
@@ -12734,38 +12627,19 @@ async function getMealSuggestions() {
     f: Math.max(0, target.fat - eaten.f),
   };
 
-  const prompt = `You are a precision sports nutrition AI for Jeremy, a 52-year-old male marathon runner (training for Grandma's Marathon, June 20 2026) focused on body recomposition (goal: 165→160 lbs).
-
-Remaining macros for the rest of today:
-- Calories: ${Math.round(remaining.cal)} kcal
-- Protein: ${Math.round(remaining.p)}g
-- Carbs: ${Math.round(remaining.c)}g
-- Fat: ${Math.round(remaining.f)}g
-
-Suggest exactly 3 practical meal or snack options. Use this EXACT format for each:
-
-Option 1: [Descriptive Name]
-- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
-- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
-
-Option 2: [Descriptive Name]
-- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
-
-Option 3: [Descriptive Name]
-- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
-
-Rules: Real foods only. Macros must add up close to remaining targets. Prioritize protein. Be specific with portions (oz, cups, pieces). No preamble or closing summary.`;
-
   try {
     const resp = await callClaudeAPI({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      messages: [{ role: 'user', content: prompt }]
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Suggest 3 specific meals or snacks for the rest of today for a 52yo male marathon runner trying to lose weight.\n\nRemaining macros needed:\n- Calories: ${Math.round(remaining.cal)} kcal\n- Protein: ${Math.round(remaining.p)}g\n- Carbs: ${Math.round(remaining.c)}g\n- Fat: ${Math.round(remaining.f)}g\n\nFormat as a short bulleted list. Each suggestion should be a real food with approx macros. Be practical and specific.`
+      }]
     });
-    const text = resp?.content?.[0]?.text || '';
-    el.innerHTML = text ? formatMealIdeas(text) : formatMealIdeas(`Option 1: High-Protein Dinner\n- 6 oz grilled chicken breast (284 cal, 53g protein, 0g carbs, 6g fat)\n- 1 oz almonds (164 cal, 6g protein, 0g carbs, 14g fat)\n\nOption 2: Fish & Healthy Fat\n- 5 oz baked cod (231 cal, 50g protein, 0g carbs, 2g fat)\n- 2 tbsp olive oil (239 cal, 0g protein, 0g carbs, 27g fat)\n\nOption 3: Quick Egg Plate\n- 4 hard-boiled eggs (whites + 2 yolks) (196 cal, 24g protein, 0g carbs, 10g fat)\n- 3 oz deli turkey breast (90 cal, 20g protein, 0g carbs, 1g fat)`);
+    const text = resp?.content?.[0]?.text || 'Try: Greek yogurt + berries (20g protein), chicken + rice bowl (40g protein), protein shake.';
+    el.innerHTML = text.replace(/\n/g, '<br>').replace(/^[•\-\*] /gm, '→ ');
   } catch(e) {
-    el.innerHTML = formatMealIdeas(`Option 1: High-Protein Dinner\n- 6 oz grilled chicken breast (284 cal, 53g protein, 0g carbs, 6g fat)\n- 1 oz almonds (164 cal, 6g protein, 0g carbs, 14g fat)\n\nOption 2: Fish Plate\n- 5 oz baked cod (231 cal, 50g protein, 0g carbs, 2g fat)\n- 2 tbsp olive oil drizzle (239 cal, 0g protein, 0g carbs, 27g fat)\n\nOption 3: Egg & Turkey Snack\n- 4 hard-boiled eggs whites + 2 yolks (196 cal, 24g protein, 0g carbs, 10g fat)\n- 3 oz deli turkey breast (90 cal, 20g protein, 0g carbs, 1g fat)`);
+    el.innerHTML = '→ Greek yogurt + berries (150 cal, 20g protein)<br>→ Chicken rice bowl (450 cal, 40g protein)<br>→ Casein protein shake before bed (130 cal, 25g protein)';
   }
 }
 
