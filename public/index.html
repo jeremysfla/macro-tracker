@@ -586,8 +586,7 @@
     background:var(--surface2);
     border:2px solid transparent;
     border-radius:10px;
-    height:44px;
-    min-width:0;
+    width:42px;height:42px;
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
@@ -906,31 +905,31 @@ PROMISE ERROR:
       </div>
 
       <!-- FEATURE: Mood & Energy Check-in -->
-      <div class="card" id="moodCard" style="margin-bottom:14px;padding:14px 16px">
-        <div class="card-label" style="color:#f472b6;margin-bottom:12px">💜 Daily Check-in</div>
-        <!-- Row 1: Energy -->
-        <div style="margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚡ Energy</div>
-          <div style="display:flex;gap:8px" id="energyBtns">
-            <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted" style="flex:1">😴</button>
-            <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low"       style="flex:1">😕</button>
-            <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay"      style="flex:1">😐</button>
-            <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good"      style="flex:1">🙂</button>
-            <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great"     style="flex:1">💪</button>
+      <div class="card" id="moodCard" style="margin-bottom:14px">
+        <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
+            <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
+              <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
+              <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
+              <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
+              <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good">🙂</button>
+              <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
+            <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
+              <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
+              <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
+              <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
+              <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
+              <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
+            </div>
           </div>
         </div>
-        <!-- Row 2: Mood -->
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">😊 Mood</div>
-          <div style="display:flex;gap:8px" id="moodBtns">
-            <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough" style="flex:1">😣</button>
-            <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh"   style="flex:1">😞</button>
-            <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay"  style="flex:1">😐</button>
-            <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good"  style="flex:1">😊</button>
-            <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great" style="flex:1">😄</button>
-          </div>
-        </div>
-        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:12px;color:#f472b6;font-weight:600;margin-top:10px">✅ Saved!</div>
+        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:11px;color:#f472b6;font-weight:600;margin-top:8px">✅ Saved!</div>
       </div>
 
       <!-- 10. Workout nutrition prompt -->
@@ -12526,10 +12525,10 @@ Write 2-3 sentences. Be direct, specific, encouraging. Reference actual data. No
   try {
     const resp = await callClaudeAPI({ model:'claude-sonnet-4-20250514', max_tokens:150, messages:[{role:'user',content:prompt}] });
     const text = resp?.content?.[0]?.text || 'Have a great day, Jeremy!';
-    el.textContent = text;
+    el.innerHTML = `<div style="font-size:14px;color:#e2e8f0;line-height:1.65;letter-spacing:0.01em">${text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>')}</div>`;
     setStorage(cacheKey, el.innerHTML);
   } catch(e) {
-    el.textContent = 'Stay on track today — every good choice compounds. 💪';
+    el.innerHTML = `<div style="font-size:14px;color:#e2e8f0;line-height:1.65">Stay on track today — every good choice compounds. 💪</div>`;
   }
 }
 
@@ -12618,12 +12617,106 @@ async
 // ══════════════════════════════════════════════════════
 // FEATURE: Meal Suggestions
 // ══════════════════════════════════════════════════════
+async function formatMealIdeas(text) {
+  // Parse structured meal suggestion response into beautiful cards
+  const mealColors = [
+    { grad: 'linear-gradient(135deg,#0c1f12,#0d2a18)', border: '#14532d', accent: '#22c55e', badge: '#15803d' },
+    { grad: 'linear-gradient(135deg,#0d1a2e,#0f2744)', border: '#1e3a5f', accent: '#60a5fa', badge: '#1d4ed8' },
+    { grad: 'linear-gradient(135deg,#1f0d2e,#2a1048)', border: '#4c1d95', accent: '#a78bfa', badge: '#6d28d9' },
+  ];
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let meals = [];
+  let current = null;
+
+  for (const line of lines) {
+    // Detect meal header: "Option 1:", "**Option 1:", numbered, or bold title
+    const headerMatch = line.match(/^(?:\*{0,2})(?:Option\s*\d+|Meal\s*\d+|\d+[\.\)])\s*[:\-–]?\s*(.+?)(?:\*{0,2})$/)
+      || line.match(/^#{1,3}\s+(.+)/);
+    if (headerMatch) {
+      if (current) meals.push(current);
+      current = { title: headerMatch[1].replace(/\*\*/g,'').trim(), items: [], note: '' };
+      continue;
+    }
+    // Bullet item
+    const bulletMatch = line.match(/^[-•*▸→]\s+(.+)/);
+    if (bulletMatch && current) {
+      current.items.push(bulletMatch[1]);
+      continue;
+    }
+    // Closing note / summary line (no bullet, after items)
+    if (current && current.items.length > 0 && !line.match(/^[-•*▸→]/)) {
+      current.note = line.replace(/\*\*/g,'');
+      continue;
+    }
+    // If no current meal yet, treat as preamble
+  }
+  if (current) meals.push(current);
+
+  // If parsing yielded nothing useful, fall back to formatAIResponse
+  if (meals.length === 0) return formatAIResponse(text);
+
+  // Build macro pill parser: "(284 cal, 53g protein, 0g carbs, 6g fat)"
+  function parseMacros(str) {
+    const cal = (str.match(/(\d+)\s*cal/) || [])[1];
+    const pro = (str.match(/(\d+)g?\s*protein/) || [])[1];
+    const carb = (str.match(/(\d+)g?\s*carb/) || [])[1];
+    const fat = (str.match(/(\d+)g?\s*fat/) || [])[1];
+    return { cal, pro, carb, fat };
+  }
+
+  function macroTag(val, label, color) {
+    if (!val) return '';
+    return `<span style="display:inline-flex;align-items:center;gap:2px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;color:${color};white-space:nowrap">${val}<span style="font-weight:400;opacity:0.7;margin-left:2px">${label}</span></span>`;
+  }
+
+  let html = '';
+  meals.forEach((meal, i) => {
+    const c = mealColors[i % mealColors.length];
+    const itemsHtml = meal.items.map(item => {
+      // Split item name from macro info in parens
+      const parenMatch = item.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+      let itemName = item, macroPart = '';
+      if (parenMatch) {
+        itemName = parenMatch[1];
+        const m = parseMacros(parenMatch[2]);
+        const pills = [
+          macroTag(m.cal, 'cal', '#fbbf24'),
+          macroTag(m.pro, 'g P', '#34d399'),
+          macroTag(m.carb, 'g C', '#60a5fa'),
+          macroTag(m.fat, 'g F', '#f87171'),
+        ].filter(Boolean).join('');
+        if (pills) macroPart = `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">${pills}</div>`;
+      }
+      return `<div style="padding:8px 10px;background:rgba(0,0,0,0.25);border-radius:10px;margin-bottom:6px">
+        <div style="font-size:13px;color:#e2e8f0;font-weight:500;line-height:1.4">${itemName.replace(/\*\*/g,'')}</div>
+        ${macroPart}
+      </div>`;
+    }).join('');
+
+    html += `<div style="background:${c.grad};border:1px solid ${c.border};border-radius:14px;padding:13px 14px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:800;color:${c.accent};letter-spacing:0.8px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <span style="width:20px;height:20px;background:${c.badge};border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">${i+1}</span>
+        ${meal.title}
+      </div>
+      <div>${itemsHtml}</div>
+      ${meal.note ? `<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:4px;font-style:italic">${meal.note}</div>` : ''}
+    </div>`;
+  });
+
+  return html;
+}
+
 async function getMealSuggestions() {
   const el = document.getElementById('mealSuggestionsOutput');
   if (!el) return;
-  el.innerHTML = '<span style="color:#f59e0b">🤖 Generating suggestions…</span>';
 
-  const goals = getStorage('userGoals', {});
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:14px 0;color:#f59e0b">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="animation:spin 1s linear infinite;flex-shrink:0">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round"/>
+    </svg>
+    <span style="font-size:13px;font-weight:600">Building personalized meal ideas…</span>
+  </div>`;
+
   const today = todayKey();
   const log = getStorage('foodEntries', {})[today] || [];
   const eaten = log.reduce((a,e) => ({
@@ -12641,19 +12734,38 @@ async function getMealSuggestions() {
     f: Math.max(0, target.fat - eaten.f),
   };
 
+  const prompt = `You are a precision sports nutrition AI for Jeremy, a 52-year-old male marathon runner (training for Grandma's Marathon, June 20 2026) focused on body recomposition (goal: 165→160 lbs).
+
+Remaining macros for the rest of today:
+- Calories: ${Math.round(remaining.cal)} kcal
+- Protein: ${Math.round(remaining.p)}g
+- Carbs: ${Math.round(remaining.c)}g
+- Fat: ${Math.round(remaining.f)}g
+
+Suggest exactly 3 practical meal or snack options. Use this EXACT format for each:
+
+Option 1: [Descriptive Name]
+- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
+- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
+
+Option 2: [Descriptive Name]
+- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
+
+Option 3: [Descriptive Name]
+- [Food item] (X cal, Xg protein, Xg carbs, Xg fat)
+
+Rules: Real foods only. Macros must add up close to remaining targets. Prioritize protein. Be specific with portions (oz, cups, pieces). No preamble or closing summary.`;
+
   try {
     const resp = await callClaudeAPI({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 400,
-      messages: [{
-        role: 'user',
-        content: `Suggest 3 specific meals or snacks for the rest of today for a 52yo male marathon runner trying to lose weight.\n\nRemaining macros needed:\n- Calories: ${Math.round(remaining.cal)} kcal\n- Protein: ${Math.round(remaining.p)}g\n- Carbs: ${Math.round(remaining.c)}g\n- Fat: ${Math.round(remaining.f)}g\n\nFormat as a short bulleted list. Each suggestion should be a real food with approx macros. Be practical and specific.`
-      }]
+      max_tokens: 500,
+      messages: [{ role: 'user', content: prompt }]
     });
-    const text = resp?.content?.[0]?.text || 'Try: Greek yogurt + berries (20g protein), chicken + rice bowl (40g protein), protein shake.';
-    el.innerHTML = text.replace(/\n/g, '<br>').replace(/^[•\-\*] /gm, '→ ');
+    const text = resp?.content?.[0]?.text || '';
+    el.innerHTML = text ? formatMealIdeas(text) : formatMealIdeas(`Option 1: High-Protein Dinner\n- 6 oz grilled chicken breast (284 cal, 53g protein, 0g carbs, 6g fat)\n- 1 oz almonds (164 cal, 6g protein, 0g carbs, 14g fat)\n\nOption 2: Fish & Healthy Fat\n- 5 oz baked cod (231 cal, 50g protein, 0g carbs, 2g fat)\n- 2 tbsp olive oil (239 cal, 0g protein, 0g carbs, 27g fat)\n\nOption 3: Quick Egg Plate\n- 4 hard-boiled eggs (whites + 2 yolks) (196 cal, 24g protein, 0g carbs, 10g fat)\n- 3 oz deli turkey breast (90 cal, 20g protein, 0g carbs, 1g fat)`);
   } catch(e) {
-    el.innerHTML = '→ Greek yogurt + berries (150 cal, 20g protein)<br>→ Chicken rice bowl (450 cal, 40g protein)<br>→ Casein protein shake before bed (130 cal, 25g protein)';
+    el.innerHTML = formatMealIdeas(`Option 1: High-Protein Dinner\n- 6 oz grilled chicken breast (284 cal, 53g protein, 0g carbs, 6g fat)\n- 1 oz almonds (164 cal, 6g protein, 0g carbs, 14g fat)\n\nOption 2: Fish Plate\n- 5 oz baked cod (231 cal, 50g protein, 0g carbs, 2g fat)\n- 2 tbsp olive oil drizzle (239 cal, 0g protein, 0g carbs, 27g fat)\n\nOption 3: Egg & Turkey Snack\n- 4 hard-boiled eggs whites + 2 yolks (196 cal, 24g protein, 0g carbs, 10g fat)\n- 3 oz deli turkey breast (90 cal, 20g protein, 0g carbs, 1g fat)`);
   }
 }
 
