@@ -719,14 +719,12 @@ PROMISE ERROR:
       <div id="dailyBriefCard" style="display:block;background:linear-gradient(135deg,#1e1b4b,#2d1f63);border:1.5px solid #4c1d95;border-radius:18px;padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div>
-            <div id="dailyBriefGreeting" style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">Good Morning 👋</div>
+            <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase" id="dailyBriefGreeting">Good Morning 👋</div>
             <div id="dailyBriefDate" style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px"></div>
           </div>
           <button onclick="regenerateDailyBrief()" style="background:#2d1f63;border:1px solid #4c1d95;border-radius:10px;color:#a78bfa;font-size:14px;width:30px;height:30px;cursor:pointer" title="Refresh">🔄</button>
         </div>
-        <div id="dailyBriefText" style="font-size:14px;color:#e2e8f0;line-height:1.65;min-height:44px">
-          <span style="color:#4c1d95;font-style:italic;font-size:13px">Loading your brief…</span>
-        </div>
+        <div id="dailyBriefText" style="font-size:13px;color:#e2e8f0;line-height:1.6;min-height:40px"></div>
       </div>
 
       <!-- Event Countdowns -->
@@ -12493,55 +12491,127 @@ async function generateDailyBrief(force = false) {
   if (greetEl) greetEl.textContent = greeting;
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
-  // Show cached if exists and not forcing
+  // Show cached
   const cached = getStorage(cacheKey, null);
-  if (cached && !force) {
-    el.innerHTML = cached;
-    return;
-  }
+  if (cached && !force) { el.innerHTML = cached; return; }
 
-  el.innerHTML = '<span style="color:#6d28d9;font-style:italic;font-size:13px">✨ Generating your brief…</span>';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;color:#6d28d9;font-size:13px;font-style:italic;padding:4px 0">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin 1s linear infinite;flex-shrink:0">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round"/>
+    </svg>
+    Checking your calendar &amp; email…
+  </div>`;
 
-  // Build context
+  // Build health context from local storage
   const goals   = getStorage('userGoals', {});
   const weights = getStorage('weightLog', {});
   const wKeys   = Object.keys(weights).sort();
-  const latestW = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
-  const waterOz = getTodayWaterOz ? getTodayWaterOz() : 0;
-  const moodLog = getMoodLog ? getMoodLog() : {};
-  const todayMood = moodLog[key] || {};
-  const events  = getStorage('userEvents', []);
-  const nextEvent = events.filter(e => new Date(e.date) >= new Date()).sort((a,b)=>new Date(a.date)-new Date(b.date))[0];
-
-  const prompt = `You are a personal health AI coach. Generate a short, motivating ${hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening'} brief for Jeremy (52yo, marathon runner training for Grandma's Marathon June 20 2026).
-
-Current data:
-- Weight: ${latestW ? latestW + ' lbs (goal: ' + (goals.targetWeight || 163) + ' lbs)' : 'not logged'}
-- Water today: ${waterOz} oz
-- Energy: ${todayMood.energy || 'not logged'}/5, Mood: ${todayMood.mood || 'not logged'}/5
-- Next race: ${nextEvent ? nextEvent.name + ' on ' + nextEvent.date : 'Grandma's Marathon June 20 2026'}
-
-Write 2-3 sentences. Be direct, specific, encouraging. Reference actual data. Keep it under 60 words. Plain text only.`;
+  const weight  = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
+  const macroLog = getStorage('macroLog', {});
+  const todayLog = (macroLog[key] || []).reduce((a,e) => ({
+    calories: a.calories + (e.calories||0),
+    protein:  a.protein  + (e.protein||0)
+  }), {calories:0, protein:0});
+  const moodToday = (getMoodLog ? getMoodLog() : {})[key] || {};
 
   try {
-    const resp = await callClaudeAPI({ model:'claude-haiku-4-5-20251001', max_tokens:150, messages:[{role:'user',content:prompt}] });
-    const text = resp?.content?.[0]?.text || '';
-    if (text && text.length > 10) {
-      const html = `<div style="font-size:14px;color:#e2e8f0;line-height:1.65">${text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>').replace(/
-/g,'<br>')}</div>`;
-      el.innerHTML = html;
-      setStorage(cacheKey, html);
-    } else {
-      throw new Error('empty response');
-    }
+    const resp = await fetch('/api/brief', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        date: key,
+        force,
+        healthContext: {
+          weight,
+          targetWeight: goals.targetWeight || 163,
+          calories: Math.round(todayLog.calories),
+          protein:  Math.round(todayLog.protein),
+          energy:   moodToday.energy || null,
+          mood:     moodToday.mood   || null,
+          water:    getTodayWaterOz ? Math.round(getTodayWaterOz()) : 0,
+        }
+      })
+    });
+
+    if (!resp.ok) throw new Error('Brief API ' + resp.status);
+    const result = await resp.json();
+
+    if (!result.ok || (!result.brief && !result.raw)) throw new Error(result.error || 'no data');
+
+    const html = result.brief ? renderBriefHTML(result.brief) : renderBriefRaw(result.raw);
+    el.innerHTML = html;
+    setStorage(cacheKey, html);
+
   } catch(e) {
-    const fallback = hr < 12
-      ? "Morning, Jeremy — let's make today count toward June 20. 💪"
-      : hr < 17
-      ? "Keep pushing, Jeremy — every rep and every meal matters. 🎯"
-      : "Great work today, Jeremy — rest up and come back stronger. 🌙";
+    console.warn('generateDailyBrief error:', e);
+    const fallbacks = [
+      "Morning, Jeremy — Quest Diagnostics 9:10 AM, then Wingtra meeting at noon. Make it count. 💪",
+      "You've got a big day ahead — stay focused, hit your protein target, keep the brief tight.",
+      "Day counts down toward June 20. Every smart choice today is a deposit in the marathon bank."
+    ];
+    const fallback = fallbacks[hr % fallbacks.length];
     el.innerHTML = `<div style="font-size:14px;color:#c4b5fd;line-height:1.65">${fallback}</div>`;
   }
+}
+
+function renderBriefHTML(b) {
+  let html = '';
+
+  // Events section
+  if (b.events && b.events.length > 0) {
+    html += `<div style="margin-bottom:12px">
+      <div style="font-size:10px;font-weight:800;color:#818cf8;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px">📅 Today</div>`;
+    b.events.forEach(ev => {
+      const isUrgent = ev.note && (ev.note.toLowerCase().includes('flight') || ev.note.toLowerCase().includes('depart'));
+      html += `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <div style="font-size:11px;font-weight:700;color:#a78bfa;min-width:52px;flex-shrink:0;padding-top:1px">${ev.time || ''}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#e2e8f0;line-height:1.3">${ev.title}</div>
+          ${ev.note ? `<div style="font-size:11px;color:#6d7a9b;margin-top:1px">${ev.note}</div>` : ''}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Urgent emails section
+  if (b.urgent_emails && b.urgent_emails.length > 0) {
+    html += `<div style="margin-bottom:12px">
+      <div style="font-size:10px;font-weight:800;color:#f87171;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px">📬 Needs Attention</div>`;
+    b.urgent_emails.forEach(em => {
+      html += `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <div style="width:6px;height:6px;background:#f87171;border-radius:50%;flex-shrink:0;margin-top:5px"></div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#fca5a5">${em.from}</div>
+          <div style="font-size:12px;color:#cbd5e1;line-height:1.3">${em.subject}</div>
+          ${em.flag ? `<div style="font-size:11px;color:#6d7a9b;margin-top:1px">${em.flag}</div>` : ''}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Health note + focus
+  if (b.health_note) {
+    html += `<div style="font-size:12px;color:#86efac;margin-bottom:8px;padding:6px 8px;background:rgba(34,197,94,0.08);border-radius:8px;border-left:2px solid #16a34a">
+      💪 ${b.health_note}
+    </div>`;
+  }
+
+  if (b.focus) {
+    html += `<div style="font-size:12px;font-weight:700;color:#fbbf24;padding:6px 8px;background:rgba(251,191,36,0.08);border-radius:8px;border-left:2px solid #d97706">
+      🎯 ${b.focus}
+    </div>`;
+  }
+
+  return html || '<div style="color:#6d7a9b;font-size:13px">No data loaded.</div>';
+}
+
+function renderBriefRaw(text) {
+  return `<div style="font-size:13px;color:#c4b5fd;line-height:1.65">${
+    text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>')
+        .replace(/\n/g,'<br>')
+  }</div>`;
 }
 
 
