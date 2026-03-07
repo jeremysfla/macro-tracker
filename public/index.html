@@ -596,6 +596,24 @@
     background:#500724;
     transform:scale(1.15);
   }
+  /* Compact mood bar variant */
+  .mood-btn-sm {
+    font-size:16px;
+    background:transparent;
+    border:2px solid transparent;
+    border-radius:8px;
+    width:30px;height:30px;
+    cursor:pointer;
+    transition:all 0.15s;
+    display:flex;align-items:center;justify-content:center;
+    padding:0;
+    line-height:1;
+  }
+  .mood-btn-sm.active {
+    border-color:#f472b6;
+    background:#500724;
+    transform:scale(1.1);
+  }
 
   /* ── Supplement checklist ── */
   .supp-row {
@@ -703,6 +721,33 @@ PROMISE ERROR:
 
       <!-- 2. Week strip -->
       <div class="week-strip" id="weekStrip"></div>
+
+      <!-- 2b. Daily Check-in (mood/energy compact bar) -->
+      <div id="moodCard" style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:7px 10px;margin-bottom:10px;box-shadow:var(--shadow)">
+        <div style="font-size:10px;font-weight:700;color:#f472b6;letter-spacing:0.8px;text-transform:uppercase;white-space:nowrap;margin-right:2px">Check-in</div>
+        <div style="display:flex;align-items:center;gap:2px;flex:1">
+          <div style="font-size:9px;color:var(--text3);font-weight:600;margin-right:2px;white-space:nowrap">⚡</div>
+          <div id="energyBtns" style="display:flex;gap:2px">
+            <button onclick="setMood('energy',1)" data-val="1" class="mood-btn-sm" title="Exhausted">😴</button>
+            <button onclick="setMood('energy',2)" data-val="2" class="mood-btn-sm" title="Low">😕</button>
+            <button onclick="setMood('energy',3)" data-val="3" class="mood-btn-sm" title="Okay">😐</button>
+            <button onclick="setMood('energy',4)" data-val="4" class="mood-btn-sm" title="Good">🙂</button>
+            <button onclick="setMood('energy',5)" data-val="5" class="mood-btn-sm" title="Great">💪</button>
+          </div>
+        </div>
+        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+        <div style="display:flex;align-items:center;gap:2px;flex:1">
+          <div style="font-size:9px;color:var(--text3);font-weight:600;margin-right:2px;white-space:nowrap">😊</div>
+          <div id="moodBtns" style="display:flex;gap:2px">
+            <button onclick="setMood('mood',1)" data-val="1" class="mood-btn-sm" title="Rough">😣</button>
+            <button onclick="setMood('mood',2)" data-val="2" class="mood-btn-sm" title="Meh">😞</button>
+            <button onclick="setMood('mood',3)" data-val="3" class="mood-btn-sm" title="Okay">😐</button>
+            <button onclick="setMood('mood',4)" data-val="4" class="mood-btn-sm" title="Good">😊</button>
+            <button onclick="setMood('mood',5)" data-val="5" class="mood-btn-sm" title="Great">😄</button>
+          </div>
+        </div>
+        <div id="moodSavedMsg" style="display:none;font-size:10px;color:#f472b6;font-weight:700;flex-shrink:0">✓</div>
+      </div>
 
       <!-- 3. Workout streak -->
       <div id="streakCard" class="card" style="padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">
@@ -902,34 +947,6 @@ PROMISE ERROR:
         <div id="adaptiveMacroBanner" class="adaptive-banner" style="display:none">
           <span>🧠</span><div id="adaptiveMacroText"></div>
         </div>
-      </div>
-
-      <!-- FEATURE: Mood & Energy Check-in -->
-      <div class="card" id="moodCard" style="margin-bottom:14px">
-        <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
-              <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
-              <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
-              <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good">🙂</button>
-              <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
-              <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
-              <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
-              <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
-              <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
-            </div>
-          </div>
-        </div>
-        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:11px;color:#f472b6;font-weight:600;margin-top:8px">✅ Saved!</div>
       </div>
 
       <!-- 10. Workout nutrition prompt -->
@@ -4277,12 +4294,17 @@ function logScannedFood() {
 function isSaneProduct(p) {
   if (!p || !p.name) return false;
   if (p.calories < 0 || p.calories > 5000) return false;
-  if (p.protein  < 0 || p.protein  > 400)  return false;
-  if (p.carbs    < 0 || p.carbs    > 600)  return false;
-  if (p.fat      < 0 || p.fat      > 400)  return false;
-  // Only cross-check if we have all macros and meaningful calories
+  if (p.protein  < 0 || p.protein  > 500)  return false;
+  if (p.carbs    < 0 || p.carbs    > 700)  return false;
+  if (p.fat      < 0 || p.fat      > 500)  return false;
+  // Ratio check: skip if calories are very low (beverages, condiments)
+  // or if macros sum to 0 (incomplete data we'll still show)
   const calc = p.protein * 4 + p.carbs * 4 + p.fat * 9;
-  if (p.calories > 50 && calc > 0 && (calc / p.calories < 0.3 || calc / p.calories > 3.0)) return false;
+  if (p.calories > 30 && calc > 10) {
+    const ratio = calc / p.calories;
+    // Allow wider range: 0.2–4.0 to accommodate high-protein/high-fat foods
+    if (ratio < 0.2 || ratio > 4.0) return false;
+  }
   return true;
 }
 
@@ -4502,137 +4524,140 @@ function extractServingGrams(servingStr) {
 // ── Barcode lookup: cascade across all databases ──
 async function lookupBarcodeMultiDB(barcode) {
   const log = msg => { const el = document.getElementById('scanStatus'); if(el) el.textContent = msg; };
-  // Normalise barcode — OFF canonical format is EAN-13 (13 digits)
+
+  // Normalise: UPC-A (12 digits) vs EAN-13 (13 digits)
   const ean13  = barcode.length === 12 ? '0' + barcode : barcode;
   const upcA   = barcode.length === 13 && barcode.startsWith('0') ? barcode.slice(1) : barcode;
   const allCodes = [...new Set([barcode, ean13, upcA])];
 
-  // OFF requires User-Agent header to avoid bot-detection bans
-  const OFF_HDR = {
-    'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)',
-    'Accept': 'application/json',
-  };
-  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments,nutrition_data_per,ecoscore_grade';
+  const OFF_HDR = { 'User-Agent': 'MacroTracker/1.0 (jeremy@dronenerd.com)', 'Accept': 'application/json' };
+  const OFF_FIELDS = 'product_name,product_name_en,abbreviated_product_name,brands,serving_size,serving_quantity,nutriments';
 
-  // Cache check
+  // Cache check — includes all code variants
   const cache = getStorage('barcodeCache', {});
   for (const code of allCodes) {
-    if (cache[code]) { log('✅ Found (cached)'); return cache[code]; }
+    if (cache[code] && cache[code]._ts && (Date.now() - cache[code]._ts < 7 * 86400000)) {
+      log('✅ Found (cached)'); return cache[code];
+    }
   }
 
   function saveCache(product) {
-    allCodes.forEach(c => { cache[c] = product; });
+    const entry = { ...product, _ts: Date.now() };
+    allCodes.forEach(c => { cache[c] = entry; });
     setStorage('barcodeCache', cache);
     return product;
   }
 
-  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
-  try {
-    log('⏳ Searching Open Food Facts…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('OFF.net:', e); }
+  // ── Helper: fetch OFF for one code, return parsed product or null ──
+  async function tryOFF(baseUrl, code) {
+    try {
+      const r = await fetch(`${baseUrl}/api/v2/product/${code}?fields=${OFF_FIELDS}`, { headers: OFF_HDR });
+      if (!r.ok) return null;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = parseOFProduct(d.product);
+        if (isSaneProduct(p)) return p;
+      }
+    } catch(e) {}
+    return null;
+  }
 
-  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
-  try {
-    log('⏳ Searching USDA…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        const foods = d.foods || [];
-        // Prefer exact UPC match, fallback to first result
-        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods.find(f => f.gtinUpc);
-        if (hit) {
-          const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('USDA:', e); }
+  // ── Helper: fetch USDA by gtinUpc for one code, return parsed product or null ──
+  async function tryUSDA(code) {
+    try {
+      // Try direct gtinUpc parameter first (most accurate)
+      const r = await fetch(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded,Foundation&pageSize=10`
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      const foods = d.foods || [];
+      // Prefer exact UPC match
+      const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+      // Also accept partial: barcode appears anywhere in gtinUpc (leading-zero issues)
+      const partial = !exact && foods.find(f => f.gtinUpc && (f.gtinUpc.endsWith(upcA) || allCodes.some(c => f.gtinUpc.includes(c))));
+      const hit = exact || partial || foods[0];
+      if (hit) {
+        const p = parseUSDAProduct(hit);
+        if (isSaneProduct(p)) return { ...p, _exact: !!exact };
+      }
+    } catch(e) {}
+    return null;
+  }
 
-  // 3. Open Food Facts .org (different CDN node, second chance)
+  // ── ROUND 1: Parallel — OFF.net + USDA simultaneously ──
+  log('⏳ Looking up barcode…');
   try {
-    log('⏳ Searching Open Food Facts (alt)…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next */ }
-    }
-  } catch(e) { console.warn('OFF.org:', e); }
+    const [offNet, usda] = await Promise.allSettled([
+      tryOFF('https://world.openfoodfacts.net', ean13),
+      tryUSDA(upcA),
+    ]);
+    // Prefer OFF if found and has decent data; USDA is more reliable for US branded
+    const offResult  = offNet.status  === 'fulfilled' ? offNet.value  : null;
+    const usdaResult = usda.status    === 'fulfilled' ? usda.value    : null;
 
-  // 5. UPC ItemDB → USDA name lookup
+    // Pick best: prefer USDA exact match, then OFF (usually has better serving data), then USDA partial
+    const best = (usdaResult?._exact ? usdaResult : null) || offResult || usdaResult;
+    if (best) {
+      const src = best === usdaResult ? (usdaResult._exact ? '✅ Found — USDA (exact)' : '✅ Found — USDA') : '✅ Found — Open Food Facts';
+      log(src);
+      return saveCache(best);
+    }
+  } catch(e) {}
+
+  // ── ROUND 2: Try alternate UPC codes on OFF.net ──
+  log('⏳ Trying alternate codes…');
+  for (const code of allCodes) {
+    const p = await tryOFF('https://world.openfoodfacts.net', code);
+    if (p) { log('✅ Found — Open Food Facts'); return saveCache(p); }
+  }
+
+  // ── ROUND 3: OFF.org (different CDN, second chance) ──
+  log('⏳ Checking backup database…');
+  for (const code of allCodes) {
+    const p = await tryOFF('https://world.openfoodfacts.org', code);
+    if (p) { log('✅ Found — Open Food Facts'); return saveCache(p); }
+  }
+
+  // ── ROUND 4: UPC ItemDB → name → USDA name search ──
+  log('⏳ Searching UPC registry…');
   try {
-    log('⏳ Searching UPC database…');
     const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`);
     if (r.ok) {
       const d = await r.json();
       const item = (d.items || [])[0];
-      if (item && item.title) {
-        log(`⏳ Found "${item.title.slice(0,30)}" — looking up nutrition…`);
+      if (item?.title) {
+        log(`⏳ Found "${item.title.slice(0,28)}" — looking up nutrition…`);
         const usdaHit = await searchUSDAByName(item.title);
         if (usdaHit) {
           usdaHit.name  = item.title;
           usdaHit.brand = item.brand || '';
-          log('✅ Found via UPC + USDA');
+          log('✅ Found via UPC registry + USDA');
           return saveCache(usdaHit);
         }
+        // Return name-only stub so user can at least see what it is
         return { name: item.title, brand: item.brand || '', calories: 0, protein: 0, carbs: 0, fat: 0, servingSize: '1 serving', source: 'UPC ItemDB', incomplete: true };
       }
     }
   } catch(e) { console.warn('UPCItemDB:', e); }
 
-  // 6. AI fallback
+  // ── ROUND 5: AI identification ──
+  log('⏳ Asking AI to identify product…');
   try {
-    log('⏳ Asking AI to identify product…');
     const aiResp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001', max_tokens: 300,
       messages: [{ role: 'user', content:
-        `Barcode ${barcode} is a grocery product. Identify it and estimate nutrition per serving. ` +
-        `Return ONLY JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
+        `Barcode ${barcode} is a US grocery product. Identify it and give accurate nutrition per serving. ` +
+        `Return ONLY valid JSON: {"name":"","brand":"","calories":0,"protein":0,"carbs":0,"fat":0,"servingSize":"1 serving"} or null if unknown.`
       }]
     });
     const txt = aiResp.content?.find(b => b.type === 'text')?.text || '';
     const parsed = JSON.parse(txt.replace(/```json|```/g, '').trim());
-    if (parsed && parsed.name && parsed.calories > 0) {
+    if (parsed?.name && parsed.calories > 0) {
       log('✅ AI identified product');
       return saveCache({ ...parsed, source: 'AI Est' });
     }
-  } catch(e) { /* optional */ }
+  } catch(e) {}
 
   return null;
 }
@@ -12359,7 +12384,7 @@ function renderMoodBtns() {
   ['energy', 'mood'].forEach(type => {
     const container = document.getElementById(type + 'Btns');
     if (!container) return;
-    container.querySelectorAll('.mood-btn').forEach(btn => {
+    container.querySelectorAll('.mood-btn, .mood-btn-sm').forEach(btn => {
       const v = parseInt(btn.dataset.val);
       btn.classList.toggle('active', today[type] === v);
     });
