@@ -586,7 +586,9 @@
     background:var(--surface2);
     border:2px solid transparent;
     border-radius:10px;
-    width:42px;height:42px;
+    flex:1;
+    min-width:0;
+    height:44px;
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
@@ -594,7 +596,7 @@
   .mood-btn.active {
     border-color:#f472b6;
     background:#500724;
-    transform:scale(1.15);
+    transform:scale(1.1);
   }
 
   /* ── Supplement checklist ── */
@@ -636,6 +638,37 @@
   .bp-elevated { background:#451a03;color:#fb923c; }
   .bp-high { background:#450a0a;color:#f87171; }
 
+  /* ── Daily Welcome Modal ── */
+  #welcomeOverlay {
+    position:fixed;inset:0;z-index:9999;
+    background:rgba(0,0,0,0.85);
+    display:flex;align-items:flex-end;justify-content:center;
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    animation:fadeIn 0.25s ease;
+  }
+  #welcomeSheet {
+    background:var(--surface);
+    border-radius:24px 24px 0 0;
+    width:100%;max-width:480px;
+    padding:28px 20px 44px;
+    border-top:1px solid var(--border2);
+    animation:slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes slideUp {
+    from{transform:translateY(100%);opacity:0;}
+    to{transform:translateY(0);opacity:1;}
+  }
+  .wm-mood-row {
+    display:flex;align-items:center;gap:10px;margin-bottom:12px;
+  }
+  .wm-mood-label {
+    font-size:12px;font-weight:700;color:var(--text2);
+    text-transform:uppercase;letter-spacing:0.5px;
+    width:56px;flex-shrink:0;
+  }
+  .wm-btns {
+    display:flex;flex:1;gap:6px;
+  }
 </style>
 <link rel="icon" type="image/png" href="data:image/png;base64,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" />
 <link rel="apple-touch-icon" href="data:image/png;base64,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" />
@@ -719,7 +752,7 @@ PROMISE ERROR:
       <div id="dailyBriefCard" style="display:block;background:linear-gradient(135deg,#1e1b4b,#2d1f63);border:1.5px solid #4c1d95;border-radius:18px;padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div>
-            <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase" id="dailyBriefGreeting">Good Morning 👋</div>
+            <div id="dailyBriefGreeting" style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">Good Morning 👋</div>
             <div id="dailyBriefDate" style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px"></div>
           </div>
           <button onclick="regenerateDailyBrief()" style="background:#2d1f63;border:1px solid #4c1d95;border-radius:10px;color:#a78bfa;font-size:14px;width:30px;height:30px;cursor:pointer" title="Refresh">🔄</button>
@@ -904,32 +937,18 @@ PROMISE ERROR:
         </div>
       </div>
 
-      <!-- FEATURE: Mood & Energy Check-in -->
-      <div class="card" id="moodCard" style="margin-bottom:14px">
-        <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
-              <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
-              <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
-              <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good">🙂</button>
-              <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
+      <!-- FEATURE: Mood & Energy Check-in — shows compact summary after daily checkin done -->
+      <div class="card" id="moodCard" style="margin-bottom:14px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div id="moodSummaryEnergy" style="font-size:24px">⚡</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#f472b6">Daily Check-in ✓</div>
+              <div id="moodSummaryText" style="font-size:11px;color:var(--text2);margin-top:1px">Logged</div>
             </div>
           </div>
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
-              <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
-              <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
-              <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
-              <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
-            </div>
-          </div>
+          <button onclick="reopenCheckin()" style="font-size:11px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit;padding:6px 10px;border-radius:8px;background:var(--surface2)">Edit</button>
         </div>
-        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:11px;color:#f472b6;font-weight:600;margin-top:8px">✅ Saved!</div>
       </div>
 
       <!-- 10. Workout nutrition prompt -->
@@ -12337,6 +12356,156 @@ function renderSleepPanel() {
 function getMoodLog() { return getStorage('moodLog', {}); }
 function saveMoodLog(log) { setStorage('moodLog', log); }
 
+// ══════════════════════════════════════════════════════
+// DAILY WELCOME MODAL
+// ══════════════════════════════════════════════════════
+const ENERGY_EMOJIS_MAP = ['😴','😕','😐','🙂','💪'];
+const MOOD_EMOJIS_MAP   = ['😣','😞','😐','😊','😄'];
+
+let _wmState = { energy: null, mood: null };
+
+function showWelcomeModal() {
+  const overlay = document.getElementById('welcomeOverlay');
+  if (!overlay) return;
+
+  // Set greeting
+  const hr = new Date().getHours();
+  const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+  const greetEl = document.getElementById('wmGreeting');
+  const dateEl  = document.getElementById('wmDate');
+  if (greetEl) greetEl.textContent = greet + ', Jeremy 👋';
+  if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  // Pre-fill weight if logged recently
+  const weights = getStorage('weightLog', {});
+  const wKeys = Object.keys(weights).sort();
+  const lastW = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
+  const wmW = document.getElementById('wmWeight');
+  if (wmW && lastW) wmW.value = lastW;
+
+  // Reset state
+  _wmState = { energy: null, mood: null };
+  ['wmEnergyBtns','wmMoodBtns'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+  });
+
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeWelcomeModal() {
+  const overlay = document.getElementById('welcomeOverlay');
+  if (overlay) overlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function wmSetMood(type, val) {
+  _wmState[type] = val;
+  const containerId = type === 'energy' ? 'wmEnergyBtns' : 'wmMoodBtns';
+  const container = document.getElementById(containerId);
+  if (container) {
+    container.querySelectorAll('.mood-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.val) === val);
+    });
+  }
+  // Enable submit once both are set (or at least one — be lenient)
+  const btn = document.getElementById('wmSubmitBtn');
+  if (btn) {
+    const ready = _wmState.energy !== null || _wmState.mood !== null;
+    btn.disabled = !ready;
+    btn.style.opacity = ready ? '1' : '0.5';
+  }
+}
+
+function submitWelcomeCheckin() {
+  const key = dateToKey(nowEST());
+
+  // Save mood/energy
+  if (_wmState.energy !== null || _wmState.mood !== null) {
+    const log = getMoodLog();
+    if (!log[key]) log[key] = {};
+    if (_wmState.energy !== null) log[key].energy = _wmState.energy;
+    if (_wmState.mood   !== null) log[key].mood   = _wmState.mood;
+    saveMoodLog(log);
+  }
+
+  // Save weight
+  const wmW = document.getElementById('wmWeight');
+  if (wmW && wmW.value) {
+    const w = parseFloat(wmW.value);
+    if (w > 50 && w < 500) {
+      const wLog = getStorage('weightLog', {});
+      wLog[key] = w;
+      setStorage('weightLog', wLog);
+    }
+  }
+
+  // Mark today as checked in
+  setStorage('lastCheckinDate', key);
+
+  closeWelcomeModal();
+  updateCheckinSummaryCard();
+  renderWeightTrend && renderWeightTrend();
+  scheduleCheckinSync && scheduleCheckinSync(500);
+}
+
+function skipWelcomeCheckin() {
+  setStorage('lastCheckinDate', dateToKey(nowEST()));
+  closeWelcomeModal();
+  updateCheckinSummaryCard();
+}
+
+function reopenCheckin() {
+  // Allow editing — clear the date lock and show modal with existing values
+  const key = dateToKey(nowEST());
+  const log = getMoodLog();
+  const today = log[key] || {};
+  _wmState = { energy: today.energy || null, mood: today.mood || null };
+  showWelcomeModal();
+  // Re-highlight existing selections
+  if (_wmState.energy) wmSetMood('energy', _wmState.energy);
+  if (_wmState.mood)   wmSetMood('mood',   _wmState.mood);
+}
+
+function updateCheckinSummaryCard() {
+  const card = document.getElementById('moodCard');
+  if (!card) return;
+  const key = dateToKey(nowEST());
+  const log = getMoodLog();
+  const today = log[key] || {};
+
+  if (today.energy || today.mood) {
+    const eEmoji = today.energy ? ENERGY_EMOJIS_MAP[today.energy-1] : '⚡';
+    const mEmoji = today.mood   ? MOOD_EMOJIS_MAP[today.mood-1]     : '😐';
+    const summaryEl = document.getElementById('moodSummaryText');
+    const energyEl  = document.getElementById('moodSummaryEnergy');
+    if (summaryEl) summaryEl.textContent = `Energy ${eEmoji} ${today.energy || '–'}/5 · Mood ${mEmoji} ${today.mood || '–'}/5`;
+    if (energyEl)  energyEl.textContent  = eEmoji;
+    card.style.display = 'block';
+  } else {
+    // Skipped — show minimal card
+    const summaryEl = document.getElementById('moodSummaryText');
+    if (summaryEl) summaryEl.textContent = 'Skipped today';
+    const energyEl = document.getElementById('moodSummaryEnergy');
+    if (energyEl) energyEl.textContent = '💜';
+    card.style.display = 'block';
+  }
+}
+
+function maybeShowWelcomeModal() {
+  const key = dateToKey(nowEST());
+  const lastCheckin = getStorage('lastCheckinDate', null);
+  if (lastCheckin === key) {
+    // Already done today — just show the summary card
+    updateCheckinSummaryCard();
+    return;
+  }
+  // First visit of the day — show modal
+  showWelcomeModal();
+}
+
+
 function setMood(type, val) {
   const key = dateToKey(nowEST());
   const log = getMoodLog();
@@ -12485,30 +12654,22 @@ async function generateDailyBrief(force = false) {
   const greetEl = document.getElementById('dailyBriefGreeting');
   if (!el) return;
 
-  // Time-aware greeting
   const hr = new Date().getHours();
   const greeting = hr < 12 ? 'Good Morning 👋' : hr < 17 ? 'Good Afternoon ☀️' : 'Good Evening 🌙';
   if (greetEl) greetEl.textContent = greeting;
-  if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
-  // Show cached
   const cached = getStorage(cacheKey, null);
   if (cached && !force) { el.innerHTML = cached; return; }
 
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;color:#6d28d9;font-size:13px;font-style:italic;padding:4px 0">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin 1s linear infinite;flex-shrink:0">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round"/>
-    </svg>
-    Checking your calendar &amp; email…
-  </div>`;
+  el.innerHTML = '<span style="color:#6d28d9;font-style:italic;font-size:13px">✨ Generating your brief…</span>';
 
-  // Build health context from local storage
   const goals   = getStorage('userGoals', {});
   const weights = getStorage('weightLog', {});
   const wKeys   = Object.keys(weights).sort();
   const weight  = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
   const macroLog = getStorage('macroLog', {});
-  const todayLog = (macroLog[key] || []).reduce((a,e) => ({
+  const todayMacros = (macroLog[key] || []).reduce((a,e) => ({
     calories: a.calories + (e.calories||0),
     protein:  a.protein  + (e.protein||0)
   }), {calories:0, protein:0});
@@ -12519,62 +12680,48 @@ async function generateDailyBrief(force = false) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        date: key,
-        force,
+        date: key, force,
         healthContext: {
-          weight,
-          targetWeight: goals.targetWeight || 163,
-          calories: Math.round(todayLog.calories),
-          protein:  Math.round(todayLog.protein),
+          weight, targetWeight: goals.targetWeight || 163,
+          calories: Math.round(todayMacros.calories),
+          protein:  Math.round(todayMacros.protein),
           energy:   moodToday.energy || null,
           mood:     moodToday.mood   || null,
           water:    getTodayWaterOz ? Math.round(getTodayWaterOz()) : 0,
         }
       })
     });
-
     if (!resp.ok) throw new Error('Brief API ' + resp.status);
     const result = await resp.json();
-
     if (!result.ok || (!result.brief && !result.raw)) throw new Error(result.error || 'no data');
-
     const html = result.brief ? renderBriefHTML(result.brief) : renderBriefRaw(result.raw);
     el.innerHTML = html;
     setStorage(cacheKey, html);
-
   } catch(e) {
     console.warn('generateDailyBrief error:', e);
-    const fallbacks = [
-      "Morning, Jeremy — Quest Diagnostics 9:10 AM, then Wingtra meeting at noon. Make it count. 💪",
-      "You've got a big day ahead — stay focused, hit your protein target, keep the brief tight.",
-      "Day counts down toward June 20. Every smart choice today is a deposit in the marathon bank."
-    ];
-    const fallback = fallbacks[hr % fallbacks.length];
+    const fallback = hr < 12 ? "Morning, Jeremy — let's make today count. 💪"
+      : hr < 17 ? "Afternoon check-in — stay on target. 🎯"
+      : "Solid day, Jeremy — rest up and go again tomorrow. 🌙";
     el.innerHTML = `<div style="font-size:14px;color:#c4b5fd;line-height:1.65">${fallback}</div>`;
   }
 }
 
 function renderBriefHTML(b) {
   let html = '';
-
-  // Events section
   if (b.events && b.events.length > 0) {
     html += `<div style="margin-bottom:12px">
       <div style="font-size:10px;font-weight:800;color:#818cf8;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px">📅 Today</div>`;
     b.events.forEach(ev => {
-      const isUrgent = ev.note && (ev.note.toLowerCase().includes('flight') || ev.note.toLowerCase().includes('depart'));
       html += `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-        <div style="font-size:11px;font-weight:700;color:#a78bfa;min-width:52px;flex-shrink:0;padding-top:1px">${ev.time || ''}</div>
+        <div style="font-size:11px;font-weight:700;color:#a78bfa;min-width:52px;flex-shrink:0;padding-top:1px">${ev.time||''}</div>
         <div>
           <div style="font-size:13px;font-weight:600;color:#e2e8f0;line-height:1.3">${ev.title}</div>
           ${ev.note ? `<div style="font-size:11px;color:#6d7a9b;margin-top:1px">${ev.note}</div>` : ''}
         </div>
       </div>`;
     });
-    html += `</div>`;
+    html += '</div>';
   }
-
-  // Urgent emails section
   if (b.urgent_emails && b.urgent_emails.length > 0) {
     html += `<div style="margin-bottom:12px">
       <div style="font-size:10px;font-weight:800;color:#f87171;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px">📬 Needs Attention</div>`;
@@ -12588,29 +12735,16 @@ function renderBriefHTML(b) {
         </div>
       </div>`;
     });
-    html += `</div>`;
+    html += '</div>';
   }
-
-  // Health note + focus
-  if (b.health_note) {
-    html += `<div style="font-size:12px;color:#86efac;margin-bottom:8px;padding:6px 8px;background:rgba(34,197,94,0.08);border-radius:8px;border-left:2px solid #16a34a">
-      💪 ${b.health_note}
-    </div>`;
-  }
-
-  if (b.focus) {
-    html += `<div style="font-size:12px;font-weight:700;color:#fbbf24;padding:6px 8px;background:rgba(251,191,36,0.08);border-radius:8px;border-left:2px solid #d97706">
-      🎯 ${b.focus}
-    </div>`;
-  }
-
-  return html || '<div style="color:#6d7a9b;font-size:13px">No data loaded.</div>';
+  if (b.health_note) html += `<div style="font-size:12px;color:#86efac;margin-bottom:8px;padding:6px 8px;background:rgba(34,197,94,0.08);border-radius:8px;border-left:2px solid #16a34a">💪 ${b.health_note}</div>`;
+  if (b.focus)       html += `<div style="font-size:12px;font-weight:700;color:#fbbf24;padding:6px 8px;background:rgba(251,191,36,0.08);border-radius:8px;border-left:2px solid #d97706">🎯 ${b.focus}</div>`;
+  return html || '<div style="color:#6d7a9b;font-size:13px">Brief loading…</div>';
 }
 
 function renderBriefRaw(text) {
   return `<div style="font-size:13px;color:#c4b5fd;line-height:1.65">${
-    text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>')
-        .replace(/\n/g,'<br>')
+    text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:#fff">$1</strong>').replace(/\n/g,'<br>')
   }</div>`;
 }
 
@@ -12676,15 +12810,15 @@ Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 a
 function initNewFeatures() {
   renderWater();
   renderSleepPanel();
-  renderMoodBtns();
   renderBPPanel();
   renderBodyCompPanel();
   renderSuppLog();
-  // Daily brief - generate if morning (first visit of day)
+  // Daily brief
   const key = dateToKey(nowEST());
   const cached = getStorage('dailyBrief_' + key, null);
-  if (cached) generateDailyBrief(false);
-  else generateDailyBrief(false);
+  generateDailyBrief(false);
+  // Show welcome check-in modal if first visit today
+  setTimeout(maybeShowWelcomeModal, 400);
 }
 
 
@@ -12968,6 +13102,60 @@ function renderMicronutrients() {
     <button class="btn-outline" onclick="document.getElementById('addSuppModal').classList.remove('open')">Cancel</button>
   </div>
 </div>
+
+
+  <!-- ── DAILY WELCOME MODAL ── -->
+  <div id="welcomeOverlay" style="display:none">
+    <div id="welcomeSheet">
+      <!-- Greeting -->
+      <div id="wmGreeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px">Good morning, Jeremy 👋</div>
+      <div id="wmDate" style="font-size:13px;color:var(--text2);margin-bottom:20px"></div>
+
+      <!-- Weight -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">⚖️ Weight today</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input id="wmWeight" type="number" step="0.1" placeholder="lbs" inputmode="decimal"
+            style="flex:1;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;outline:none;-webkit-appearance:none">
+          <span style="font-size:13px;color:var(--text2);white-space:nowrap">lbs</span>
+        </div>
+      </div>
+
+      <!-- Energy row -->
+      <div class="wm-mood-row">
+        <div class="wm-mood-label">⚡ Energy</div>
+        <div class="wm-btns" id="wmEnergyBtns">
+          <button onclick="wmSetMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
+          <button onclick="wmSetMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
+          <button onclick="wmSetMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
+          <button onclick="wmSetMood('energy',4)" data-val="4" class="mood-btn" title="Good">🙂</button>
+          <button onclick="wmSetMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
+        </div>
+      </div>
+
+      <!-- Mood row -->
+      <div class="wm-mood-row">
+        <div class="wm-mood-label">😊 Mood</div>
+        <div class="wm-btns" id="wmMoodBtns">
+          <button onclick="wmSetMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
+          <button onclick="wmSetMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
+          <button onclick="wmSetMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
+          <button onclick="wmSetMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
+          <button onclick="wmSetMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button id="wmSubmitBtn" onclick="submitWelcomeCheckin()"
+        style="width:100%;margin-top:8px;padding:15px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:16px;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;opacity:0.5;transition:opacity 0.2s"
+        disabled>
+        Let's go 🚀
+      </button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="skipWelcomeCheckin()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit">Skip for today</button>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>
