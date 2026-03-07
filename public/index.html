@@ -4522,7 +4522,7 @@ async function openScanner() {
   selectedTimeSlot = currentSlot;
 
   try {
-    await startQuagga();
+    await startScanner();
   } catch (e) {
     document.getElementById('scanStatus').textContent = '⚠️ Camera access denied. Please allow camera in browser settings.';
   }
@@ -4532,9 +4532,115 @@ async function openScanner() {
 let _scanBuffer = {};
 let _scanAccepted = false;
 const SCAN_CONSENSUS = 3;       // need 3 matching reads
-const SCAN_CONFIDENCE_MIN = 0.6; // minimum average error confidence (lower = stricter in Quagga)
 const SCAN_WINDOW_MS = 3000;    // reset buffer after 3s of no matches
+let _nativeScanRAF = null;      // requestAnimationFrame handle for native scanner
 
+// Try native BarcodeDetector first (much more accurate), fall back to QuaggaJS
+async function startScanner() {
+  _scanBuffer = {};
+  _scanAccepted = false;
+
+  // Check for native BarcodeDetector API (Chrome, Edge, Android, Safari 17.2+)
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const needed = ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter(f => formats.includes(f));
+      if (needed.length > 0) {
+        await startNativeScanner(needed);
+        return;
+      }
+    } catch(e) { /* fall through to QuaggaJS */ }
+  }
+
+  // Fallback to QuaggaJS
+  await startQuagga();
+}
+
+// ── Native BarcodeDetector scanner (high accuracy) ──
+async function startNativeScanner(formats) {
+  const container = document.getElementById('quagga-container');
+  const detector = new BarcodeDetector({ formats });
+
+  // Get camera stream
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: 'environment',
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    }
+  });
+  scannerStream = stream;
+
+  // Create/reuse video element
+  let vid = container.querySelector('video');
+  if (!vid) {
+    vid = document.createElement('video');
+    container.appendChild(vid);
+  }
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:18px;display:block';
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('autoplay', '');
+  vid.srcObject = stream;
+  await vid.play();
+
+  // Hide any QuaggaJS canvas artifacts
+  container.querySelectorAll('canvas').forEach(c => c.style.display = 'none');
+
+  // Scan loop using requestAnimationFrame for smooth performance
+  let lastScanTime = 0;
+  const SCAN_INTERVAL = 150; // scan every 150ms for responsiveness
+
+  async function scanFrame(timestamp) {
+    if (_scanAccepted) return;
+
+    if (timestamp - lastScanTime >= SCAN_INTERVAL) {
+      lastScanTime = timestamp;
+      try {
+        const barcodes = await detector.detect(vid);
+        for (const barcode of barcodes) {
+          const code = barcode.rawValue;
+          if (!code || !isValidBarcode(code)) continue;
+
+          handleScanResult(code);
+          if (_scanAccepted) return;
+        }
+      } catch(e) { /* frame not ready, skip */ }
+    }
+
+    _nativeScanRAF = requestAnimationFrame(scanFrame);
+  }
+
+  _nativeScanRAF = requestAnimationFrame(scanFrame);
+}
+
+// ── Shared consensus handler ──
+function handleScanResult(code) {
+  if (_scanAccepted) return;
+
+  const now = Date.now();
+  if (!_scanBuffer[code]) _scanBuffer[code] = [];
+  _scanBuffer[code].push(now);
+
+  // Clean old entries
+  _scanBuffer[code] = _scanBuffer[code].filter(t => now - t < SCAN_WINDOW_MS);
+
+  // Find the code with the most reads
+  const best = Object.keys(_scanBuffer).reduce((a, b) =>
+    (_scanBuffer[a]?.length || 0) >= (_scanBuffer[b]?.length || 0) ? a : b, code);
+  const count = _scanBuffer[best]?.length || 0;
+
+  if (count < SCAN_CONSENSUS) {
+    document.getElementById('scanStatus').textContent = `🔍 Reading barcode… (${count}/${SCAN_CONSENSUS})`;
+    return;
+  }
+
+  // Consensus reached!
+  _scanAccepted = true;
+  stopCamera();
+  lookupBarcode(best);
+}
+
+// ── QuaggaJS fallback (for older browsers) ──
 function startQuagga() {
   return new Promise((resolve, reject) => {
     if (!window.Quagga) {
@@ -4553,22 +4659,22 @@ function startQuagga() {
         target: document.getElementById('quagga-container'),
         constraints: {
           facingMode: 'environment',
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
       },
-      frequency: 10,
+      frequency: 15,
       decoder: {
         readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader'],
         debug: { drawBoundingBox: false, showFrequency: false, drawScanline: false, showPattern: false },
         multiple: false,
       },
       locator: {
-        patchSize: 'large',
-        halfSample: true,
+        patchSize: 'medium',
+        halfSample: false,
       },
       locate: true,
-      area: { top: '25%', right: '10%', bottom: '25%', left: '10%' },
+      area: { top: '20%', right: '5%', bottom: '20%', left: '5%' },
     }, (err) => {
       if (err) {
         document.getElementById('scanStatus').textContent = '⚠️ Could not start camera: ' + err.message;
@@ -4599,32 +4705,12 @@ function startQuagga() {
         .filter(d => d.error != null)
         .map(d => d.error);
       const avgError = errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 1;
-      if (avgError > 0.15) return; // reject noisy reads
+      if (avgError > 0.12) return; // stricter threshold for noisy reads
 
       // Validate checksum for UPC/EAN
       if (!isValidBarcode(code)) return;
 
-      // Add to consensus buffer
-      const now = Date.now();
-      if (!_scanBuffer[code]) _scanBuffer[code] = [];
-      _scanBuffer[code].push(now);
-
-      // Clean old entries
-      _scanBuffer[code] = _scanBuffer[code].filter(t => now - t < SCAN_WINDOW_MS);
-
-      // Update status with scan progress
-      const best = Object.keys(_scanBuffer).reduce((a, b) =>
-        (_scanBuffer[a]?.length || 0) >= (_scanBuffer[b]?.length || 0) ? a : b, code);
-      const count = _scanBuffer[best]?.length || 0;
-      if (count < SCAN_CONSENSUS) {
-        document.getElementById('scanStatus').textContent = `🔍 Reading barcode… (${count}/${SCAN_CONSENSUS})`;
-        return;
-      }
-
-      // Consensus reached!
-      _scanAccepted = true;
-      Quagga.stop();
-      lookupBarcode(best);
+      handleScanResult(code);
     });
   });
 }
@@ -5247,10 +5333,15 @@ Return ONLY JSON:
 
 
 async function openScannerCamera() {
-  try { await startQuagga(); } catch(e) {}
+  try { await startScanner(); } catch(e) {}
 }
 
 function stopCamera() {
+  // Cancel native BarcodeDetector scan loop
+  if (_nativeScanRAF) {
+    cancelAnimationFrame(_nativeScanRAF);
+    _nativeScanRAF = null;
+  }
   try {
     if (window.Quagga) Quagga.stop();
   } catch(e) {}
@@ -7214,7 +7305,10 @@ function closeRecipeBarcode() {
   document.getElementById('recipeScanOverlay').style.display = 'none';
 }
 
-function startRecipeBarcode() {
+let _recipeScanRAF = null;
+let _recipeScanStream = null;
+
+async function startRecipeBarcode() {
   const container = document.getElementById('recipeScanContainer');
   const status    = document.getElementById('recipeScanStatus');
   const btn       = document.getElementById('recipeScanBtn');
@@ -7222,14 +7316,27 @@ function startRecipeBarcode() {
   btn.textContent = '⏳ Starting…';
   status.textContent = 'Requesting camera…';
 
+  // Clear previous video
+  container.innerHTML = '<div id="recipeScanHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">Initializing…</div>';
+
+  // Try native BarcodeDetector first
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const needed = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'].filter(f => formats.includes(f));
+      if (needed.length > 0) {
+        await startRecipeNativeScanner(container, status, btn, needed);
+        return;
+      }
+    } catch(e) { /* fall through */ }
+  }
+
+  // Fallback: QuaggaJS
   if (!window.Quagga) {
     status.textContent = '⚠️ Scanner not loaded. Try text search.';
     btn.disabled = false; btn.textContent = '▶ Start Camera';
     return;
   }
-
-  // Clear previous video
-  container.innerHTML = '<div id="recipeScanHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">Initializing…</div>';
 
   Quagga.init({
     inputStream: {
@@ -7240,7 +7347,8 @@ function startRecipeBarcode() {
     },
     decoder: { readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'] },
     locate: true,
-    frequency: 5,
+    locator: { patchSize: 'medium', halfSample: false },
+    frequency: 10,
   }, function(err) {
     if (err) {
       status.textContent = '⚠️ Camera error: ' + err.message;
@@ -7254,18 +7362,62 @@ function startRecipeBarcode() {
     btn.onclick = stopRecipeCamera;
     status.textContent = 'Point at a barcode…';
 
-    // Style the video
     const video = container.querySelector('video');
     if (video) { video.style.cssText = 'width:100%;height:100%;object-fit:cover'; }
     const canvas = container.querySelector('canvas.drawingBuffer');
     if (canvas) canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
   });
 
-  // One-time detection handler scoped to recipe
   Quagga.onDetected(onRecipeBarcodeDetected);
 }
 
+async function startRecipeNativeScanner(container, status, btn, formats) {
+  const detector = new BarcodeDetector({ formats });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+  });
+  _recipeScanStream = stream;
+
+  const vid = document.createElement('video');
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover';
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('autoplay', '');
+  vid.srcObject = stream;
+  container.innerHTML = '';
+  container.appendChild(vid);
+  await vid.play();
+
+  _recipeScanActive = true;
+  btn.textContent = '⏹ Stop';
+  btn.disabled = false;
+  btn.onclick = stopRecipeCamera;
+  status.textContent = 'Point at a barcode…';
+
+  let lastScan = 0;
+  async function scanLoop(ts) {
+    if (!_recipeScanActive) return;
+    if (ts - lastScan >= 150) {
+      lastScan = ts;
+      try {
+        const barcodes = await detector.detect(vid);
+        for (const b of barcodes) {
+          if (b.rawValue) {
+            _recipeScanActive = false;
+            stopRecipeCamera();
+            lookupBarcodeForRecipe(b.rawValue);
+            return;
+          }
+        }
+      } catch(e) {}
+    }
+    _recipeScanRAF = requestAnimationFrame(scanLoop);
+  }
+  _recipeScanRAF = requestAnimationFrame(scanLoop);
+}
+
 function stopRecipeCamera() {
+  if (_recipeScanRAF) { cancelAnimationFrame(_recipeScanRAF); _recipeScanRAF = null; }
+  if (_recipeScanStream) { _recipeScanStream.getTracks().forEach(t => t.stop()); _recipeScanStream = null; }
   if (_recipeScanActive) {
     try { Quagga.offDetected(onRecipeBarcodeDetected); Quagga.stop(); } catch(e) {}
     _recipeScanActive = false;
@@ -7276,7 +7428,7 @@ function stopRecipeCamera() {
 
 function onRecipeBarcodeDetected(result) {
   const code = result.codeResult.code;
-  if (!code) return;
+  if (!code || !isValidBarcode(code)) return;
   stopRecipeCamera();
   lookupBarcodeForRecipe(code);
 }
