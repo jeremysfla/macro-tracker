@@ -586,7 +586,8 @@
     background:var(--surface2);
     border:2px solid transparent;
     border-radius:10px;
-    width:42px;height:42px;
+    height:44px;
+    min-width:0;
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
@@ -905,31 +906,31 @@ PROMISE ERROR:
       </div>
 
       <!-- FEATURE: Mood & Energy Check-in -->
-      <div class="card" id="moodCard" style="margin-bottom:14px">
-        <div class="card-label" style="color:#f472b6;margin-bottom:10px">💜 Daily Check-in</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Energy</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="energyBtns">
-              <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted">😴</button>
-              <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low">😕</button>
-              <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good">🙂</button>
-              <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great">💪</button>
-            </div>
-          </div>
-          <div>
-            <div style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Mood</div>
-            <div style="display:flex;gap:4px;justify-content:space-between" id="moodBtns">
-              <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough">😣</button>
-              <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh">😞</button>
-              <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
-              <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
-              <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
-            </div>
+      <div class="card" id="moodCard" style="margin-bottom:14px;padding:14px 16px">
+        <div class="card-label" style="color:#f472b6;margin-bottom:12px">💜 Daily Check-in</div>
+        <!-- Row 1: Energy -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚡ Energy</div>
+          <div style="display:flex;gap:8px" id="energyBtns">
+            <button onclick="setMood('energy',1)" data-val="1" class="mood-btn" title="Exhausted" style="flex:1">😴</button>
+            <button onclick="setMood('energy',2)" data-val="2" class="mood-btn" title="Low"       style="flex:1">😕</button>
+            <button onclick="setMood('energy',3)" data-val="3" class="mood-btn" title="Okay"      style="flex:1">😐</button>
+            <button onclick="setMood('energy',4)" data-val="4" class="mood-btn" title="Good"      style="flex:1">🙂</button>
+            <button onclick="setMood('energy',5)" data-val="5" class="mood-btn" title="Great"     style="flex:1">💪</button>
           </div>
         </div>
-        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:11px;color:#f472b6;font-weight:600;margin-top:8px">✅ Saved!</div>
+        <!-- Row 2: Mood -->
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">😊 Mood</div>
+          <div style="display:flex;gap:8px" id="moodBtns">
+            <button onclick="setMood('mood',1)" data-val="1" class="mood-btn" title="Rough" style="flex:1">😣</button>
+            <button onclick="setMood('mood',2)" data-val="2" class="mood-btn" title="Meh"   style="flex:1">😞</button>
+            <button onclick="setMood('mood',3)" data-val="3" class="mood-btn" title="Okay"  style="flex:1">😐</button>
+            <button onclick="setMood('mood',4)" data-val="4" class="mood-btn" title="Good"  style="flex:1">😊</button>
+            <button onclick="setMood('mood',5)" data-val="5" class="mood-btn" title="Great" style="flex:1">😄</button>
+          </div>
+        </div>
+        <div id="moodSavedMsg" style="display:none;text-align:center;font-size:12px;color:#f472b6;font-weight:600;margin-top:10px">✅ Saved!</div>
       </div>
 
       <!-- 10. Workout nutrition prompt -->
@@ -3388,7 +3389,6 @@ function addFoodEntry(food) {
   scheduleRender(renderMicronutrients);
   const isPast = getSelectedDateKey() !== todayKey();
   showToast(`✅ ${food.name} logged!${isPast ? ' (past day)' : ''}`);
-  if (!isPast) scheduleCheckinSync(3000);  // sync nutrition totals to D1
 }
 
 
@@ -6112,7 +6112,6 @@ function saveWeight() {
   log[todayKey()] = val;
   setStorage('weightLog', log);
   logInteraction('weight_logged', val);
-  scheduleCheckinSync(500);
   document.getElementById('weightModal').classList.remove('open');
   renderWeightTrend();
   checkAdaptiveMacros();
@@ -11602,7 +11601,6 @@ function setWaterToday(oz) {
 
 function addWater(oz) {
   setWaterToday(getWaterToday() + oz);
-  scheduleCheckinSync(3000);  // debounced — waits for all rapid taps
 }
 
 function addWaterCustom() {
@@ -12348,7 +12346,6 @@ function setMood(type, val) {
   saveMoodLog(log);
   renderMoodBtns();
 
-  scheduleCheckinSync(1500);  // sync after mood settles
   const msg = document.getElementById('moodSavedMsg');
   if (msg) {
     msg.style.display = 'block';
@@ -12708,96 +12705,6 @@ function renderMicronutrients() {
   s.textContent = `.mood-btn { background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;font-size:18px;width:38px;height:38px;cursor:pointer;transition:all 0.2s;opacity:0.45;display:flex;align-items:center;justify-content:center; } .mood-btn:hover { transform:scale(1.15);opacity:0.8; }`;
   document.head.appendChild(s);
 })();
-
-
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Daily Check-in Sync — writes to Cloudflare D1 on every data change
-// ══════════════════════════════════════════════════════════════════════════════
-
-// Debounce: aggregate rapid changes (multiple water taps) into one write
-let _syncTimer = null;
-function scheduleCheckinSync(delayMs = 2000) {
-  clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(() => syncCheckinToD1(), delayMs);
-}
-
-// Build the full payload for today from all localStorage sources
-function buildCheckinPayload() {
-  const date = dateToKey(nowEST());
-
-  // Mood / energy
-  const moodLog   = getMoodLog();
-  const todayMood = moodLog[date] || {};
-
-  // Water
-  const waterOz = getTodayWaterOz ? getTodayWaterOz() : (getWaterLog()[date] || 0);
-
-  // Weight (today's logged weight)
-  const weightLog = getStorage('weightLog', {});
-  const weightLbs = weightLog[date] || null;
-
-  // Nutrition totals from food log
-  const macroLog   = getStorage('macroLog', {});
-  const entries    = macroLog[date] || [];
-  const totalCals  = entries.reduce((s, e) => s + (e.calories || 0), 0);
-  const totalProt  = Math.round(entries.reduce((s, e) => s + (e.protein  || 0), 0) * 10) / 10;
-  const totalCarbs = Math.round(entries.reduce((s, e) => s + (e.carbs    || 0), 0) * 10) / 10;
-  const totalFat   = Math.round(entries.reduce((s, e) => s + (e.fat      || 0), 0) * 10) / 10;
-
-  // Sleep / recovery from WHOOP
-  const whoopData   = getStorage('whoopData', {});
-  const todayWhoop  = whoopData[date] || whoopData[Object.keys(whoopData).sort().pop()] || {};
-  const sleepHrs    = todayWhoop.totalSleep  ? +(todayWhoop.totalSleep  / 3600).toFixed(2) : null;
-  const sleepDeep   = todayWhoop.deepSleep   ? +(todayWhoop.deepSleep   / 3600).toFixed(2) : null;
-  const sleepRem    = todayWhoop.remSleep    ? +(todayWhoop.remSleep    / 3600).toFixed(2) : null;
-  const sleepScore  = todayWhoop.recoveryScore || null;
-
-  // Activity — Strava/Garmin burn
-  const burnLog  = getStorage('burnLog', {});
-  const todayBurn = burnLog[date] || {};
-  const activeCals = todayBurn.calories || null;
-  const steps      = todayBurn.steps    || null;
-
-  return {
-    date,
-    energy:            todayMood.energy      || null,
-    mood:              todayMood.mood        || null,
-    water_oz:          waterOz > 0 ? waterOz : null,
-    weight_lbs:        weightLbs,
-    sleep_hrs:         sleepHrs,
-    sleep_deep:        sleepDeep,
-    sleep_rem:         sleepRem,
-    sleep_score:       sleepScore,
-    calories_consumed: totalCals > 0 ? totalCals : null,
-    protein_g:         totalProt  > 0 ? totalProt  : null,
-    carbs_g:           totalCarbs > 0 ? totalCarbs : null,
-    fat_g:             totalFat   > 0 ? totalFat   : null,
-    steps,
-    active_cals:       activeCals,
-  };
-}
-
-// Write to D1 via the Worker proxy
-async function syncCheckinToD1() {
-  try {
-    const payload = buildCheckinPayload();
-    // Only sync if there's at least one real data point
-    const hasData = payload.energy || payload.mood || payload.water_oz ||
-                    payload.weight_lbs || payload.calories_consumed ||
-                    payload.sleep_score;
-    if (!hasData) return;
-
-    const r = await fetch('/api/checkin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) console.warn('Check-in sync failed:', r.status);
-  } catch (e) {
-    console.warn('Check-in sync error (offline?):', e.message);
-  }
-}
 
 
 </script>
