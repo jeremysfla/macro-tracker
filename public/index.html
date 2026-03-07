@@ -54,10 +54,10 @@
 
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
-  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { flex: 1; min-width: 0; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; overflow: hidden; }
   .tab-btn.active { color: var(--green); }
   .tab-btn.active .tab-icon { transform: scale(1.1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18)); }
-  .tab-icon { font-size: 22px; transition: transform 0.2s, filter 0.2s; display: block; }
+  .tab-icon { font-size: 20px; line-height: 1.2; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, filter 0.2s; overflow: hidden; }
 
   /* Inputs */
   input[type=number], input[type=text] { background: var(--surface2); border: 1.5px solid var(--border); color: var(--text); padding: 11px 14px; border-radius: 14px; font-family: inherit; font-size: 14px; font-weight: 500; width: 100%; outline: none; -moz-appearance: textfield; transition: border-color 0.2s, box-shadow 0.2s; }
@@ -84,13 +84,13 @@
   /* Week strip */
   .week-strip { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .week-strip::-webkit-scrollbar { display: none; }
-  .week-day { min-width: 44px; flex: 1; border-radius: 16px; padding: 10px 4px 8px; text-align: center; border: 1.5px solid var(--border); background: var(--surface); transition: all 0.2s; cursor: pointer; position: relative; }
+  .week-day { min-width: 44px; flex: 1; border-radius: 16px; padding: 10px 4px 8px; text-align: center; border: 1.5px solid var(--border); background: var(--surface); transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden; }
   .week-day:active { transform: scale(0.94); }
   .week-day.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
   .week-day.today-card { background: var(--surface2); }
   .week-day-name { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
   .week-day-name.active-name { color: var(--text); }
-  .week-day-icon { font-size: 20px; line-height: 1; }
+  .week-day-icon { font-size: 20px; line-height: 1; overflow: hidden; }
   .week-day-sess { font-size: 9px; font-weight: 800; margin-top: 4px; letter-spacing: 0.3px; }
 
   /* Session tabs */
@@ -101,7 +101,7 @@
   /* Exercise cards — per-set logging */
   .ex-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 18px; padding: 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
   .ex-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .ex-badge { width: 36px; height: 36px; border-radius: 12px; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .ex-badge { width: 36px; height: 36px; border-radius: 12px; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
   .ex-badge.done { background: #0d2d1a; color: #22c55e; }
   .ex-name { font-size: 15px; font-weight: 700; color: var(--text); }
   .ex-meta { font-size: 11px; color: var(--blue); font-weight: 500; margin-top: 2px; }
@@ -118,7 +118,7 @@
   .set-weight-input.completed { border-color: #166534; background: #0d2d1a; color: #22c55e; }
   .set-reps-input { width: 54px; padding: 10px 6px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface2); font-family: inherit; font-size: 15px; font-weight: 700; color: var(--text); text-align: center; transition: all 0.15s; }
   .set-reps-input:focus { outline: none; border-color: var(--blue); background: #0d1e3d; }
-  .set-done-btn { width: 36px; height: 36px; border-radius: 11px; border: 1.5px solid var(--border); background: var(--surface2); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+  .set-done-btn { width: 36px; height: 36px; border-radius: 11px; border: 1.5px solid var(--border); background: var(--surface2); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; overflow: hidden; }
   .set-done-btn.done { background: var(--green-soft); border-color: #86efac; }
   .ex-volume { font-size: 11px; font-weight: 600; color: var(--text3); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
   .ex-volume span { background: var(--surface2); padding: 3px 9px; border-radius: 20px; font-weight: 700; }
@@ -251,7 +251,7 @@
 
   /* Daily Quote */
   .quote-card { background: linear-gradient(135deg, #1a1d2e, #2d1f4e); border-radius: 0; padding: 16px 20px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .quote-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .quote-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; line-height: 1; }
   .quote-text { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.65; flex: 1; font-style: italic; }
   .quote-author { font-size: 10px; font-weight: 700; color: #8b5cf6; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; }
   .quote-loading { opacity: 0.45; font-style: italic; }
@@ -265,7 +265,7 @@
   .shoe-card.retired { opacity:0.65;border-style:dashed; }
   .shoe-card-accent { position:absolute;top:0;left:0;width:4px;height:100%;border-radius:20px 0 0 20px; }
   .shoe-card-top { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
-  .shoe-avatar { width:52px;height:52px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:26px; }
+  .shoe-avatar { width:52px;height:52px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden; }
   .shoe-name { font-size:15px;font-weight:800;color:var(--text);line-height:1.2; }
   .shoe-brand { font-size:11px;color:var(--text3);font-weight:600;margin-top:2px; }
   .shoe-status-badge { font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:1px; }
@@ -285,7 +285,7 @@
   .shoe-run-meta { font-size:11px;color:var(--text3);margin-top:1px; }
   .assign-shoe-btn { display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:var(--surface2);border:1.5px solid var(--border);border-radius:16px;font-family:inherit;cursor:pointer;margin-bottom:8px;transition:all 0.15s;text-align:left; }
   .assign-shoe-btn:hover,.assign-shoe-btn:active { border-color:var(--green);background:var(--green-soft); }
-  .assign-shoe-avatar { width:40px;height:40px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0; }
+  .assign-shoe-avatar { width:40px;height:40px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;overflow:hidden; }
 
 
   /* ── Workout Timer Bar ── */
@@ -312,7 +312,7 @@
   .pr-flash-sub { font-size:11px; color:#d97706; font-weight:600; }
 
   /* ── Set type badge ── */
-  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:10px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:10px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; overflow:hidden; }
   .set-type-btn.warmup { background:#051e26; border-color:#0e4d6e; color:#06b6d4; }
   .set-type-btn.drop { background:#1a1030; border-color:#4c1d95; color:#a78bfa; }
   .set-type-btn.failure { background:#2d0f0f; border-color:#7f1d1d; color:#f87171; }
@@ -427,7 +427,7 @@
 
   /* Garmin & Settings */
   .garmin-card { background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.06)); border: 1.5px solid #1e3a5f; border-radius: 20px; padding: 16px; margin-bottom: 14px; }
-  .garmin-logo { width: 40px; height: 40px; border-radius: 12px; background: #1a56db; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .garmin-logo { width: 40px; height: 40px; border-radius: 12px; background: #1a56db; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; overflow: hidden; }
   .garmin-activity-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .garmin-stat { flex: 1; min-width: 70px; background: var(--surface2); border-radius: 12px; padding: 10px 8px; text-align: center; border: 1px solid var(--border); }
   .garmin-stat-val { font-size: 16px; font-weight: 700; color: var(--text); }
@@ -511,7 +511,7 @@
   .srv-val { font-size: 17px; font-weight: 700; color: var(--text); min-width: 36px; text-align: center; }
   .scan-status { text-align: center; padding: 12px; font-size: 13px; color: var(--text2); font-weight: 500; }
   .btn-outline { width: 100%; padding: 13px; background: transparent; color: var(--text2); font-family: inherit; font-weight: 600; font-size: 14px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; margin-top: 10px; }
-  .btn-scan { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 20px; background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 700; font-size: 14px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; width: 100%; margin-bottom: 10px; transition: background 0.15s; }
+  .btn-scan { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 13px 8px; background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 700; font-size: 13px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; width: 100%; margin-bottom: 10px; transition: background 0.15s; overflow: hidden; white-space: nowrap; min-width: 0; }
   .btn-scan:active { background: var(--green-soft); }
 
   /* Weight trend & adaptive macros */
@@ -536,13 +536,13 @@
   .big-input { font-size: 36px; font-weight: 700; text-align: center; padding: 16px; border-radius: 18px; letter-spacing: -1px; }
   .log-entry { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
   .log-entry:last-child { border-bottom:none; }
-  .log-entry-icon { width:36px; height:36px; border-radius:12px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .log-entry-icon { width:36px; height:36px; border-radius:12px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; overflow:hidden; }
   .log-entry-info { flex:1; min-width:0; }
   .log-entry-name { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .log-entry-macros { font-size:11px; color:var(--text3); margin-top:2px; font-weight:500; }
   .log-entry-time { font-size:10px; color:var(--text3); font-weight:500; margin-top:1px; }
   .log-entry-actions { display:flex; gap:6px; flex-shrink:0; }
-  .log-action-btn { width:30px; height:30px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+  .log-action-btn { width:30px; height:30px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; overflow:hidden; }
   .log-action-btn:active { transform:scale(0.92); }
   .log-action-btn.edit { color:var(--blue); border-color:#1e3a5f; background:var(--blue-soft); }
   .log-action-btn.del  { color:var(--red);  border-color:#7f1d1d; background:var(--red-soft); }
@@ -645,6 +645,8 @@
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+    line-height:1;
   }
   .mood-btn.active {
     border-color:#f472b6;
