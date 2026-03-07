@@ -1,4 +1,4 @@
-// worker.js
+// worker.js — macro tracker
 var worker_default = {
   async fetch(req, env) {
     const u = new URL(req.url);
@@ -12,25 +12,94 @@ var worker_default = {
       }), { headers: CORS });
     }
 
+    // ── Daily check-in sync (POST /api/checkin) ───────────────────────────────
+    // Body: { date, energy, mood, water_oz, weight_lbs, sleep_hrs, sleep_deep,
+    //         sleep_rem, sleep_score, calories_consumed, protein_g, carbs_g,
+    //         fat_g, steps, active_cals, notes }
+    // Uses INSERT OR REPLACE so re-syncing a day is always safe.
+    if (u.pathname === "/api/checkin" && req.method === "POST") {
+      try {
+        const b = await req.json();
+        if (!b.date || !env.DB) {
+          return new Response(JSON.stringify({ ok: false, error: "missing date or DB binding" }), { headers: CORS });
+        }
+        const sql = `
+          INSERT INTO daily_checkin
+            (date, user_id, energy, mood, water_oz, weight_lbs,
+             sleep_hrs, sleep_deep, sleep_rem, sleep_score,
+             calories_consumed, protein_g, carbs_g, fat_g,
+             steps, active_cals, notes, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+          ON CONFLICT(date, user_id) DO UPDATE SET
+            energy             = excluded.energy,
+            mood               = excluded.mood,
+            water_oz           = excluded.water_oz,
+            weight_lbs         = excluded.weight_lbs,
+            sleep_hrs          = excluded.sleep_hrs,
+            sleep_deep         = excluded.sleep_deep,
+            sleep_rem          = excluded.sleep_rem,
+            sleep_score        = excluded.sleep_score,
+            calories_consumed  = excluded.calories_consumed,
+            protein_g          = excluded.protein_g,
+            carbs_g            = excluded.carbs_g,
+            fat_g              = excluded.fat_g,
+            steps              = excluded.steps,
+            active_cals        = excluded.active_cals,
+            notes              = excluded.notes,
+            updated_at         = datetime('now')
+        `;
+        const params = [
+          b.date, b.user_id || "jeremy",
+          b.energy       ?? null,
+          b.mood         ?? null,
+          b.water_oz     ?? null,
+          b.weight_lbs   ?? null,
+          b.sleep_hrs    ?? null,
+          b.sleep_deep   ?? null,
+          b.sleep_rem    ?? null,
+          b.sleep_score  ?? null,
+          b.calories_consumed ?? null,
+          b.protein_g    ?? null,
+          b.carbs_g      ?? null,
+          b.fat_g        ?? null,
+          b.steps        ?? null,
+          b.active_cals  ?? null,
+          b.notes        ?? null,
+        ];
+        await env.DB.prepare(sql).bind(...params).run();
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Read check-in history (GET /api/checkin?days=30) ──────────────────────
+    if (u.pathname === "/api/checkin" && req.method === "GET") {
+      try {
+        const days = Math.min(parseInt(u.searchParams.get("days") || "90"), 365);
+        const rows = await env.DB.prepare(
+          `SELECT * FROM daily_checkin
+           WHERE user_id = 'jeremy'
+             AND date >= date('now', '-' || ? || ' days')
+           ORDER BY date DESC`
+        ).bind(days).all();
+        return new Response(JSON.stringify({ ok: true, rows: rows.results }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
     // ── Barcode proxy ──────────────────────────────────────────────────────────
-    // Browser cannot set User-Agent (forbidden header) and CORS blocks direct
-    // fetch to OFF from a browser. The Worker runs server-side: no CORS, no
-    // header restrictions, and OFF rate limits apply per Worker IP (shared).
-    //
-    // GET /api/barcode?code=XXXXXXXXXXX
     if (u.pathname === "/api/barcode" && req.method === "GET") {
       const raw = (u.searchParams.get("code") || "").replace(/\D/g, "");
       if (!raw) return new Response(JSON.stringify({ found: false, error: "no code" }), { headers: CORS });
 
-      // EAN-13 = 13 digits; UPC-A = 12 digits (EAN-13 with leading 0 stripped)
       const ean13 = raw.length === 12 ? "0" + raw : raw;
       const upcA  = raw.length === 13 && raw.startsWith("0") ? raw.slice(1) : raw;
       const codes = [...new Set([raw, ean13, upcA])];
-
       const UA = "MacroTracker/1.0 (jeremy@dronenerd.com)";
       const OFF_FIELDS = "product_name,product_name_en,brands,serving_size,serving_quantity,nutriments";
 
-      // 1. Open Food Facts (production .org, server-side so User-Agent works)
       for (const code of codes) {
         try {
           const r = await fetch(
@@ -48,9 +117,6 @@ var worker_default = {
         } catch (_) {}
       }
 
-      // 2. USDA FoodData Central
-      // /foods/search with the barcode as query; filter by exact gtinUpc match.
-      // Tries all code variants because gtinUpc may be stored as 12 or 13 digits.
       const USDA_KEY = env.USDA_KEY || "DEMO_KEY";
       for (const code of codes) {
         try {
@@ -73,11 +139,8 @@ var worker_default = {
         } catch (_) {}
       }
 
-      // 3. UPC ItemDB
       try {
-        const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`, {
-          headers: { "User-Agent": UA }
-        });
+        const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${upcA}`, { headers: { "User-Agent": UA } });
         if (r.ok) {
           const d = await r.json();
           const item = (d.items || [])[0];
@@ -108,11 +171,7 @@ var worker_default = {
         const b = await req.json();
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "anthropic-version": "2023-06-01",
-            "x-api-key": env.ANTHROPIC_KEY
-          },
+          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
           body: JSON.stringify(b)
         });
         const data = await r.json();
@@ -140,8 +199,7 @@ function parseOFF(p) {
   if (!cals) { const kj = get("energy"); if (kj > 0) cals = kj / 4.184; }
   const name = p.product_name_en || p.product_name || "";
   if (!name) return null;
-  const servingLabel = p.serving_size || (servingQty > 0 ? `${servingQty}g` : "1 serving");
-  const m = servingLabel.match(/([\d.]+)\s*(g|ml|oz|lb|cup|tbsp|tsp|piece)?/i);
+  const m = (p.serving_size || "").match(/([\d.]+)\s*(g|ml|oz|lb|cup|tbsp|tsp|piece)?/i);
   return {
     name, brand: (p.brands || "").split(",")[0].trim(),
     calories: Math.round(cals),
@@ -170,8 +228,7 @@ function parseUSDA(f) {
   const cal = (nutr(1008) || nutr(208)) * scale;
   if (!cal) return null;
   return {
-    name:  f.description,
-    brand: f.brandOwner || f.brandName || "",
+    name:  f.description, brand: f.brandOwner || f.brandName || "",
     calories: Math.round(cal),
     protein:  Math.round((nutr(1003)||nutr(203)) * scale * 10) / 10,
     carbs:    Math.round((nutr(1005)||nutr(205)) * scale * 10) / 10,
@@ -186,8 +243,7 @@ function parseUSDA(f) {
 async function usdaNameSearch(name, key, ua) {
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}` +
-      `&query=${encodeURIComponent(name)}&dataType=Branded,Foundation,SR%20Legacy&pageSize=3`,
+      `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}&query=${encodeURIComponent(name)}&dataType=Branded,Foundation,SR%20Legacy&pageSize=3`,
       { headers: { "User-Agent": ua } }
     );
     if (!r.ok) return null;
