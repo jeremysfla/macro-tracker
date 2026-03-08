@@ -1,10 +1,42 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
+const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
+
+async function verifyGoogleToken(idToken) {
+  const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  if (!res.ok) return null;
+  const payload = await res.json();
+  if (payload.aud !== GOOGLE_CLIENT_ID) return null;
+  return payload;
+}
+__name(verifyGoogleToken, "verifyGoogleToken");
+
+async function getUser(db, idToken) {
+  const payload = await verifyGoogleToken(idToken);
+  if (!payload) return null;
+  const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(payload.sub).first();
+  return { payload, row };
+}
+__name(getUser, "getUser");
+
 var worker_default = {
   async fetch(req, env) {
     const u = new URL(req.url);
     const CORS = { "content-type": "application/json", "access-control-allow-origin": "*" };
+
+    // ── CORS preflight ──────────────────────────────────────────────────
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET,POST,PUT,OPTIONS",
+          "access-control-allow-headers": "content-type,authorization",
+          "access-control-max-age": "86400"
+        }
+      });
+    }
 
     if (u.pathname === "/api/status") {
       return new Response(JSON.stringify({
@@ -156,6 +188,171 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         const data = await r.json();
         return new Response(JSON.stringify(data), { status: r.ok?200:r.status, headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS }); }
+    }
+
+    // ── Auth: Google Sign-In → get or create user ───────────────────────
+    if (u.pathname === "/api/auth/google" && req.method === "POST") {
+      try {
+        const { idToken } = await req.json();
+        const payload = await verifyGoogleToken(idToken);
+        if (!payload) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
+
+        let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
+
+        if (!user) {
+          await env.DB.prepare(
+            "INSERT INTO users (id, email, name, picture) VALUES (?, ?, ?, ?)"
+          ).bind(payload.sub, payload.email, payload.name || "", payload.picture || "").run();
+          user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
+        }
+
+        return new Response(JSON.stringify({ user }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Get user profile ────────────────────────────────────────────────
+    if (u.pathname === "/api/user" && req.method === "GET") {
+      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+      if (!auth) return new Response(JSON.stringify({ error: "No token" }), { status: 401, headers: CORS });
+      const result = await getUser(env.DB, auth);
+      if (!result) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
+      return new Response(JSON.stringify({ user: result.row }), { headers: CORS });
+    }
+
+    // ── Save onboarding / update profile ────────────────────────────────
+    if (u.pathname === "/api/user/profile" && req.method === "PUT") {
+      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+      if (!auth) return new Response(JSON.stringify({ error: "No token" }), { status: 401, headers: CORS });
+      const result = await getUser(env.DB, auth);
+      if (!result) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
+
+      const body = await req.json();
+      const { gender, age, height_inches, current_weight, goal_weight, goal_date,
+              activity_level, tdee, calories, protein, carbs, fat } = body;
+
+      await env.DB.prepare(`
+        UPDATE users SET
+          gender = ?, age = ?, height_inches = ?, current_weight = ?, goal_weight = ?,
+          goal_date = ?, activity_level = ?, tdee = ?, calories = ?, protein = ?,
+          carbs = ?, fat = ?, onboarded = 1, updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(
+        gender, age, height_inches, current_weight, goal_weight,
+        goal_date, activity_level, tdee, calories, protein,
+        carbs, fat, result.payload.sub
+      ).run();
+
+      const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(result.payload.sub).first();
+      return new Response(JSON.stringify({ user }), { headers: CORS });
+    }
+
+    // ── USDA API proxy ──────────────────────────────────────────────────
+    if (u.pathname === "/api/usda/search" && req.method === "GET") {
+      try {
+        const apiKey = env.USDA_API_KEY || "DEMO_KEY";
+        const query = u.searchParams.get("query") || "";
+        const dataType = u.searchParams.get("dataType") || "";
+        const pageSize = u.searchParams.get("pageSize") || "6";
+        let usdaUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=${pageSize}&api_key=${apiKey}`;
+        if (dataType) usdaUrl += `&dataType=${encodeURIComponent(dataType)}`;
+        const r = await fetch(usdaUrl);
+        const data = await r.json();
+        return new Response(JSON.stringify(data), { status: r.ok ? 200 : r.status, headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Garmin OAuth proxy ──────────────────────────────────────────────
+    if (u.pathname === "/api/garmin/proxy" && req.method === "POST") {
+      try {
+        const { url, method: m, headers: h } = await req.json();
+        if (!url || !url.startsWith("https://connectapi.garmin.com/")) {
+          return new Response(JSON.stringify({ error: "Invalid Garmin URL" }), { status: 400, headers: CORS });
+        }
+        const r = await fetch(url, { method: m || "POST", headers: h || {} });
+        const text = await r.text();
+        return new Response(text, {
+          status: r.status,
+          headers: { "content-type": "text/plain", "access-control-allow-origin": "*" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Strava: redirect to auth page ───────────────────────────────────
+    if (u.pathname === "/api/strava/auth" && req.method === "GET") {
+      const clientId = env.STRAVA_CLIENT_ID;
+      if (!clientId) return new Response(JSON.stringify({ error: "Strava not configured on server" }), { status: 500, headers: CORS });
+      const redirectUri = encodeURIComponent(`${u.origin}/api/strava/callback`);
+      const scope = "read,activity:read";
+      const stravaUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&approval_prompt=auto`;
+      return Response.redirect(stravaUrl, 302);
+    }
+
+    // ── Strava: OAuth callback ──────────────────────────────────────────
+    if (u.pathname === "/api/strava/callback" && req.method === "GET") {
+      const code = u.searchParams.get("code");
+      if (!code) {
+        return new Response("<h2>Strava authorization denied</h2><script>setTimeout(()=>window.close(),2000)</script>", {
+          headers: { "content-type": "text/html" }
+        });
+      }
+      try {
+        const tokenRes = await fetch("https://www.strava.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: env.STRAVA_CLIENT_ID,
+            client_secret: env.STRAVA_CLIENT_SECRET,
+            code,
+            grant_type: "authorization_code",
+          })
+        });
+        const data = await tokenRes.json();
+        if (!data.access_token) throw new Error(data.message || "Token exchange failed");
+        const tokenPayload = encodeURIComponent(JSON.stringify({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: data.expires_at,
+          athlete: data.athlete,
+        }));
+        return Response.redirect(`${u.origin}/#strava_token=${tokenPayload}`, 302);
+      } catch (e) {
+        return new Response(`<h2>Strava connection failed</h2><p>${e.message}</p><script>setTimeout(()=>window.location='${u.origin}',3000)</script>`, {
+          headers: { "content-type": "text/html" }
+        });
+      }
+    }
+
+    // ── Strava: token refresh ───────────────────────────────────────────
+    if (u.pathname === "/api/strava/refresh" && req.method === "POST") {
+      try {
+        const { refreshToken } = await req.json();
+        if (!refreshToken) return new Response(JSON.stringify({ error: "Missing refreshToken" }), { status: 400, headers: CORS });
+        const tokenRes = await fetch("https://www.strava.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: env.STRAVA_CLIENT_ID,
+            client_secret: env.STRAVA_CLIENT_SECRET,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          })
+        });
+        const data = await tokenRes.json();
+        if (!data.access_token) return new Response(JSON.stringify({ error: data.message || "Refresh failed" }), { status: 400, headers: CORS });
+        return new Response(JSON.stringify({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: data.expires_at,
+        }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
     }
 
     return env.ASSETS.fetch(req);
