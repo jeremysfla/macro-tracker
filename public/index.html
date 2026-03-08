@@ -1249,6 +1249,7 @@ PROMISE ERROR:
           </div>
         </div>
         <div id="waterStatusMsg" style="margin-top:8px;font-size:11px;color:var(--text2);text-align:center;min-height:14px"></div>
+        <div id="waterEntryLog" style="margin-top:8px"></div>
       </div>
 
       <!-- FEATURE: Today's Micronutrients -->
@@ -13061,6 +13062,11 @@ function addWater(oz) {
   const key = dateToKey(nowEST());
   log[key] = (log[key] || 0) + oz;
   saveWaterLog(log);
+  // Track individual entries with timestamps
+  const entries = getStorage('waterEntries', {});
+  if (!entries[key]) entries[key] = [];
+  entries[key].push({ oz, time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) });
+  setStorage('waterEntries', entries);
   renderWater();
 }
 
@@ -13080,6 +13086,9 @@ function resetWater() {
   const key = dateToKey(nowEST());
   log[key] = 0;
   saveWaterLog(log);
+  const entries = getStorage('waterEntries', {});
+  delete entries[key];
+  setStorage('waterEntries', entries);
   renderWater();
 }
 
@@ -13124,6 +13133,23 @@ function renderWater() {
       ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + (pct/100)*Math.PI*2);
       ctx.strokeStyle = pct >= 100 ? '#22c55e' : '#38bdf8';
       ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
+    }
+  }
+
+  // Render entry log
+  const entryLog = document.getElementById('waterEntryLog');
+  if (entryLog) {
+    const key = dateToKey(nowEST());
+    const entries = (getStorage('waterEntries', {}))[key] || [];
+    if (entries.length === 0) {
+      entryLog.innerHTML = '';
+    } else {
+      entryLog.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:6px;border-top:1px solid var(--border)">
+        ${entries.map(e => `<div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 8px">
+          <span style="font-size:11px;font-weight:700;color:#0d9488">${e.oz} oz</span>
+          <span style="font-size:9px;color:var(--text3)">${e.time}</span>
+        </div>`).join('')}
+      </div>`;
     }
   }
 }
