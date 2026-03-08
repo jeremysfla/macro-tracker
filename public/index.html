@@ -12664,13 +12664,6 @@ async function generateDailyBrief(force = false) {
 
   el.innerHTML = '<span style="color:#6d28d9;font-style:italic;font-size:13px">✨ Generating your brief…</span>';
 
-  // Hard fallback — never spin forever
-  const fallbackTimer = setTimeout(() => {
-    if (el.innerHTML.includes('Generating')) {
-      el.innerHTML = `<div style="font-size:14px;color:#c4b5fd;line-height:1.65">${hr < 12 ? "Morning, Jeremy — let's make today count. 💪" : hr < 17 ? "Afternoon check-in — stay on target. 🎯" : "Solid day, Jeremy — rest up and go again tomorrow. 🌙"}</div>`;
-    }
-  }, 12000);
-
   const goals   = getStorage('userGoals', {});
   const weights = getStorage('weightLog', {});
   const wKeys   = Object.keys(weights).sort();
@@ -12698,12 +12691,10 @@ async function generateDailyBrief(force = false) {
     if (!resp.ok) throw new Error('Brief API ' + resp.status);
     const result = await resp.json();
     if (!result.ok || (!result.brief && !result.raw)) throw new Error(result.error || 'no data');
-    clearTimeout(fallbackTimer);
     const html = result.brief ? renderBriefHTML(result.brief) : renderBriefRaw(result.raw);
     el.innerHTML = html;
     setStorage(cacheKey, html);
   } catch(e) {
-    clearTimeout(fallbackTimer);
     console.warn('generateDailyBrief error:', e);
     const fallback = hr < 12 ? "Morning, Jeremy — let's make today count. 💪"
       : hr < 17 ? "Afternoon check-in — stay on target. 🎯"
@@ -12758,6 +12749,7 @@ function renderBriefRaw(text) {
 async function regenerateDailyBrief() {
   const key = dateToKey(nowEST());
   setStorage('dailyBrief_' + key, null);
+  setStorage('briefEmailContext', null);  // force re-fetch from D1
   await generateDailyBrief(true);
 }
 
