@@ -7059,9 +7059,9 @@ async function loadGreetingGmail() {
   mailList.innerHTML = '<div class="greeting-loading">Checking emails with AI…</div>';
 
   try {
-    // Fetch recent unread primary emails (up to 10 for AI to triage)
-    const q = encodeURIComponent('is:unread category:primary newer_than:2d');
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=10`;
+    // Fetch all unread primary emails for AI triage
+    const q = encodeURIComponent('is:unread category:primary');
+    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=50`;
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
     if (res.status === 401) {
       localStorage.removeItem('googleAccessToken');
@@ -7130,7 +7130,7 @@ Rules:
 
       const resp = await callClaudeAPI({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
+        max_tokens: 800,
         messages: [{ role: 'user', content: prompt }]
       });
 
