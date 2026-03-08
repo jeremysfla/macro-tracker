@@ -249,14 +249,35 @@
   /* Tip box */
   .tip-box { margin-top: 14px; padding: 14px; background: #0d2d1a; border-radius: 14px; border: 1.5px solid #166534; font-size: 12px; color: #4ade80; line-height: 1.7; font-weight: 500; }
 
-  /* Daily Quote */
-  .quote-card { background: linear-gradient(135deg, #1a1d2e, #2d1f4e); border-radius: 0; padding: 16px 20px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .quote-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; line-height: 1; }
+  /* Daily Greeting Tile */
+  .greeting-tile { background: linear-gradient(135deg, #1a1d2e 0%, #2d1f4e 50%, #1a2d3e 100%); border-radius: 0; padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .greeting-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .greeting-hello { font-size: 20px; font-weight: 800; color: #eef0f6; letter-spacing: -0.3px; }
+  .greeting-date { font-size: 11px; color: #8b92a8; font-weight: 600; margin-top: 2px; }
+  .greeting-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .greeting-section-label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .greeting-cal-label { color: #60a5fa; }
+  .greeting-mail-label { color: #f87171; }
+  .greeting-quote-label { color: #8b5cf6; }
+  .greeting-event { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 12px; }
+  .greeting-event-time { color: #60a5fa; font-weight: 700; min-width: 58px; flex-shrink: 0; font-size: 11px; }
+  .greeting-event-title { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; }
+  .greeting-event-loc { font-size: 10px; color: #6b7280; font-weight: 500; margin-top: 1px; }
+  .greeting-email { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 12px; }
+  .greeting-email-from { color: #f87171; font-weight: 700; min-width: 0; flex-shrink: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .greeting-email-subject { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .greeting-connect-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; color: #e2e8f0; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-top: 4px; }
+  .greeting-connect-btn:hover { background: rgba(255,255,255,0.14); }
+  .greeting-empty { font-size: 11px; color: #6b7280; font-style: italic; padding: 4px 0; }
+  .greeting-quote { display: flex; align-items: flex-start; gap: 10px; }
+  .greeting-quote-text { font-size: 12px; font-weight: 600; color: #e2e8f0; line-height: 1.6; font-style: italic; flex: 1; }
+  .greeting-quote-author { font-size: 9px; font-weight: 700; color: #8b5cf6; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 4px; }
+  .greeting-loading { opacity: 0.45; font-style: italic; font-size: 11px; color: #6b7280; }
+  @keyframes greetFade { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .greet-animate { animation: greetFade 0.4s ease forwards; }
+  /* Legacy quote compat */
   .quote-text { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.65; flex: 1; font-style: italic; }
-  .quote-author { font-size: 10px; font-weight: 700; color: #8b5cf6; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; }
   .quote-loading { opacity: 0.45; font-style: italic; }
-  @keyframes quoteFade { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
-  .quote-animate { animation: quoteFade 0.5s ease forwards; }
 
   /* ── Shoe Tracker ── */
   .shoe-card { background:var(--surface2);border:1.5px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:all 0.2s; }
@@ -867,14 +888,35 @@ PROMISE ERROR:
       <button class="settings-btn" onclick="openSettings()" title="Settings">⚙️</button>
     </div>
   </div>
-  <!-- Daily Motivation Quote -->
-  <div class="quote-card" id="dailyQuoteCard">
-    <div class="quote-icon">💬</div>
-    <div style="flex:1">
-      <div class="quote-text quote-loading" id="dailyQuoteText">Loading today's motivation…</div>
-      <div class="quote-author" id="dailyQuoteAuthor"></div>
+  <!-- Daily Greeting Tile -->
+  <div class="greeting-tile" id="greetingTile">
+    <div class="greeting-header">
+      <div>
+        <div class="greeting-hello" id="greetingHello">Good evening, Jeremy</div>
+        <div class="greeting-date" id="greetingDate"></div>
+      </div>
+      <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
     </div>
-    <button onclick="localStorage.removeItem('dailyQuote');loadDailyQuote();" title="Refresh quote" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;align-self:flex-start;opacity:0.6">🔄</button>
+    <!-- Calendar Section -->
+    <div class="greeting-section" id="greetingCalSection">
+      <div class="greeting-section-label greeting-cal-label">📅 Today's Schedule</div>
+      <div id="greetingCalList" class="greeting-loading">Loading calendar…</div>
+    </div>
+    <!-- Gmail Section -->
+    <div class="greeting-section" id="greetingMailSection">
+      <div class="greeting-section-label greeting-mail-label">📧 Email Highlights</div>
+      <div id="greetingMailList" class="greeting-loading">Loading emails…</div>
+    </div>
+    <!-- Motivational Quote -->
+    <div class="greeting-section">
+      <div class="greeting-section-label greeting-quote-label">💬 Daily Motivation</div>
+      <div class="greeting-quote">
+        <div>
+          <div class="greeting-quote-text greeting-loading" id="dailyQuoteText">Loading…</div>
+          <div class="greeting-quote-author" id="dailyQuoteAuthor"></div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="content">
 
@@ -2566,7 +2608,7 @@ function scheduleMidnightRefresh() {
     renderWeeklyBalance();
     checkCopyYesterday();
     checkAdaptiveMacros();
-    loadDailyQuote();
+    initGreetingTile();
     showToast('🌅 Good morning! New day started.');
     scheduleMidnightRefresh();
   }, msUntilMidnight);
@@ -6839,27 +6881,252 @@ function copyYesterdayMeals() {
   showToast(`📋 Copied ${yEntries.length} meals!`);
 }
 
+// ── Daily Greeting Tile (Calendar + Gmail + Quote) ──
+
+let _googleAccessToken = null;
+let _googleTokenClient = null;
+let _greetingDataLoading = false;
+
+function getTimeGreeting() {
+  const h = nowEST().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function initGreetingTile() {
+  // Set greeting and date
+  const hello = document.getElementById('greetingHello');
+  const dateEl = document.getElementById('greetingDate');
+  const name = (_currentUser && _currentUser.name) ? _currentUser.name.split(' ')[0] : 'Jeremy';
+  if (hello) hello.textContent = `${getTimeGreeting()}, ${esc(name)}`;
+  if (dateEl) dateEl.textContent = nowEST().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+
+  // Load quote
+  loadDailyQuote();
+
+  // Try loading calendar + gmail with saved token
+  const savedToken = localStorage.getItem('googleAccessToken');
+  const savedExp = parseInt(localStorage.getItem('googleTokenExpiry') || '0');
+  if (savedToken && Date.now() < savedExp) {
+    _googleAccessToken = savedToken;
+    loadGreetingCalendar();
+    loadGreetingGmail();
+  } else {
+    // Init token client for Gmail + Calendar scopes
+    initGoogleTokenClient();
+  }
+}
+
+function initGoogleTokenClient() {
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    setTimeout(initGoogleTokenClient, 300);
+    return;
+  }
+  _googleTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) {
+        console.warn('[Greeting] Token error:', tokenResponse.error);
+        renderGreetingNoAuth();
+        return;
+      }
+      _googleAccessToken = tokenResponse.access_token;
+      const expiresIn = (tokenResponse.expires_in || 3600) * 1000;
+      localStorage.setItem('googleAccessToken', _googleAccessToken);
+      localStorage.setItem('googleTokenExpiry', String(Date.now() + expiresIn));
+      loadGreetingCalendar();
+      loadGreetingGmail();
+    },
+    prompt: '',
+  });
+
+  // Auto-request token (silently if already consented)
+  requestGreetingToken();
+}
+
+function requestGreetingToken() {
+  if (!_googleTokenClient) return;
+  try {
+    _googleTokenClient.requestAccessToken({ prompt: '' });
+  } catch (e) {
+    console.warn('[Greeting] Silent token request failed:', e);
+    renderGreetingNoAuth();
+  }
+}
+
+function renderGreetingNoAuth() {
+  const calList = document.getElementById('greetingCalList');
+  const mailList = document.getElementById('greetingMailList');
+  if (calList) calList.innerHTML = `<button class="greeting-connect-btn" onclick="connectGreetingGoogle()">🔗 Connect Google Calendar</button>`;
+  if (mailList) mailList.innerHTML = `<button class="greeting-connect-btn" onclick="connectGreetingGoogle()">🔗 Connect Gmail</button>`;
+}
+
+function connectGreetingGoogle() {
+  if (_googleTokenClient) {
+    _googleTokenClient.requestAccessToken({ prompt: 'consent' });
+  } else {
+    initGoogleTokenClient();
+  }
+}
+
+async function loadGreetingCalendar() {
+  const calList = document.getElementById('greetingCalList');
+  if (!calList || !_googleAccessToken) return;
+  calList.innerHTML = '<div class="greeting-loading">Loading calendar…</div>';
+
+  try {
+    const now = nowEST();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const tomorrowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(todayStart)}&timeMax=${encodeURIComponent(tomorrowEnd)}&singleEvents=true&orderBy=startTime&maxResults=8`;
+
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
+    if (res.status === 401) {
+      localStorage.removeItem('googleAccessToken');
+      _googleAccessToken = null;
+      renderGreetingNoAuth();
+      return;
+    }
+    const data = await res.json();
+    const events = (data.items || []).filter(e => e.status !== 'cancelled');
+
+    if (events.length === 0) {
+      calList.innerHTML = '<div class="greeting-empty">No events scheduled</div>';
+      return;
+    }
+
+    // Split into today and tomorrow
+    const todayDate = dateToKey(now);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = dateToKey(tomorrow);
+
+    let html = '';
+    let lastGroup = '';
+
+    events.forEach(ev => {
+      const evStart = ev.start.dateTime || ev.start.date;
+      const evDate = evStart.slice(0, 10);
+      const isAllDay = !ev.start.dateTime;
+
+      // Group header
+      let group = evDate === todayDate ? 'Today' : evDate === tomorrowDate ? 'Tomorrow' : '';
+      if (group && group !== lastGroup) {
+        if (lastGroup) html += '<div style="height:6px"></div>';
+        if (group === 'Tomorrow') html += `<div style="font-size:9px;font-weight:700;color:#4d5468;text-transform:uppercase;letter-spacing:1px;margin:4px 0 2px">Tomorrow</div>`;
+        lastGroup = group;
+      }
+
+      let timeStr = 'All day';
+      if (!isAllDay) {
+        const d = new Date(evStart);
+        timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+      }
+
+      const title = esc(ev.summary || '(No title)');
+      const loc = ev.location ? `<div class="greeting-event-loc">📍 ${esc(ev.location.split(',')[0])}</div>` : '';
+
+      html += `<div class="greeting-event greet-animate">
+        <div class="greeting-event-time">${timeStr}</div>
+        <div class="greeting-event-title">${title}${loc}</div>
+      </div>`;
+    });
+
+    calList.innerHTML = html;
+  } catch (e) {
+    console.warn('[Greeting] Calendar fetch error:', e);
+    calList.innerHTML = '<div class="greeting-empty">Could not load calendar</div>';
+  }
+}
+
+async function loadGreetingGmail() {
+  const mailList = document.getElementById('greetingMailList');
+  if (!mailList || !_googleAccessToken) return;
+  mailList.innerHTML = '<div class="greeting-loading">Loading emails…</div>';
+
+  try {
+    // Fetch recent unread important/primary emails
+    const q = encodeURIComponent('is:unread category:primary newer_than:1d');
+    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=5`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
+    if (res.status === 401) {
+      localStorage.removeItem('googleAccessToken');
+      _googleAccessToken = null;
+      renderGreetingNoAuth();
+      return;
+    }
+    const data = await res.json();
+    const messages = data.messages || [];
+
+    if (messages.length === 0) {
+      mailList.innerHTML = '<div class="greeting-empty">No new important emails</div>';
+      return;
+    }
+
+    // Fetch details for each message (parallel, max 5)
+    const details = await Promise.all(
+      messages.slice(0, 5).map(async (m) => {
+        try {
+          const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, {
+            headers: { 'Authorization': 'Bearer ' + _googleAccessToken }
+          });
+          return await r.json();
+        } catch { return null; }
+      })
+    );
+
+    let html = '';
+    details.filter(Boolean).forEach(msg => {
+      const headers = msg.payload?.headers || [];
+      const fromH = headers.find(h => h.name === 'From')?.value || '';
+      const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
+
+      // Parse "Name <email>" format
+      let fromName = fromH;
+      const nameMatch = fromH.match(/^"?([^"<]+)"?\s*</);
+      if (nameMatch) fromName = nameMatch[1].trim();
+      else if (fromH.includes('@')) fromName = fromH.split('@')[0];
+
+      html += `<div class="greeting-email greet-animate">
+        <div class="greeting-email-from">${esc(fromName)}</div>
+        <div class="greeting-email-subject">${esc(subject)}</div>
+      </div>`;
+    });
+
+    mailList.innerHTML = html || '<div class="greeting-empty">No new emails</div>';
+  } catch (e) {
+    console.warn('[Greeting] Gmail fetch error:', e);
+    mailList.innerHTML = '<div class="greeting-empty">Could not load emails</div>';
+  }
+}
+
+function refreshGreetingTile() {
+  localStorage.removeItem('dailyQuote');
+  localStorage.removeItem('greetingCache');
+  initGreetingTile();
+  showToast('Refreshing daily briefing…');
+}
+
 // ── Daily Motivational Quote (Claude AI) ──
 async function loadDailyQuote() {
   const QUOTE_KEY = 'dailyQuote';
   const today = todayKey();
 
-  // Use cached quote if already generated today (and it has content)
   const cached = getStorage(QUOTE_KEY, null);
   if (cached && cached.date === today && cached.quote) {
     renderQuote(cached.quote, cached.author);
     return;
   }
 
-  // Clear any stale cache
   localStorage.removeItem(QUOTE_KEY);
 
   const textEl   = document.getElementById('dailyQuoteText');
   const authorEl = document.getElementById('dailyQuoteAuthor');
-  if (textEl)   { textEl.textContent = "Generating today's motivation…"; textEl.className = 'quote-text quote-loading'; }
+  if (textEl)   { textEl.textContent = 'Generating…'; textEl.className = 'greeting-quote-text greeting-loading'; }
   if (authorEl) authorEl.textContent = '';
 
-  // Pull current user stats for a personalised prompt
   const goals  = getStorage('userGoals', {});
   const macros = getStorage('userMacros', null) || MACROS;
   const cw     = goals.weight || 165;
@@ -6922,21 +7189,18 @@ Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
     const d = nowEST();
     const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
     const fb = fallbacks[dayOfYear % fallbacks.length];
-    // Store WITHOUT _apiFetched so startup cache-bust retries the API tomorrow
     setStorage(QUOTE_KEY, { date: 'retry', quote: fb.quote, author: fb.author });
     renderQuote(fb.quote, fb.author);
-    // Show error hint under quote so we can diagnose
-    const authorEl = document.getElementById('dailyQuoteAuthor');
-    if (authorEl) authorEl.innerHTML += `<span style="font-size:9px;color:var(--text3);display:block;margin-top:4px">⚠️ ${e.message.slice(0,80)}</span>`;
   }
 }
 
 function renderQuote(quote, author) {
   const textEl   = document.getElementById('dailyQuoteText');
   const authorEl = document.getElementById('dailyQuoteAuthor');
+  if (!textEl) return;
   textEl.textContent = `"${quote}"`;
-  textEl.className   = 'quote-text quote-animate';
-  authorEl.textContent = author || '';
+  textEl.className   = 'greeting-quote-text greet-animate';
+  if (authorEl) authorEl.textContent = author || '';
 }
 
 // ── Weekly Calorie Balance ──
@@ -10973,7 +11237,7 @@ function _initApp() {
   const _qc = getStorage('dailyQuote', null);
   if (_qc && (!_qc._apiFetched || _qc.date === 'retry')) localStorage.removeItem('dailyQuote');
 
-  safeCall(loadDailyQuote, 'loadDailyQuote');
+  safeCall(initGreetingTile, 'initGreetingTile');
   safeCall(initNewFeatures, 'initNewFeatures');
   safeCall(renderRecipeList, 'renderRecipeList');
   safeCall(updateHeaderDate, 'updateHeaderDate');
@@ -11008,7 +11272,7 @@ document.addEventListener('visibilitychange', () => {
       renderWeightTrend();
       renderWeeklyBalance();
       checkCopyYesterday();
-      loadDailyQuote();
+      initGreetingTile();
     }
     // Re-check Strava/Garmin on resume — catches runs finished while app was in background
     try {
