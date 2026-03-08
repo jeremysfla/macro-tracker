@@ -49,31 +49,39 @@ async function getCalendarEvents(token, date) {
 }
 __name(getCalendarEvents, "getCalendarEvents");
 
-// ── Fetch urgent unread emails — single API call with metadata ────────────
+// ── Fetch urgent unread emails ─────────────────────────────────────────────
 async function getUrgentEmails(token) {
-  // Use format=metadata in the list call to get headers in one shot — no per-message fetches
+  // Step 1: get list of message IDs only
   const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
     + "?q=is%3Aunread%20is%3Aimportant%20-category%3Apromotions%20-category%3Aupdates"
-    + "&maxResults=8&format=metadata"
-    + "&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date";
+    + "&maxResults=5";
   const listR = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
   if (!listR.ok) return [];
   const listD = await listR.json();
-  const msgs  = listD.messages || [];
+  const msgs = (listD.messages || []).slice(0, 3); // max 3 to keep it fast
   if (!msgs.length) return [];
 
+  // Step 2: fetch metadata for each in parallel (only 3 calls max)
   const skip = /noreply|no-reply|donotreply|unsubscribe|notifications?@|alerts?@|americanairlines|caesars|linkedin|twitter|reddit/i;
-  const emails = msgs.slice(0, 8).map(m => {
-    const headers = m.payload?.headers || [];
-    const get = (name) => (headers.find(h => h.name === name) || {}).value || "";
-    const from    = get("From").replace(/<[^>]+>/, "").trim().replace(/"/g, "");
-    const subject = get("Subject");
-    if (!from && !subject) return null;
-    if (skip.test(from) || skip.test(subject)) return null;
-    return { from, subject, snippet: (m.snippet || "").slice(0, 100) };
-  });
+  const results = await Promise.all(msgs.map(async m => {
+    try {
+      const r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+        { headers: { Authorization: "Bearer " + token } }
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      const headers = d.payload?.headers || [];
+      const get = (name) => (headers.find(h => h.name === name) || {}).value || "";
+      const from = get("From").replace(/<[^>]+>/, "").trim().replace(/"/g, "");
+      const subject = get("Subject");
+      if (!from && !subject) return null;
+      if (skip.test(from) || skip.test(subject)) return null;
+      return { from, subject, snippet: (d.snippet || "").slice(0, 100) };
+    } catch(_) { return null; }
+  }));
 
-  return emails.filter(Boolean).slice(0, 4);
+  return results.filter(Boolean).slice(0, 3);
 }
 __name(getUrgentEmails, "getUrgentEmails");
 
@@ -101,13 +109,14 @@ var worker_default = {
         const body = await req.json();
         const { healthContext = {}, date = new Date().toISOString().slice(0, 10) } = body;
 
-        // Fetch Google data if credentials are set
+        // Fetch Google data with 4s timeout so brief never hangs
+        const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]);
         let events = [], urgentEmails = [];
         const googleToken = await getGoogleAccessToken(env);
         if (googleToken) {
           [events, urgentEmails] = await Promise.all([
-            getCalendarEvents(googleToken, date),
-            getUrgentEmails(googleToken)
+            withTimeout(getCalendarEvents(googleToken, date), 4000),
+            withTimeout(getUrgentEmails(googleToken), 4000)
           ]);
         }
 
