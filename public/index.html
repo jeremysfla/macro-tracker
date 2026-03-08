@@ -12702,105 +12702,20 @@ function onSliderChange(type) {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 6: DAILY AI BRIEF
+// FEATURE 6: DAILY AI BRIEF (uses greeting tile + dailyBriefCard)
 // ══════════════════════════════════════════════════════
 
-async function loadDailyBrief() {
-  const el = document.getElementById('dailyBriefCard');
-  if (!el) return;
-
-  const cached = getStorage('dailyBrief', null);
-  if (cached && cached.date === todayKey()) {
-    renderDailyBrief(cached.text);
-    return;
-  }
-
-  // Build context
-  const macroLog  = getStorage('macroLog', {});
-  const userMacros = getStorage('userMacros', null);
-  const userGoals  = getStorage('userGoals', {});
-  const weightLog  = getStorage('weightLog', {});
-  const whoopData  = getStorage('whoopData', {});
-
-  // Yesterday's nutrition
-  const yestKey = (() => { const d = nowEST(); d.setDate(d.getDate()-1); return dateToKey(d); })();
-  const yestLog = macroLog[yestKey] || null;
-  const target  = userMacros?.calories || 2000;
-
-  // WHOOP recovery
-  const whoopIdx = getWhoopIndex ? getWhoopIndex() : {};
-  const todayWhoop = whoopIdx[todayKey()] || whoopIdx[yestKey] || null;
-  const recovery = todayWhoop?.recovery_score || null;
-  const sleep    = todayWhoop ? Math.round((todayWhoop.total_sleep_time||0)/3600*10)/10 : null;
-
-  // Weight vs goal
-  const weights = Object.entries(weightLog).sort((a,b)=>b[0].localeCompare(a[0]));
-  const currentWt = weights[0]?.[1] || null;
-  const goalWt    = userGoals.goal || 160;
-  const goalDate  = userGoals.goalDate || '2026-03-31';
-
-  // Days until marathon
-  const marathon = new Date('2026-06-20T12:00:00');
-  const daysToRace = Math.ceil((marathon - new Date()) / 86400000);
-
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <div style="font-size:22px">☀️</div>
-      <div>
-        <div style="font-size:15px;font-weight:800;color:var(--text)">Good morning, Jeremy</div>
-        <div style="font-size:11px;color:var(--text2)">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
-      </div>
-      <button onclick="refreshDailyBrief()" style="margin-left:auto;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit">🔄</button>
-    </div>
-    <div id="dailyBriefText" style="font-size:13px;color:var(--text2);line-height:1.6">
-      <div style="display:flex;align-items:center;gap:8px;color:var(--text2);font-size:12px">
-        <div class="spinner" style="width:14px;height:14px;border:2px solid #334155;border-top-color:#7c3aed;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-        Generating your daily brief…
-      </div>
-    </div>`;
-
-  try {
-    const prompt = `You are Jeremy's personal health coach. Write a concise morning brief (4-5 sentences max) based on this data:
-
-Yesterday's nutrition: ${yestLog ? `${yestLog.calories} kcal (target: ${target}), ${yestLog.protein}g protein, ${yestLog.carbs}g carbs, ${yestLog.fat}g fat` : 'No data logged'}
-WHOOP recovery score: ${recovery !== null ? recovery + '/100' : 'No data'}
-Sleep last night: ${sleep !== null ? sleep + ' hours' : 'No data'}
-Current weight: ${currentWt ? currentWt + ' lbs' : 'Unknown'} (goal: ${goalWt} lbs by ${goalDate})
-Days until Grandma's Marathon (June 20 2026): ${daysToRace} days
-Jeremy's age: 52, endurance runner, weight goal in progress
-
-Be specific, encouraging, and practical. Mention 1-2 concrete action items for today. Keep it under 80 words. No bullet points — conversational tone.`;
-
-    const resp = await callClaudeAPI({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: prompt }]
-    });
-    const text = resp.content?.find(b => b.type === 'text')?.text || '';
-    setStorage('dailyBrief', { date: todayKey(), text });
-    renderDailyBrief(text);
-  } catch(e) {
-    const el2 = document.getElementById('dailyBriefText');
-    if (el2) el2.innerHTML = '<span style="color:var(--text2);font-size:12px">Could not load brief — tap 🔄 to retry</span>';
-  }
-}
-
-function refreshDailyBrief() {
-  const cached = getStorage('dailyBrief', null);
-  if (cached) {
-    const log = getStorage('dailyBrief', {});
-    setStorage('dailyBrief', null);
-  }
-  localStorage.removeItem('dailyBrief');
-  loadDailyBrief();
-}
-
+// Legacy compat — these are now handled by generateDailyBrief (Feature 7a)
+function loadDailyBrief() { generateDailyBrief(false); }
+function refreshDailyBrief() { regenerateDailyBrief(); }
 function renderDailyBrief(text) {
   const el = document.getElementById('dailyBriefText');
   if (!el || !text) return;
   el.innerHTML = text.replace(/\n/g, '<br>');
   el.style.color = 'var(--text)';
 }
+// Legacy compat for any cached references
+function renderBriefHTML() { generateDailyBrief(false); }
 
 
 // ══════════════════════════════════════════════════════
