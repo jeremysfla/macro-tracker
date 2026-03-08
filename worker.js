@@ -1,90 +1,6 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// AbortController-based timeout — works in Cloudflare Workers (setTimeout does NOT)
-function fetchWithTimeout(url, options, ms) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
-}
-__name(fetchWithTimeout, "fetchWithTimeout");
-
-async function getGoogleAccessToken(env) {
-  if (!env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
-  try {
-    const r = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: env.GOOGLE_REFRESH_TOKEN,
-        client_id: env.GOOGLE_CLIENT_ID,
-        client_secret: env.GOOGLE_CLIENT_SECRET,
-      })
-    }, 4000);
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d.access_token || null;
-  } catch(_) { return null; }
-}
-__name(getGoogleAccessToken, "getGoogleAccessToken");
-
-async function getCalendarEvents(token, date) {
-  try {
-    const timeMin = encodeURIComponent(date + "T00:00:00-04:00");
-    const timeMax = encodeURIComponent(date + "T23:59:59-04:00");
-    const calId = encodeURIComponent("jeremy@dronenerds.com");
-    const fields = encodeURIComponent("items(summary,start,end,eventType,location)");
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime&fields=${fields}&maxResults=20`;
-    const r = await fetchWithTimeout(url, { headers: { Authorization: "Bearer " + token } }, 5000);
-    if (!r.ok) return [];
-    const d = await r.json();
-    return (d.items || [])
-      .filter(e => e.eventType !== "workingLocation" && e.summary !== "Break")
-      .map(e => ({
-        title: e.summary || "Untitled",
-        time: e.start?.dateTime
-          ? new Date(e.start.dateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })
-          : "All day",
-        location: e.location || null,
-      }));
-  } catch(_) { return []; }
-}
-__name(getCalendarEvents, "getCalendarEvents");
-
-async function getUrgentEmails(token) {
-  try {
-    const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is%3Aunread%20is%3Aimportant%20-category%3Apromotions%20-category%3Aupdates&maxResults=4";
-    const listR = await fetchWithTimeout(listUrl, { headers: { Authorization: "Bearer " + token } }, 5000);
-    if (!listR.ok) return [];
-    const listD = await listR.json();
-    const msgs = (listD.messages || []).slice(0, 3);
-    if (!msgs.length) return [];
-    const skip = /noreply|no-reply|donotreply|unsubscribe|notifications?@|alerts?@|americanairlines|caesars|linkedin|twitter|reddit/i;
-    const results = await Promise.all(msgs.map(async m => {
-      try {
-        const r = await fetchWithTimeout(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-          { headers: { Authorization: "Bearer " + token } },
-          4000
-        );
-        if (!r.ok) return null;
-        const d = await r.json();
-        const headers = d.payload?.headers || [];
-        const get = name => (headers.find(h => h.name === name) || {}).value || "";
-        const from = get("From").replace(/<[^>]+>/, "").trim().replace(/"/g, "");
-        const subject = get("Subject");
-        if (!from && !subject) return null;
-        if (skip.test(from) || skip.test(subject)) return null;
-        return { from, subject, snippet: (d.snippet || "").slice(0, 100) };
-      } catch(_) { return null; }
-    }));
-    return results.filter(Boolean);
-  } catch(_) { return []; }
-}
-__name(getUrgentEmails, "getUrgentEmails");
-
 var worker_default = {
   async fetch(req, env) {
     const u = new URL(req.url);
@@ -92,98 +8,90 @@ var worker_default = {
 
     if (u.pathname === "/api/status") {
       return new Response(JSON.stringify({
-        ok: true,
-        hasKey: !!env.ANTHROPIC_KEY,
-        hasGoogle: !!(env.GOOGLE_REFRESH_TOKEN && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+        ok: true, hasKey: !!env.ANTHROPIC_KEY,
         keyPrefix: env.ANTHROPIC_KEY ? env.ANTHROPIC_KEY.slice(0, 7) + "..." : "NOT SET"
       }), { headers: CORS });
     }
 
+
+    // ── Brief context (email cache from D1) ───────────────────────────────
+    if (u.pathname === "/api/brief-context" && req.method === "GET") {
+      try {
+        const date = u.searchParams.get("date") || new Date().toISOString().slice(0,10);
+        if (!env.DB) return new Response(JSON.stringify({ ok: false }), { headers: CORS });
+        const row = await env.DB.prepare("SELECT * FROM brief_cache WHERE date=?").bind(date).first();
+        return new Response(JSON.stringify({
+          ok: true,
+          emails: row?.email_context ? JSON.parse(row.email_context) : [],
+          calendar: row?.calendar_context ? JSON.parse(row.calendar_context) : []
+        }), { headers: CORS });
+      } catch(e) { return new Response(JSON.stringify({ ok: false, emails: [], calendar: [] }), { headers: CORS }); }
+    }
+
+    // ── Daily Brief: health data only, fast ───────────────────────────────
     if (u.pathname === "/api/brief" && req.method === "POST") {
       try {
-        if (!env.ANTHROPIC_KEY) {
-          return new Response(JSON.stringify({ ok: false, error: "ANTHROPIC_KEY not set" }), { status: 500, headers: CORS });
-        }
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ ok: false, error: "no key" }), { status: 500, headers: CORS });
+
         const body = await req.json();
-        const { healthContext = {}, date = new Date().toISOString().slice(0, 10) } = body;
-
-        // Get Google token first, then fetch calendar + email in parallel
-        let events = [], urgentEmails = [];
-        const googleToken = await getGoogleAccessToken(env);
-        if (googleToken) {
-          [events, urgentEmails] = await Promise.all([
-            getCalendarEvents(googleToken, date),
-            getUrgentEmails(googleToken),
-          ]);
-        }
-
+        const { healthContext: h = {}, date = new Date().toISOString().slice(0, 10), emailContext = [] } = body;
         const daysToMarathon = Math.ceil((new Date("2026-06-20") - new Date()) / 86400000);
+        const hr = new Date().getHours();
+        const greeting = hr < 12 ? "Good Morning" : hr < 17 ? "Good Afternoon" : "Good Evening";
+
+        const emailSection = emailContext.length
+          ? emailContext.map(e => `- From: ${e.from}\n  Subject: ${e.subject}\n  Preview: ${e.snippet}`).join("\n")
+          : "No urgent emails";
+
         const prompt = `You are Jeremy's personal AI chief-of-staff. Write a tight daily brief as JSON.
 
-HEALTH CONTEXT:
-- Weight: ${healthContext.weight ? healthContext.weight + " lbs (goal: " + (healthContext.targetWeight || 163) + " lbs)" : "not logged"}
-- Macros today: ${healthContext.calories || 0} kcal, ${healthContext.protein || 0}g protein
-- Energy: ${healthContext.energy || "?"}/5, Mood: ${healthContext.mood || "?"}/5
-- Water: ${healthContext.water || 0} oz
+HEALTH:
+- Weight: ${h.weight ? h.weight + " lbs (goal: " + (h.targetWeight||163) + " lbs)" : "not logged yet today"}
+- Macros: ${h.calories||0} kcal, ${h.protein||0}g protein
+- Energy: ${h.energy||"?"}/5, Mood: ${h.mood||"?"}/5
+- Water: ${h.water||0} oz
 - Marathon: ${daysToMarathon} days to Grandma's Marathon (June 20 2026)
 
-TODAY'S CALENDAR (${date}):
-${events.length ? events.map(e => `- ${e.time}: ${e.title}${e.location ? " @ " + e.location : ""}`).join("\n") : "No events found"}
+URGENT EMAILS:
+${emailSection}
 
-URGENT UNREAD EMAILS:
-${urgentEmails.length ? urgentEmails.map(e => `- From: ${e.from}\n  Subject: ${e.subject}\n  Preview: ${e.snippet}`).join("\n") : "No urgent emails"}
+Return ONLY valid JSON, no markdown:
+{"greeting":"${greeting}, Jeremy","date":"${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}","urgent_emails":[{"from":"Name","subject":"Subject","flag":"why urgent"}],"health_note":"one sentence with numbers","focus":"most important thing today"}
 
-Return ONLY this JSON (no markdown, no preamble):
-{
-  "events": [{"time":"9:00 AM","title":"event name","note":null}],
-  "urgent_emails": [{"from":"Name","subject":"Subject","flag":"one short reason urgent"}],
-  "health_note": "one sentence with actual numbers",
-  "focus": "single most important thing today"
-}
-Rules: urgent_emails max 4, only real human emails needing response; health_note use actual numbers; Return ONLY valid JSON`;
+Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numbers; Return ONLY JSON`;
 
-        const r = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "anthropic-version": "2023-06-01",
-            "x-api-key": env.ANTHROPIC_KEY
-          },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 800,
-            messages: [{ role: "user", content: prompt }]
-          })
-        }, 15000);
+          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 600, messages: [{ role: "user", content: prompt }] })
+        });
 
         const data = await r.json();
-        if (!r.ok) {
-          return new Response(JSON.stringify({ ok: false, error: data?.error?.message || "API error" }), { status: r.status, headers: CORS });
-        }
-        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        if (!r.ok) return new Response(JSON.stringify({ ok: false, error: data?.error?.message }), { status: r.status, headers: CORS });
+
+        const text = (data.content||[]).filter(b => b.type==="text").map(b => b.text).join("");
         let brief = null;
         try {
-          const clean = text.replace(/```json|```/g, "").trim();
-          const start = clean.indexOf("{");
-          const end = clean.lastIndexOf("}");
-          if (start >= 0 && end > start) brief = JSON.parse(clean.slice(start, end + 1));
+          const clean = text.replace(/```json|```/g,"").trim();
+          const s = clean.indexOf("{"), e = clean.lastIndexOf("}");
+          if (s>=0 && e>s) brief = JSON.parse(clean.slice(s, e+1));
         } catch(_) {}
-        return new Response(JSON.stringify({ ok: true, brief, hasGoogle: !!googleToken, raw: text }), { headers: CORS });
+
+        return new Response(JSON.stringify({ ok: true, brief, raw: text }), { headers: CORS });
       } catch(e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
     }
 
+    // ── Checkin upsert ─────────────────────────────────────────────────────
     if (u.pathname === "/api/checkin" && req.method === "POST") {
       try {
         const b = await req.json();
-        if (!b.date || !env.DB) return new Response(JSON.stringify({ ok: false, error: "missing date or DB binding" }), { headers: CORS });
+        if (!b.date || !env.DB) return new Response(JSON.stringify({ ok: false, error: "missing date or DB" }), { headers: CORS });
         const sql = `INSERT INTO daily_checkin (date,user_id,energy,mood,water_oz,weight_lbs,sleep_hrs,sleep_deep,sleep_rem,sleep_score,calories_consumed,protein_g,carbs_g,fat_g,steps,active_cals,notes,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(date,user_id) DO UPDATE SET energy=excluded.energy,mood=excluded.mood,water_oz=excluded.water_oz,weight_lbs=excluded.weight_lbs,sleep_hrs=excluded.sleep_hrs,sleep_deep=excluded.sleep_deep,sleep_rem=excluded.sleep_rem,sleep_score=excluded.sleep_score,calories_consumed=excluded.calories_consumed,protein_g=excluded.protein_g,carbs_g=excluded.carbs_g,fat_g=excluded.fat_g,steps=excluded.steps,active_cals=excluded.active_cals,notes=excluded.notes,updated_at=datetime('now')`;
         await env.DB.prepare(sql).bind(b.date,b.user_id||"jeremy",b.energy??null,b.mood??null,b.water_oz??null,b.weight_lbs??null,b.sleep_hrs??null,b.sleep_deep??null,b.sleep_rem??null,b.sleep_score??null,b.calories_consumed??null,b.protein_g??null,b.carbs_g??null,b.fat_g??null,b.steps??null,b.active_cals??null,b.notes??null).run();
         return new Response(JSON.stringify({ ok: true }), { headers: CORS });
-      } catch(e) {
-        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
-      }
+      } catch(e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
 
     if (u.pathname === "/api/checkin" && req.method === "GET") {
@@ -191,25 +99,23 @@ Rules: urgent_emails max 4, only real human emails needing response; health_note
         const days = Math.min(parseInt(u.searchParams.get("days")||"90"), 365);
         const rows = await env.DB.prepare(`SELECT * FROM daily_checkin WHERE user_id='jeremy' AND date>=date('now','-'||?||' days') ORDER BY date DESC`).bind(days).all();
         return new Response(JSON.stringify({ ok: true, rows: rows.results }), { headers: CORS });
-      } catch(e) {
-        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
-      }
+      } catch(e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
 
+    // ── Barcode lookup ─────────────────────────────────────────────────────
     if (u.pathname === "/api/barcode" && req.method === "GET") {
       const raw = (u.searchParams.get("code")||"").replace(/\D/g,"");
-      if (!raw) return new Response(JSON.stringify({ found: false, error: "no code" }), { headers: CORS });
+      if (!raw) return new Response(JSON.stringify({ found: false }), { headers: CORS });
       const ean13 = raw.length===12 ? "0"+raw : raw;
-      const upcA = raw.length===13 && raw.startsWith("0") ? raw.slice(1) : raw;
+      const upcA  = raw.length===13 && raw.startsWith("0") ? raw.slice(1) : raw;
       const codes = [...new Set([raw, ean13, upcA])];
       const UA = "MacroTracker/1.0 (jeremy@dronenerd.com)";
-      const OFF_FIELDS = "product_name,product_name_en,brands,serving_size,serving_quantity,nutriments";
       for (const code of codes) {
         try {
-          const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+          const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}?fields=product_name,product_name_en,brands,serving_size,serving_quantity,nutriments`, { headers: { "User-Agent": UA, "Accept": "application/json" } });
           if (!r.ok) continue;
           const d = await r.json();
-          if (d.status===1 && d.product) { const p = parseOFF(d.product); if (p && p.calories>0) return new Response(JSON.stringify({ found:true, product:{...p, source:"Open Food Facts"} }), { headers: CORS }); }
+          if (d.status===1 && d.product) { const p = parseOFF(d.product); if (p?.calories>0) return new Response(JSON.stringify({ found:true, product:{...p,source:"Open Food Facts"} }), { headers: CORS }); }
         } catch(_) {}
       }
       const USDA_KEY = env.USDA_KEY || "DEMO_KEY";
@@ -218,9 +124,8 @@ Rules: urgent_emails max 4, only real human emails needing response; health_note
           const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_KEY}&query=${encodeURIComponent(code)}&dataType=Branded&pageSize=10`, { headers: { "User-Agent": UA } });
           if (!r.ok) continue;
           const d = await r.json();
-          const foods = d.foods || [];
-          const hit = foods.find(f => f.gtinUpc && codes.includes(f.gtinUpc)) || foods.find(f => f.gtinUpc && f.gtinUpc.replace(/^0+/,"")===raw.replace(/^0+/,""));
-          if (hit) { const p = parseUSDA(hit); if (p && p.calories>0) return new Response(JSON.stringify({ found:true, product:{...p, source:"USDA FDC"} }), { headers: CORS }); }
+          const hit = (d.foods||[]).find(f => f.gtinUpc && codes.includes(f.gtinUpc));
+          if (hit) { const p = parseUSDA(hit); if (p?.calories>0) return new Response(JSON.stringify({ found:true, product:{...p,source:"USDA FDC"} }), { headers: CORS }); }
         } catch(_) {}
       }
       try {
@@ -230,17 +135,18 @@ Rules: urgent_emails max 4, only real human emails needing response; health_note
           const item = (d.items||[])[0];
           if (item?.title) {
             const nutr = await usdaNameSearch(item.title, USDA_KEY, UA);
-            if (nutr && nutr.calories>0) return new Response(JSON.stringify({ found:true, product:{...nutr, name:item.title, brand:item.brand||nutr.brand, source:"UPC ItemDB + USDA"} }), { headers: CORS });
-            return new Response(JSON.stringify({ found:true, product:{name:item.title, brand:item.brand||"", calories:0, protein:0, carbs:0, fat:0, servingSize:"1", servingUnit:"serving", source:"UPC ItemDB", incomplete:true} }), { headers: CORS });
+            if (nutr?.calories>0) return new Response(JSON.stringify({ found:true, product:{...nutr,name:item.title,brand:item.brand||nutr.brand,source:"UPC ItemDB+USDA"} }), { headers: CORS });
+            return new Response(JSON.stringify({ found:true, product:{name:item.title,brand:item.brand||"",calories:0,protein:0,carbs:0,fat:0,servingSize:"1",servingUnit:"serving",source:"UPC ItemDB",incomplete:true} }), { headers: CORS });
           }
         }
       } catch(_) {}
       return new Response(JSON.stringify({ found: false }), { headers: CORS });
     }
 
+    // ── Claude proxy ───────────────────────────────────────────────────────
     if (u.pathname === "/api/claude" && req.method === "POST") {
       try {
-        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "ANTHROPIC_KEY not set" } }), { status: 500, headers: CORS });
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
         const b = await req.json();
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -248,10 +154,8 @@ Rules: urgent_emails max 4, only real human emails needing response; health_note
           body: JSON.stringify(b)
         });
         const data = await r.json();
-        return new Response(JSON.stringify(data), { status: r.ok ? 200 : r.status, headers: CORS });
-      } catch(e) {
-        return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS });
-      }
+        return new Response(JSON.stringify(data), { status: r.ok?200:r.status, headers: CORS });
+      } catch(e) { return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS }); }
     }
 
     return env.ASSETS.fetch(req);
@@ -259,45 +163,31 @@ Rules: urgent_emails max 4, only real human emails needing response; health_note
 };
 
 function parseOFF(p) {
-  const n = p.nutriments||{};
-  const servingQty = parseFloat(p.serving_quantity)||0;
-  const scale = servingQty>0 ? servingQty/100 : 1;
-  function get(base) {
-    const keys=[base,base.replace("-","_"),base.replace("_","-")];
-    for(const k of keys){const sv=n[k+"_serving"];if(sv!=null&&!isNaN(+sv)&&+sv>=0)return+sv;}
-    for(const k of keys){const v=n[k+"_100g"];if(v!=null&&!isNaN(+v)&&+v>=0)return+v*scale;}
-    return 0;
-  }
-  let cals=get("energy-kcal");
-  if(!cals){const kj=get("energy");if(kj>0)cals=kj/4.184;}
-  const name=p.product_name_en||p.product_name||"";
-  if(!name)return null;
-  const m=(p.serving_size||"").match(/([\d.]+)\s*(g|ml|oz|lb|cup|tbsp|tsp|piece)?/i);
-  return { name, brand:(p.brands||"").split(",")[0].trim(), calories:Math.round(cals), protein:Math.round(get("proteins")*10)/10, carbs:Math.round(get("carbohydrates")*10)/10, fat:Math.round(get("fat")*10)/10, fiber:Math.round(get("fiber")*10)/10, sodium:Math.round(get("sodium")*1000)/1000, servingSize:m?m[1]:"1", servingUnit:m?m[2]||"serving":"serving" };
+  const n=p.nutriments||{}, sq=parseFloat(p.serving_quantity)||0, sc=sq>0?sq/100:1;
+  const get=base=>{const ks=[base,base.replace("-","_"),base.replace("_","-")];for(const k of ks){const sv=n[k+"_serving"];if(sv!=null&&!isNaN(+sv))return+sv;}for(const k of ks){const v=n[k+"_100g"];if(v!=null&&!isNaN(+v))return+v*sc;}return 0;};
+  let cal=get("energy-kcal")||get("energy")/4.184;
+  const name=p.product_name_en||p.product_name||""; if(!name)return null;
+  const m=(p.serving_size||"").match(/([\d.]+)\s*(g|ml|oz|lb|cup|tbsp|tsp)?/i);
+  return {name,brand:(p.brands||"").split(",")[0].trim(),calories:Math.round(cal),protein:Math.round(get("proteins")*10)/10,carbs:Math.round(get("carbohydrates")*10)/10,fat:Math.round(get("fat")*10)/10,fiber:Math.round(get("fiber")*10)/10,sodium:Math.round(get("sodium")*1000)/1000,servingSize:m?m[1]:"1",servingUnit:m?m[2]||"serving":"serving"};
 }
-__name(parseOFF, "parseOFF");
+__name(parseOFF,"parseOFF");
 
 function parseUSDA(f) {
-  if(!f||!f.description)return null;
-  const nutr=(id)=>{const hit=(f.foodNutrients||[]).find(x=>x.nutrientId===id||x.nutrientId===String(id)||x.nutrientNumber===String(id));return hit?hit.value||0:0;};
-  let servingG=parseFloat(f.servingSize)||0;
-  const unit=(f.servingSizeUnit||"g").toLowerCase();
-  if(unit==="oz")servingG*=28.3495; else if(unit==="lb")servingG*=453.592;
-  const scale=servingG>0?servingG/100:1;
-  const cal=(nutr(1008)||nutr(208))*scale;
-  if(!cal)return null;
-  return { name:f.description, brand:f.brandOwner||f.brandName||"", calories:Math.round(cal), protein:Math.round((nutr(1003)||nutr(203))*scale*10)/10, carbs:Math.round((nutr(1005)||nutr(205))*scale*10)/10, fat:Math.round((nutr(1004)||nutr(204))*scale*10)/10, fiber:Math.round((nutr(1079)||nutr(291))*scale*10)/10, sodium:Math.round((nutr(1093)||nutr(307))*scale)/1000, servingSize:servingG>0?String(Math.round(servingG)):"1", servingUnit:unit==="g"||unit==="ml"?unit:"serving" };
+  if(!f?.description)return null;
+  const nutr=id=>{const h=(f.foodNutrients||[]).find(x=>x.nutrientId===id||x.nutrientId===String(id)||x.nutrientNumber===String(id));return h?h.value||0:0;};
+  let sg=parseFloat(f.servingSize)||0; const u=(f.servingSizeUnit||"g").toLowerCase();
+  if(u==="oz")sg*=28.3495; else if(u==="lb")sg*=453.592;
+  const sc=sg>0?sg/100:1, cal=(nutr(1008)||nutr(208))*sc; if(!cal)return null;
+  return {name:f.description,brand:f.brandOwner||f.brandName||"",calories:Math.round(cal),protein:Math.round((nutr(1003)||nutr(203))*sc*10)/10,carbs:Math.round((nutr(1005)||nutr(205))*sc*10)/10,fat:Math.round((nutr(1004)||nutr(204))*sc*10)/10,fiber:Math.round((nutr(1079)||nutr(291))*sc*10)/10,sodium:Math.round((nutr(1093)||nutr(307))*sc)/1000,servingSize:sg>0?String(Math.round(sg)):"1",servingUnit:u==="g"||u==="ml"?u:"serving"};
 }
-__name(parseUSDA, "parseUSDA");
+__name(parseUSDA,"parseUSDA");
 
 async function usdaNameSearch(name,key,ua) {
   try {
     const r=await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${key}&query=${encodeURIComponent(name)}&dataType=Branded,Foundation,SR%20Legacy&pageSize=3`,{headers:{"User-Agent":ua}});
-    if(!r.ok)return null;
-    const d=await r.json();
-    return parseUSDA((d.foods||[])[0]||{});
+    if(!r.ok)return null; const d=await r.json(); return parseUSDA((d.foods||[])[0]||{});
   } catch(_){return null;}
 }
-__name(usdaNameSearch, "usdaNameSearch");
+__name(usdaNameSearch,"usdaNameSearch");
 
 export { worker_default as default };
