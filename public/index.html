@@ -263,9 +263,16 @@
   .greeting-event-time { color: #60a5fa; font-weight: 700; min-width: 58px; flex-shrink: 0; font-size: 11px; }
   .greeting-event-title { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; }
   .greeting-event-loc { font-size: 10px; color: #6b7280; font-weight: 500; margin-top: 1px; }
-  .greeting-email { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 12px; }
-  .greeting-email-from { color: #f87171; font-weight: 700; min-width: 0; flex-shrink: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .greeting-email { padding: 8px 0; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .greeting-email:last-child { border-bottom: none; }
+  .greeting-email-row { display: flex; align-items: flex-start; gap: 10px; }
+  .greeting-email-from { color: #f87171; font-weight: 700; min-width: 0; flex-shrink: 0; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
   .greeting-email-subject { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .greeting-email-reason { font-size: 10px; color: #a78bfa; font-weight: 500; margin-top: 3px; padding-left: 0; line-height: 1.4; }
+  .greeting-email-badge { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; padding: 1px 6px; border-radius: 6px; margin-right: 4px; }
+  .greeting-email-badge.urgent { background: rgba(239,68,68,0.2); color: #f87171; }
+  .greeting-email-badge.action { background: rgba(251,191,36,0.2); color: #fbbf24; }
+  .greeting-email-badge.fyi { background: rgba(96,165,250,0.15); color: #60a5fa; }
   .greeting-connect-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; color: #e2e8f0; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-top: 4px; }
   .greeting-connect-btn:hover { background: rgba(255,255,255,0.14); }
   .greeting-empty { font-size: 11px; color: #6b7280; font-style: italic; padding: 4px 0; }
@@ -707,7 +714,6 @@
   }
 
   /* ── Daily brief ── */
-  #dailyBriefCard { animation: fadeIn 0.5s ease; }
 
   /* ── BP history table ── */
   .bp-row { display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2); }
@@ -936,7 +942,7 @@ PROMISE ERROR:
     </div>
     <!-- Gmail Section -->
     <div class="greeting-section" id="greetingMailSection">
-      <div class="greeting-section-label greeting-mail-label">📧 Email Highlights</div>
+      <div class="greeting-section-label greeting-mail-label">📧 Emails Needing Attention</div>
       <div id="greetingMailList" class="greeting-loading">Loading emails…</div>
     </div>
     <!-- Motivational Quote -->
@@ -977,18 +983,6 @@ PROMISE ERROR:
           <div style="font-size:11px;color:var(--text3);font-weight:500" id="streakSub">No workouts logged yet</div>
         </div>
         <div id="weekDotRow" style="display:flex;flex-direction:column;gap:5px;align-items:flex-end"></div>
-      </div>
-
-      <!-- FEATURE: Daily AI Brief -->
-      <div id="dailyBriefCard" style="display:block;background:linear-gradient(135deg,#1e1b4b,#2d1f63);border:1.5px solid #4c1d95;border-radius:18px;padding:14px 16px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div>
-            <div id="dailyBriefGreeting" style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">Good Morning 👋</div>
-            <div id="dailyBriefDate" style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:1px"></div>
-          </div>
-          <button onclick="regenerateDailyBrief()" style="background:#2d1f63;border:1px solid #4c1d95;border-radius:10px;color:#a78bfa;font-size:14px;width:30px;height:30px;cursor:pointer" title="Refresh">🔄</button>
-        </div>
-        <div id="dailyBriefText" style="font-size:13px;color:#e2e8f0;line-height:1.6;min-height:40px"></div>
       </div>
 
       <!-- Event Countdowns -->
@@ -3743,7 +3737,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); renderMoodCard(); initMoodBtns(); generateDailyBrief(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); renderMoodCard(); initMoodBtns(); }
   if (name === 'lift') renderWorkoutPage();
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
@@ -7062,12 +7056,12 @@ async function loadGreetingCalendar() {
 async function loadGreetingGmail() {
   const mailList = document.getElementById('greetingMailList');
   if (!mailList || !_googleAccessToken) return;
-  mailList.innerHTML = '<div class="greeting-loading">Loading emails…</div>';
+  mailList.innerHTML = '<div class="greeting-loading">Checking emails with AI…</div>';
 
   try {
-    // Fetch recent unread important/primary emails
-    const q = encodeURIComponent('is:unread category:primary newer_than:1d');
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=5`;
+    // Fetch recent unread primary emails (up to 10 for AI to triage)
+    const q = encodeURIComponent('is:unread category:primary newer_than:2d');
+    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=10`;
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
     if (res.status === 401) {
       localStorage.removeItem('googleAccessToken');
@@ -7079,15 +7073,15 @@ async function loadGreetingGmail() {
     const messages = data.messages || [];
 
     if (messages.length === 0) {
-      mailList.innerHTML = '<div class="greeting-empty">No new important emails</div>';
+      mailList.innerHTML = '<div class="greeting-empty">Inbox zero — no new emails to address</div>';
       return;
     }
 
-    // Fetch details for each message (parallel, max 5)
+    // Fetch details + snippet for each message (parallel)
     const details = await Promise.all(
-      messages.slice(0, 5).map(async (m) => {
+      messages.map(async (m) => {
         try {
-          const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, {
+          const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
             headers: { 'Authorization': 'Bearer ' + _googleAccessToken }
           });
           return await r.json();
@@ -7095,29 +7089,110 @@ async function loadGreetingGmail() {
       })
     );
 
-    let html = '';
-    details.filter(Boolean).forEach(msg => {
+    const emailSummaries = details.filter(Boolean).map(msg => {
       const headers = msg.payload?.headers || [];
       const fromH = headers.find(h => h.name === 'From')?.value || '';
       const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
-
-      // Parse "Name <email>" format
+      const snippet = msg.snippet || '';
       let fromName = fromH;
       const nameMatch = fromH.match(/^"?([^"<]+)"?\s*</);
       if (nameMatch) fromName = nameMatch[1].trim();
       else if (fromH.includes('@')) fromName = fromH.split('@')[0];
-
-      html += `<div class="greeting-email greet-animate">
-        <div class="greeting-email-from">${esc(fromName)}</div>
-        <div class="greeting-email-subject">${esc(subject)}</div>
-      </div>`;
+      return { from: fromName, subject, snippet: snippet.slice(0, 120) };
     });
 
-    mailList.innerHTML = html || '<div class="greeting-empty">No new emails</div>';
+    // Check cache first
+    const cacheKey = 'aiEmailTriage_' + todayKey();
+    const cached = getStorage(cacheKey, null);
+    const emailHash = JSON.stringify(emailSummaries.map(e => e.subject)).slice(0, 200);
+    if (cached && cached.hash === emailHash && cached.results) {
+      renderAIEmailResults(mailList, cached.results);
+      return;
+    }
+
+    // Send to Claude AI for triage
+    try {
+      const prompt = `You are Jeremy's personal email triage assistant. Review these unread emails and determine which ones he actually needs to address today vs which can be ignored (newsletters, promos, automated notifications, social media alerts, etc.).
+
+EMAILS:
+${emailSummaries.map((e, i) => `${i+1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.snippet}`).join('\n')}
+
+Return ONLY valid JSON array (no markdown). Each item for emails that NEED ATTENTION:
+[{"index":1,"priority":"urgent|action|fyi","reason":"5-8 word reason why this needs attention"}]
+
+Rules:
+- "urgent": needs response today (client emails, boss, deadlines, money)
+- "action": needs action soon (meetings, requests, approvals)
+- "fyi": worth reading but no reply needed (important updates, relevant news)
+- SKIP: newsletters, marketing, social notifications, automated alerts, promotional emails, subscription confirmations
+- Max 5 items. Only include emails that genuinely need human attention.
+- Return empty array [] if nothing needs attention.`;
+
+      const resp = await callClaudeAPI({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const text = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      const clean = text.replace(/```json|```/g, '').trim();
+      const start = clean.indexOf('['), end = clean.lastIndexOf(']');
+      let triaged = [];
+      if (start >= 0 && end > start) {
+        triaged = JSON.parse(clean.slice(start, end + 1));
+      }
+
+      // Map AI results back to email data
+      const results = triaged.map(t => {
+        const email = emailSummaries[t.index - 1];
+        if (!email) return null;
+        return { from: email.from, subject: email.subject, priority: t.priority || 'fyi', reason: t.reason || '' };
+      }).filter(Boolean);
+
+      // Cache results
+      setStorage(cacheKey, { hash: emailHash, results, ts: Date.now() });
+      renderAIEmailResults(mailList, results);
+
+    } catch (aiErr) {
+      console.warn('[Greeting] AI triage failed, showing raw list:', aiErr);
+      // Fallback: show first 5 emails without AI
+      let html = '';
+      emailSummaries.slice(0, 5).forEach(e => {
+        html += `<div class="greeting-email greet-animate">
+          <div class="greeting-email-row">
+            <div class="greeting-email-from">${esc(e.from)}</div>
+            <div class="greeting-email-subject">${esc(e.subject)}</div>
+          </div>
+        </div>`;
+      });
+      mailList.innerHTML = html || '<div class="greeting-empty">No new emails</div>';
+    }
+
   } catch (e) {
     console.warn('[Greeting] Gmail fetch error:', e);
     mailList.innerHTML = '<div class="greeting-empty">Could not load emails</div>';
   }
+}
+
+function renderAIEmailResults(mailList, results) {
+  if (!results || results.length === 0) {
+    mailList.innerHTML = '<div class="greeting-empty" style="color:#22c55e">All clear — nothing needs your attention right now</div>';
+    return;
+  }
+
+  const badgeMap = { urgent: 'URGENT', action: 'ACTION', fyi: 'FYI' };
+  let html = '';
+  results.forEach(r => {
+    const badge = `<span class="greeting-email-badge ${r.priority}">${badgeMap[r.priority] || 'FYI'}</span>`;
+    html += `<div class="greeting-email greet-animate">
+      <div class="greeting-email-row">
+        <div class="greeting-email-from">${esc(r.from)}</div>
+        <div class="greeting-email-subject">${esc(r.subject)}</div>
+      </div>
+      <div class="greeting-email-reason">${badge}${esc(r.reason)}</div>
+    </div>`;
+  });
+  mailList.innerHTML = html;
 }
 
 function refreshGreetingTile() {
@@ -12720,20 +12795,14 @@ function onSliderChange(type) {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 6: DAILY AI BRIEF (uses greeting tile + dailyBriefCard)
+// FEATURE 6: DAILY AI BRIEF (removed — replaced by AI email triage in greeting tile)
 // ══════════════════════════════════════════════════════
-
-// Legacy compat — these are now handled by generateDailyBrief (Feature 7a)
-function loadDailyBrief() { generateDailyBrief(false); }
-function refreshDailyBrief() { regenerateDailyBrief(); }
-function renderDailyBrief(text) {
-  const el = document.getElementById('dailyBriefText');
-  if (!el || !text) return;
-  el.innerHTML = text.replace(/\n/g, '<br>');
-  el.style.color = 'var(--text)';
-}
-// Legacy compat for any cached references
-function renderBriefHTML() { generateDailyBrief(false); }
+function loadDailyBrief() {}
+function refreshDailyBrief() {}
+function renderDailyBrief() {}
+function renderBriefHTML() {}
+function generateDailyBrief() {}
+function regenerateDailyBrief() {}
 
 
 // ══════════════════════════════════════════════════════
@@ -13380,103 +13449,6 @@ let _suppTimeSelected = 'morning';
 
 
 // ════════════════════════════════════════════════════════════════
-// FEATURE 7: DAILY AI BRIEF
-// ════════════════════════════════════════════════════════════════
-async function generateDailyBrief(force = false) {
-  const key = dateToKey(nowEST());
-  const cacheKey = 'dailyBrief_' + key;
-  const el      = document.getElementById('dailyBriefText');
-  const dateEl  = document.getElementById('dailyBriefDate');
-  const greetEl = document.getElementById('dailyBriefGreeting');
-  if (!el) return;
-
-  const hr = new Date().getHours();
-  const greeting = hr < 12 ? 'Good Morning 👋' : hr < 17 ? 'Good Afternoon ☀️' : 'Good Evening 🌙';
-  if (greetEl) greetEl.textContent = greeting;
-  if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-
-  const cached = getStorage(cacheKey, null);
-  if (cached && !force) { el.innerHTML = cached; return; }
-
-  el.innerHTML = '<span style="color:#6d28d9;font-style:italic;font-size:13px">✨ Generating your brief…</span>';
-
-  // Hard fallback — never spin forever
-  const fallbackTimer = setTimeout(() => {
-    if (el.innerHTML.includes('Generating')) {
-      const msg = hr < 12 ? "Morning, Jeremy — let's make today count. 💪"
-        : hr < 17 ? "Afternoon check-in — stay on target. 🎯"
-        : "Solid day, Jeremy — rest up and go again tomorrow. 🌙";
-      el.innerHTML = `<div style="font-size:14px;color:#c4b5fd;line-height:1.65">${msg}</div>`;
-    }
-  }, 12000);
-
-  try {
-    const goals    = getStorage('userGoals', {});
-    const weights  = getStorage('weightLog', {});
-    const wKeys    = Object.keys(weights).sort();
-    const weight   = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
-    const macroLog = getStorage('macroLog', {});
-    const todayMacros = macroLog[key] || {calories:0, protein:0};
-    const moodToday = (getMoodLog ? getMoodLog() : {})[key] || {};
-
-    // Load email context — skip cache when force=true
-    let emailContext = [];
-    try {
-      const emailCache = getStorage('briefEmailContext', null);
-      if (!force && emailCache && emailCache.date === key) {
-        emailContext = emailCache.emails || [];
-      } else {
-        const ctxResp = await fetch('/api/brief-context?date=' + key);
-        if (ctxResp.ok) {
-          const ctx = await ctxResp.json();
-          emailContext = ctx.emails || [];
-          setStorage('briefEmailContext', { date: key, emails: emailContext });
-        }
-      }
-    } catch(_) {}
-
-    const resp = await fetch('/api/brief', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        date: key, force, emailContext,
-        healthContext: {
-          weight, targetWeight: goals.targetWeight || 163,
-          calories: Math.round(todayMacros.calories),
-          protein:  Math.round(todayMacros.protein),
-          energy:   moodToday.energy || null,
-          mood:     moodToday.mood   || null,
-          water:    getTodayWaterOz ? Math.round(getTodayWaterOz()) : 0,
-        }
-      })
-    });
-
-    clearTimeout(fallbackTimer);
-    if (!resp.ok) throw new Error('Brief API ' + resp.status);
-    const result = await resp.json();
-    if (!result.ok || (!result.brief && !result.raw)) throw new Error(result.error || 'no data');
-    const html = result.brief ? renderBriefHTML(result.brief) : renderBriefRaw(result.raw);
-    el.innerHTML = html;
-    setStorage(cacheKey, html);
-  } catch(e) {
-    clearTimeout(fallbackTimer);
-    console.warn('generateDailyBrief error:', e);
-    const msg = hr < 12 ? "Morning, Jeremy — let's make today count. 💪"
-      : hr < 17 ? "Afternoon check-in — stay on target. 🎯"
-      : "Solid day, Jeremy — rest up and go again tomorrow. 🌙";
-    el.innerHTML = `<div style="font-size:14px;color:#c4b5fd;line-height:1.65">${msg}<div style="font-size:10px;color:#4d5468;margin-top:4px">${e.message}</div></div>`;
-  }
-}
-
-
-async function regenerateDailyBrief() {
-  const key = dateToKey(nowEST());
-  setStorage('dailyBrief_' + key, null);
-  setStorage('briefEmailContext', null);  // force re-fetch from D1
-  await generateDailyBrief(true);
-}
-
-// ════════════════════════════════════════════════════════════════
 // FEATURE 7b: WEEKLY AI NARRATIVE
 // ════════════════════════════════════════════════════════════════
 async function generateWeeklyNarrative() {
@@ -13534,24 +13506,12 @@ function initNewFeatures() {
   renderBPPanel();
   renderBodyCompPanel();
   renderSuppLog();
-  // Daily brief
-  const key = dateToKey(nowEST());
-  const cached = getStorage('dailyBrief_' + key, null);
-  generateDailyBrief(false);
   // Show welcome check-in modal if first visit today
   setTimeout(maybeShowWelcomeModal, 400);
 }
 
 
 
-// ══════════════════════════════════════════════════════
-// FEATURE: setMood — emoji button mood logger
-// ══════════════════════════════════════════════════════
-
-// ══════════════════════════════════════════════════════
-// FEATURE: Daily AI Brief
-// ══════════════════════════════════════════════════════
-async 
 // ══════════════════════════════════════════════════════
 // FEATURE: Meal Suggestions
 // ══════════════════════════════════════════════════════
