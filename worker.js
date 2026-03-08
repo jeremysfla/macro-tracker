@@ -49,31 +49,29 @@ async function getCalendarEvents(token, date) {
 }
 __name(getCalendarEvents, "getCalendarEvents");
 
-// ── Fetch urgent unread emails ─────────────────────────────────────────────
+// ── Fetch urgent unread emails — single API call with metadata ────────────
 async function getUrgentEmails(token) {
-  // List unread important message IDs
-  const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is%3Aunread%20is%3Aimportant%20-category%3Apromotions%20-category%3Aupdate&maxResults=6";
+  // Use format=metadata in the list call to get headers in one shot — no per-message fetches
+  const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+    + "?q=is%3Aunread%20is%3Aimportant%20-category%3Apromotions%20-category%3Aupdates"
+    + "&maxResults=8&format=metadata"
+    + "&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date";
   const listR = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
   if (!listR.ok) return [];
   const listD = await listR.json();
   const msgs  = listD.messages || [];
   if (!msgs.length) return [];
 
-  // Fetch headers for each
-  const emails = await Promise.all(msgs.slice(0, 5).map(async m => {
-    const mUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;
-    const mR = await fetch(mUrl, { headers: { Authorization: "Bearer " + token } });
-    if (!mR.ok) return null;
-    const mD = await mR.json();
-    const headers = mD.payload?.headers || [];
+  const skip = /noreply|no-reply|donotreply|unsubscribe|notifications?@|alerts?@|americanairlines|caesars|linkedin|twitter|reddit/i;
+  const emails = msgs.slice(0, 8).map(m => {
+    const headers = m.payload?.headers || [];
     const get = (name) => (headers.find(h => h.name === name) || {}).value || "";
     const from    = get("From").replace(/<[^>]+>/, "").trim().replace(/"/g, "");
     const subject = get("Subject");
-    // Skip automated/promotional senders
-    const skip = /noreply|no-reply|donotreply|unsubscribe|notifications?@|alerts?@|americanairlines|caesars|linkedin|twitter|reddit/i;
+    if (!from && !subject) return null;
     if (skip.test(from) || skip.test(subject)) return null;
-    return { from, subject, snippet: (mD.snippet || "").slice(0, 100) };
-  }));
+    return { from, subject, snippet: (m.snippet || "").slice(0, 100) };
+  });
 
   return emails.filter(Boolean).slice(0, 4);
 }
