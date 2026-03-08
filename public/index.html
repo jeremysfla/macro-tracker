@@ -12680,10 +12680,8 @@ async function generateDailyBrief(force = false) {
     const wKeys   = Object.keys(weights).sort();
     const weight  = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
     const macroLog = getStorage('macroLog', {});
-    const todayMacros = (macroLog[key] || []).reduce((a,e) => ({
-      calories: a.calories + (e.calories||0),
-      protein:  a.protein  + (e.protein||0)
-    }), {calories:0, protein:0});
+    // macroLog[key] is stored as {calories, protein, carbs, fat} object, not array
+    const todayMacros = macroLog[key] || {calories:0, protein:0};
     const moodToday = (getMoodLog ? getMoodLog() : {})[key] || {};
 
     // Load email context from D1 cache
