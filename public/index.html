@@ -250,7 +250,13 @@
   .tip-box { margin-top: 14px; padding: 14px; background: #0d2d1a; border-radius: 14px; border: 1.5px solid #166534; font-size: 12px; color: #4ade80; line-height: 1.7; font-weight: 500; }
 
   /* Daily Greeting Tile */
-  .greeting-tile { background: linear-gradient(135deg, #1a1d2e 0%, #2d1f4e 50%, #1a2d3e 100%); border-radius: 0; padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .greeting-tile { background: linear-gradient(135deg, #1a1d2e 0%, #2d1f4e 50%, #1a2d3e 100%); border-radius: 0; padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); transition: padding 0.3s ease; }
+  .greeting-tile.minimized { padding: 12px 20px 10px; }
+  .greeting-tile.minimized .greeting-section { display: none; }
+  .greeting-tile.minimized .greeting-date { display: none; }
+  .greeting-minimize-btn { background: none; border: none; color: var(--text3); font-size: 16px; cursor: pointer; padding: 4px; opacity: 0.6; transition: transform 0.3s ease, opacity 0.15s; }
+  .greeting-minimize-btn:hover { opacity: 1; }
+  .greeting-tile.minimized .greeting-minimize-btn { transform: rotate(180deg); }
   .greeting-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .greeting-hello { font-size: 20px; font-weight: 800; color: #eef0f6; letter-spacing: -0.3px; }
   .greeting-date { font-size: 11px; color: #8b92a8; font-weight: 600; margin-top: 2px; }
@@ -933,7 +939,10 @@ PROMISE ERROR:
         <div class="greeting-hello" id="greetingHello">Good evening, Jeremy</div>
         <div class="greeting-date" id="greetingDate"></div>
       </div>
-      <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
+        <button onclick="toggleGreetingTile()" title="Minimize" class="greeting-minimize-btn">▲</button>
+      </div>
     </div>
     <!-- Calendar Section -->
     <div class="greeting-section" id="greetingCalSection">
@@ -7201,6 +7210,21 @@ function refreshGreetingTile() {
   initGreetingTile();
   showToast('Refreshing daily briefing…');
 }
+
+function toggleGreetingTile() {
+  const tile = document.getElementById('greetingTile');
+  if (!tile) return;
+  const minimized = tile.classList.toggle('minimized');
+  localStorage.setItem('greetingMinimized', minimized ? '1' : '0');
+}
+
+// Restore minimized state on load
+(function() {
+  if (localStorage.getItem('greetingMinimized') === '1') {
+    const tile = document.getElementById('greetingTile');
+    if (tile) tile.classList.add('minimized');
+  }
+})();
 
 // ── Daily Motivational Quote (Claude AI) ──
 async function loadDailyQuote() {
