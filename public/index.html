@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>Jeremymacro</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js" defer integrity="sha384-sl2LNalPRD3qrS3TKmINXWwRcQKf9cUlNZGd8pqjlpzwbzgMsFgE+133u4kM32IR" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -53,10 +54,10 @@
 
   /* Tab bar */
   .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0f14; border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 30px rgba(0,0,0,0.6); }
-  .tab-btn { flex: 1; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; }
+  .tab-btn { flex: 1; min-width: 0; padding: 6px 0 5px; background: none; border: none; color: var(--text3); font-size: 8px; font-family: inherit; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; transition: all 0.2s; overflow: hidden; }
   .tab-btn.active { color: var(--green); }
   .tab-btn.active .tab-icon { transform: scale(1.1); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.18)); }
-  .tab-icon { font-size: 22px; transition: transform 0.2s, filter 0.2s; display: block; }
+  .tab-icon { font-size: 20px; line-height: 1.2; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s, filter 0.2s; overflow: hidden; }
 
   /* Inputs */
   input[type=number], input[type=text] { background: var(--surface2); border: 1.5px solid var(--border); color: var(--text); padding: 11px 14px; border-radius: 14px; font-family: inherit; font-size: 14px; font-weight: 500; width: 100%; outline: none; -moz-appearance: textfield; transition: border-color 0.2s, box-shadow 0.2s; }
@@ -83,13 +84,13 @@
   /* Week strip */
   .week-strip { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .week-strip::-webkit-scrollbar { display: none; }
-  .week-day { min-width: 44px; flex: 1; border-radius: 16px; padding: 10px 4px 8px; text-align: center; border: 1.5px solid var(--border); background: var(--surface); transition: all 0.2s; cursor: pointer; position: relative; }
+  .week-day { min-width: 44px; flex: 1; border-radius: 16px; padding: 10px 4px 8px; text-align: center; border: 1.5px solid var(--border); background: var(--surface); transition: all 0.2s; cursor: pointer; position: relative; overflow: hidden; }
   .week-day:active { transform: scale(0.94); }
   .week-day.selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
   .week-day.today-card { background: var(--surface2); }
   .week-day-name { font-size: 9px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
   .week-day-name.active-name { color: var(--text); }
-  .week-day-icon { font-size: 20px; line-height: 1; }
+  .week-day-icon { font-size: 20px; line-height: 1; overflow: hidden; }
   .week-day-sess { font-size: 9px; font-weight: 800; margin-top: 4px; letter-spacing: 0.3px; }
 
   /* Session tabs */
@@ -100,7 +101,7 @@
   /* Exercise cards — per-set logging */
   .ex-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 18px; padding: 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
   .ex-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .ex-badge { width: 36px; height: 36px; border-radius: 12px; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .ex-badge { width: 36px; height: 36px; border-radius: 12px; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; overflow: hidden; }
   .ex-badge.done { background: #0d2d1a; color: #22c55e; }
   .ex-name { font-size: 15px; font-weight: 700; color: var(--text); }
   .ex-meta { font-size: 11px; color: var(--blue); font-weight: 500; margin-top: 2px; }
@@ -117,7 +118,7 @@
   .set-weight-input.completed { border-color: #166534; background: #0d2d1a; color: #22c55e; }
   .set-reps-input { width: 54px; padding: 10px 6px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface2); font-family: inherit; font-size: 15px; font-weight: 700; color: var(--text); text-align: center; transition: all 0.15s; }
   .set-reps-input:focus { outline: none; border-color: var(--blue); background: #0d1e3d; }
-  .set-done-btn { width: 36px; height: 36px; border-radius: 11px; border: 1.5px solid var(--border); background: var(--surface2); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+  .set-done-btn { width: 36px; height: 36px; border-radius: 11px; border: 1.5px solid var(--border); background: var(--surface2); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; overflow: hidden; }
   .set-done-btn.done { background: var(--green-soft); border-color: #86efac; }
   .ex-volume { font-size: 11px; font-weight: 600; color: var(--text3); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
   .ex-volume span { background: var(--surface2); padding: 3px 9px; border-radius: 20px; font-weight: 700; }
@@ -248,14 +249,35 @@
   /* Tip box */
   .tip-box { margin-top: 14px; padding: 14px; background: #0d2d1a; border-radius: 14px; border: 1.5px solid #166534; font-size: 12px; color: #4ade80; line-height: 1.7; font-weight: 500; }
 
-  /* Daily Quote */
-  .quote-card { background: linear-gradient(135deg, #1a1d2e, #2d1f4e); border-radius: 0; padding: 16px 20px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .quote-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  /* Daily Greeting Tile */
+  .greeting-tile { background: linear-gradient(135deg, #1a1d2e 0%, #2d1f4e 50%, #1a2d3e 100%); border-radius: 0; padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .greeting-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .greeting-hello { font-size: 20px; font-weight: 800; color: #eef0f6; letter-spacing: -0.3px; }
+  .greeting-date { font-size: 11px; color: #8b92a8; font-weight: 600; margin-top: 2px; }
+  .greeting-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .greeting-section-label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .greeting-cal-label { color: #60a5fa; }
+  .greeting-mail-label { color: #f87171; }
+  .greeting-quote-label { color: #8b5cf6; }
+  .greeting-event { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 12px; }
+  .greeting-event-time { color: #60a5fa; font-weight: 700; min-width: 58px; flex-shrink: 0; font-size: 11px; }
+  .greeting-event-title { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; }
+  .greeting-event-loc { font-size: 10px; color: #6b7280; font-weight: 500; margin-top: 1px; }
+  .greeting-email { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 12px; }
+  .greeting-email-from { color: #f87171; font-weight: 700; min-width: 0; flex-shrink: 1; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .greeting-email-subject { color: #e2e8f0; font-weight: 600; line-height: 1.4; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .greeting-connect-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; color: #e2e8f0; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.15s; margin-top: 4px; }
+  .greeting-connect-btn:hover { background: rgba(255,255,255,0.14); }
+  .greeting-empty { font-size: 11px; color: #6b7280; font-style: italic; padding: 4px 0; }
+  .greeting-quote { display: flex; align-items: flex-start; gap: 10px; }
+  .greeting-quote-text { font-size: 12px; font-weight: 600; color: #e2e8f0; line-height: 1.6; font-style: italic; flex: 1; }
+  .greeting-quote-author { font-size: 9px; font-weight: 700; color: #8b5cf6; letter-spacing: 0.8px; text-transform: uppercase; margin-top: 4px; }
+  .greeting-loading { opacity: 0.45; font-style: italic; font-size: 11px; color: #6b7280; }
+  @keyframes greetFade { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
+  .greet-animate { animation: greetFade 0.4s ease forwards; }
+  /* Legacy quote compat */
   .quote-text { font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.65; flex: 1; font-style: italic; }
-  .quote-author { font-size: 10px; font-weight: 700; color: #8b5cf6; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; }
   .quote-loading { opacity: 0.45; font-style: italic; }
-  @keyframes quoteFade { from { opacity:0; transform: translateY(4px); } to { opacity:1; transform: translateY(0); } }
-  .quote-animate { animation: quoteFade 0.5s ease forwards; }
 
   /* ── Shoe Tracker ── */
   .shoe-card { background:var(--surface2);border:1.5px solid var(--border);border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:all 0.2s; }
@@ -264,7 +286,7 @@
   .shoe-card.retired { opacity:0.65;border-style:dashed; }
   .shoe-card-accent { position:absolute;top:0;left:0;width:4px;height:100%;border-radius:20px 0 0 20px; }
   .shoe-card-top { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
-  .shoe-avatar { width:52px;height:52px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:26px; }
+  .shoe-avatar { width:52px;height:52px;border-radius:14px;object-fit:cover;flex-shrink:0;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden; }
   .shoe-name { font-size:15px;font-weight:800;color:var(--text);line-height:1.2; }
   .shoe-brand { font-size:11px;color:var(--text3);font-weight:600;margin-top:2px; }
   .shoe-status-badge { font-size:9px;font-weight:800;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:1px; }
@@ -284,7 +306,7 @@
   .shoe-run-meta { font-size:11px;color:var(--text3);margin-top:1px; }
   .assign-shoe-btn { display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:var(--surface2);border:1.5px solid var(--border);border-radius:16px;font-family:inherit;cursor:pointer;margin-bottom:8px;transition:all 0.15s;text-align:left; }
   .assign-shoe-btn:hover,.assign-shoe-btn:active { border-color:var(--green);background:var(--green-soft); }
-  .assign-shoe-avatar { width:40px;height:40px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0; }
+  .assign-shoe-avatar { width:40px;height:40px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;overflow:hidden; }
 
 
   /* ── Workout Timer Bar ── */
@@ -311,7 +333,7 @@
   .pr-flash-sub { font-size:11px; color:#d97706; font-weight:600; }
 
   /* ── Set type badge ── */
-  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:10px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+  .set-type-btn { width:32px; height:32px; border-radius:8px; border:1.5px solid var(--border); background:var(--surface2); font-size:10px; font-weight:800; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; overflow:hidden; }
   .set-type-btn.warmup { background:#051e26; border-color:#0e4d6e; color:#06b6d4; }
   .set-type-btn.drop { background:#1a1030; border-color:#4c1d95; color:#a78bfa; }
   .set-type-btn.failure { background:#2d0f0f; border-color:#7f1d1d; color:#f87171; }
@@ -426,7 +448,7 @@
 
   /* Garmin & Settings */
   .garmin-card { background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.06)); border: 1.5px solid #1e3a5f; border-radius: 20px; padding: 16px; margin-bottom: 14px; }
-  .garmin-logo { width: 40px; height: 40px; border-radius: 12px; background: #1a56db; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .garmin-logo { width: 40px; height: 40px; border-radius: 12px; background: #1a56db; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; overflow: hidden; }
   .garmin-activity-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .garmin-stat { flex: 1; min-width: 70px; background: var(--surface2); border-radius: 12px; padding: 10px 8px; text-align: center; border: 1px solid var(--border); }
   .garmin-stat-val { font-size: 16px; font-weight: 700; color: var(--text); }
@@ -510,7 +532,7 @@
   .srv-val { font-size: 17px; font-weight: 700; color: var(--text); min-width: 36px; text-align: center; }
   .scan-status { text-align: center; padding: 12px; font-size: 13px; color: var(--text2); font-weight: 500; }
   .btn-outline { width: 100%; padding: 13px; background: transparent; color: var(--text2); font-family: inherit; font-weight: 600; font-size: 14px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; margin-top: 10px; }
-  .btn-scan { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 20px; background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 700; font-size: 14px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; width: 100%; margin-bottom: 10px; transition: background 0.15s; }
+  .btn-scan { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 13px 8px; background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 700; font-size: 13px; border: 1.5px solid var(--border); border-radius: 16px; cursor: pointer; width: 100%; margin-bottom: 10px; transition: background 0.15s; overflow: hidden; white-space: nowrap; min-width: 0; }
   .btn-scan:active { background: var(--green-soft); }
 
   /* Weight trend & adaptive macros */
@@ -535,13 +557,13 @@
   .big-input { font-size: 36px; font-weight: 700; text-align: center; padding: 16px; border-radius: 18px; letter-spacing: -1px; }
   .log-entry { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
   .log-entry:last-child { border-bottom:none; }
-  .log-entry-icon { width:36px; height:36px; border-radius:12px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+  .log-entry-icon { width:36px; height:36px; border-radius:12px; background:var(--surface2); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; overflow:hidden; }
   .log-entry-info { flex:1; min-width:0; }
   .log-entry-name { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .log-entry-macros { font-size:11px; color:var(--text3); margin-top:2px; font-weight:500; }
   .log-entry-time { font-size:10px; color:var(--text3); font-weight:500; margin-top:1px; }
   .log-entry-actions { display:flex; gap:6px; flex-shrink:0; }
-  .log-action-btn { width:30px; height:30px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+  .log-action-btn { width:30px; height:30px; border-radius:10px; border:1.5px solid var(--border); background:var(--surface2); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; overflow:hidden; }
   .log-action-btn:active { transform:scale(0.92); }
   .log-action-btn.edit { color:var(--blue); border-color:#1e3a5f; background:var(--blue-soft); }
   .log-action-btn.del  { color:var(--red);  border-color:#7f1d1d; background:var(--red-soft); }
@@ -577,12 +599,66 @@
   .bref-tag.opt { background:#22c55e18; color:#4ade80; }
   .bref-tag.std { background:#ffffff0d; color:var(--text3); }
 
+  /* Login & Onboarding */
+  #login-screen, #onboarding-screen { position:fixed; inset:0; background:linear-gradient(160deg, #0d0f14 0%, #101520 40%, #0f1a1a 100%); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; overflow-y:auto; }
+  #login-screen.hidden, #onboarding-screen.hidden { display:none; }
+
+  /* Login */
+  .login-card { text-align:center; animation:fadeSlideUp 0.5s ease; }
+  .login-logo { margin-bottom:16px; }
+  .login-logo img { width:180px; height:auto; filter:drop-shadow(0 4px 30px rgba(139,92,246,0.4)); }
+  .login-title { font-size:32px; font-weight:800; color:var(--text); margin-bottom:4px; letter-spacing:-0.5px; display:none; }
+  .login-accent { font-size:13px; font-weight:700; color:var(--green); letter-spacing:2px; text-transform:uppercase; margin-bottom:20px; display:none; }
+  .login-sub { font-size:14px; color:var(--text2); margin-bottom:36px; text-align:center; line-height:1.7; max-width:320px; }
+  #g_id_signin { margin-bottom:20px; display:flex; justify-content:center; }
+  .login-features { display:flex; gap:24px; margin-top:32px; }
+  .login-feat { text-align:center; }
+  .login-feat-icon { font-size:24px; margin-bottom:6px; }
+  .login-feat-text { font-size:11px; color:var(--text3); font-weight:600; letter-spacing:0.3px; }
+
+  /* Onboarding */
+  .onb-container { width:100%; max-width:440px; padding:20px 0; animation:fadeSlideUp 0.4s ease; }
+  .onb-header { text-align:center; margin-bottom:24px; }
+  .onb-step-icon { font-size:40px; margin-bottom:8px; filter:drop-shadow(0 4px 16px rgba(34,197,94,0.2)); }
+  .onb-title { font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; letter-spacing:-0.3px; }
+  .onb-sub { font-size:13px; color:var(--text2); margin-bottom:0; text-align:center; line-height:1.6; }
+  .onb-progress { display:flex; gap:8px; justify-content:center; margin-bottom:28px; }
+  .onb-dot { width:32px; height:5px; border-radius:3px; background:var(--border); transition:all 0.3s ease; }
+  .onb-dot.active { background:var(--green); width:48px; }
+  .onb-step { display:none; }
+  .onb-step.active { display:block; animation:fadeSlideUp 0.35s ease; }
+  .onb-card { background:var(--surface); border:1.5px solid var(--border); border-radius:20px; padding:22px; box-shadow:var(--shadow); }
+  .onb-field { margin-bottom:18px; }
+  .onb-field:last-child { margin-bottom:0; }
+  .onb-label { font-size:11px; font-weight:700; color:var(--text2); letter-spacing:1.2px; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .onb-label-icon { font-size:14px; }
+  .onb-select { width:100%; padding:13px 14px; background:var(--surface2); border:1.5px solid var(--border); color:var(--text); border-radius:14px; font-family:inherit; font-size:14px; font-weight:600; outline:none; appearance:none; -webkit-appearance:none; transition:border-color 0.2s, box-shadow 0.2s; }
+  .onb-select:focus { border-color:var(--green); box-shadow:0 0 0 3px rgba(34,197,94,0.12); }
+  .onb-btn-row { display:flex; gap:10px; margin-top:24px; }
+  .onb-btn { flex:1; padding:15px; border-radius:16px; font-family:inherit; font-weight:700; font-size:14px; letter-spacing:0.3px; border:none; cursor:pointer; transition:all 0.15s; }
+  .onb-btn-back { background:var(--surface2); color:var(--text2); border:1.5px solid var(--border); }
+  .onb-btn-back:active { background:var(--surface3); }
+  .onb-btn-next { background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color:#fff; box-shadow:0 4px 18px rgba(34,197,94,0.35); }
+  .onb-btn-next:active { opacity:0.88; transform:scale(0.98); }
+  .onb-summary-row { display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .onb-summary-row:last-child { border-bottom:none; }
+  .onb-summary-label { color:var(--text2); font-weight:500; }
+  .onb-summary-val { color:var(--text); font-weight:700; }
+  .onb-macro-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:16px 0; }
+  .onb-macro-card { background:var(--surface2); border-radius:18px; padding:18px 14px; text-align:center; border:1.5px solid var(--border); transition:border-color 0.2s; }
+  .onb-macro-card:hover { border-color:var(--border2); }
+  .onb-macro-val { font-size:28px; font-weight:800; letter-spacing:-0.5px; }
+  .onb-macro-label { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; margin-top:6px; color:var(--text2); }
+  .onb-plan-badge { display:inline-flex; align-items:center; gap:6px; background:var(--green-soft); border:1.5px solid #166534; border-radius:12px; padding:6px 14px; font-size:12px; font-weight:700; color:var(--green); margin-bottom:16px; }
+
+  @keyframes fadeSlideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+
   /* ── Water ring ── */
   #waterRingCanvas { display:block; }
 
   /* ── Mood buttons ── */
   .mood-btn {
-    font-size:22px;
+    font-size:20px;
     background:var(--surface2);
     border:2px solid transparent;
     border-radius:10px;
@@ -592,6 +668,9 @@
     cursor:pointer;
     transition:all 0.15s;
     display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+    line-height:1;
+    padding:0;
   }
   .mood-btn.active {
     border-color:#f472b6;
@@ -699,7 +778,138 @@ PROMISE ERROR:
 ' + e.reason;
 });
 </script>
-<div id="app">
+<!-- Login Screen -->
+<div id="login-screen" class="hidden">
+  <div class="login-card">
+    <div class="login-logo"><img src="/logo.svg" alt="Macro AI"></div>
+    <div class="login-sub">Track macros, log workouts, and crush your goals — all in one place.</div>
+    <div id="g_id_signin"></div>
+    <div class="login-features">
+      <div class="login-feat"><div class="login-feat-icon">&#x1F34E;</div><div class="login-feat-text">Nutrition</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F4AA;</div><div class="login-feat-text">Workouts</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F4C8;</div><div class="login-feat-text">Progress</div></div>
+      <div class="login-feat"><div class="login-feat-icon">&#x1F916;</div><div class="login-feat-text">AI Coach</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Onboarding Screen -->
+<div id="onboarding-screen" class="hidden">
+  <div class="onb-container">
+    <div class="onb-progress">
+      <div class="onb-dot active" data-step="0"></div>
+      <div class="onb-dot" data-step="1"></div>
+      <div class="onb-dot" data-step="2"></div>
+      <div class="onb-dot" data-step="3"></div>
+    </div>
+
+    <!-- Step 0: Basics -->
+    <div class="onb-step active" data-step="0">
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F464;</div>
+        <div class="onb-title">About You</div>
+        <div class="onb-sub">We'll use this to calculate your metabolic rate.</div>
+      </div>
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x2642;&#xFE0F;</span> Gender</div>
+          <select id="onb-gender" class="onb-select">
+            <option value="">Select...</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F382;</span> Age</div>
+          <input type="number" id="onb-age" placeholder="e.g. 28" />
+        </div>
+      </div>
+      <div class="onb-btn-row">
+        <button class="onb-btn onb-btn-next" onclick="onbNext(0)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 1: Body -->
+    <div class="onb-step" data-step="1">
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F4CF;</div>
+        <div class="onb-title">Your Body</div>
+        <div class="onb-sub">Height and weight help us dial in your calorie needs.</div>
+      </div>
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F4CF;</span> Height (inches)</div>
+          <input type="number" id="onb-height" placeholder="e.g. 70 (5'10&quot;)" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x2696;&#xFE0F;</span> Current Weight (lbs)</div>
+          <input type="number" id="onb-weight" placeholder="e.g. 175" />
+        </div>
+      </div>
+      <div class="onb-btn-row">
+        <button class="onb-btn onb-btn-back" onclick="onbBack(1)">Back</button>
+        <button class="onb-btn onb-btn-next" onclick="onbNext(1)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Goals -->
+    <div class="onb-step" data-step="2">
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x1F3AF;</div>
+        <div class="onb-title">Your Goals</div>
+        <div class="onb-sub">Set a target and we'll calculate your daily deficit.</div>
+      </div>
+      <div class="onb-card">
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F3C1;</span> Goal Weight (lbs)</div>
+          <input type="number" id="onb-goal-weight" placeholder="e.g. 163" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F4C5;</span> Goal Date</div>
+          <input type="date" id="onb-goal-date" />
+        </div>
+        <div class="onb-field">
+          <div class="onb-label"><span class="onb-label-icon">&#x1F525;</span> Activity Level</div>
+          <select id="onb-activity" class="onb-select">
+            <option value="">Select...</option>
+            <option value="sedentary">Sedentary (desk job, little exercise)</option>
+            <option value="light">Lightly Active (1-3 days/week)</option>
+            <option value="moderate">Moderately Active (3-5 days/week)</option>
+            <option value="active">Very Active (6-7 days/week)</option>
+            <option value="extra">Extra Active (athlete / physical job)</option>
+          </select>
+        </div>
+      </div>
+      <div class="onb-btn-row">
+        <button class="onb-btn onb-btn-back" onclick="onbBack(2)">Back</button>
+        <button class="onb-btn onb-btn-next" onclick="onbNext(2)">Calculate My Plan</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Review -->
+    <div class="onb-step" data-step="3">
+      <div class="onb-header">
+        <div class="onb-step-icon">&#x2728;</div>
+        <div class="onb-title">Your Plan</div>
+        <div class="onb-sub">Here are your personalized daily targets.</div>
+      </div>
+      <div class="onb-card">
+        <div style="text-align:center;margin-bottom:12px">
+          <div class="onb-plan-badge">&#x2705; Calculated for you</div>
+        </div>
+        <div id="onb-summary"></div>
+        <div class="onb-macro-grid" id="onb-macros"></div>
+        <div id="onb-deficit-note" style="font-size:12px;color:var(--text2);text-align:center;line-height:1.6"></div>
+      </div>
+      <div class="onb-btn-row">
+        <button class="onb-btn onb-btn-back" onclick="onbBack(3)">Back</button>
+        <button class="onb-btn onb-btn-next" onclick="onbFinish()">&#x1F680; Start Tracking</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
   <div class="header">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
@@ -710,14 +920,35 @@ PROMISE ERROR:
       <button class="settings-btn" onclick="openSettings()" title="Settings">⚙️</button>
     </div>
   </div>
-  <!-- Daily Motivation Quote -->
-  <div class="quote-card" id="dailyQuoteCard">
-    <div class="quote-icon">💬</div>
-    <div style="flex:1">
-      <div class="quote-text quote-loading" id="dailyQuoteText">Loading today's motivation…</div>
-      <div class="quote-author" id="dailyQuoteAuthor"></div>
+  <!-- Daily Greeting Tile -->
+  <div class="greeting-tile" id="greetingTile">
+    <div class="greeting-header">
+      <div>
+        <div class="greeting-hello" id="greetingHello">Good evening, Jeremy</div>
+        <div class="greeting-date" id="greetingDate"></div>
+      </div>
+      <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
     </div>
-    <button onclick="localStorage.removeItem('dailyQuote');loadDailyQuote();" title="Refresh quote" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;align-self:flex-start;opacity:0.6">🔄</button>
+    <!-- Calendar Section -->
+    <div class="greeting-section" id="greetingCalSection">
+      <div class="greeting-section-label greeting-cal-label">📅 Today's Schedule</div>
+      <div id="greetingCalList" class="greeting-loading">Loading calendar…</div>
+    </div>
+    <!-- Gmail Section -->
+    <div class="greeting-section" id="greetingMailSection">
+      <div class="greeting-section-label greeting-mail-label">📧 Email Highlights</div>
+      <div id="greetingMailList" class="greeting-loading">Loading emails…</div>
+    </div>
+    <!-- Motivational Quote -->
+    <div class="greeting-section">
+      <div class="greeting-section-label greeting-quote-label">💬 Daily Motivation</div>
+      <div class="greeting-quote">
+        <div>
+          <div class="greeting-quote-text greeting-loading" id="dailyQuoteText">Loading…</div>
+          <div class="greeting-quote-author" id="dailyQuoteAuthor"></div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="content">
 
@@ -1813,31 +2044,9 @@ PROMISE ERROR:
 
       <div id="stravaSetupSteps">
         <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7">
-          Connect Strava to auto-pull run calories and adjust daily macros. Takes ~2 minutes.
+          Connect your Strava account to auto-pull run calories and adjust daily macros.
         </div>
-        <div class="oauth-step">
-          <div class="step-num">1</div>
-          <div class="oauth-step-text">Go to <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a> → create a free API app → set <strong>Authorization Callback Domain</strong> to <code style="background:var(--surface2);padding:1px 5px;border-radius:4px">macro.jeremy-39c.workers.dev</code></div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">2</div>
-          <div class="oauth-step-text">Copy your <strong>Client ID</strong> and <strong>Client Secret</strong></div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">3</div>
-          <div class="oauth-step-text">Paste below and tap Connect</div>
-        </div>
-        <div style="margin-top:14px">
-          <div class="key-input-group">
-            <div class="key-input-label">Client ID</div>
-            <input type="text" id="stravaClientId" class="s-input" placeholder="e.g. 12345" />
-          </div>
-          <div class="key-input-group">
-            <div class="key-input-label">Client Secret</div>
-            <input type="password" id="stravaClientSecret" class="s-input" placeholder="Paste your Client Secret…" />
-          </div>
-          <button class="btn-green" style="margin-top:10px;background:#fc4c02;box-shadow:0 4px 14px rgba(252,76,2,0.3)" onclick="startStravaOAuth()">🟠 Connect to Strava</button>
-        </div>
+        <button class="btn-green" style="background:#fc4c02;box-shadow:0 4px 14px rgba(252,76,2,0.3)" onclick="startStravaOAuth()">🟠 Connect to Strava</button>
       </div>
 
       <div id="stravaConnectedPanel" style="display:none">
@@ -2051,8 +2260,207 @@ PROMISE ERROR:
 
 <script>
 
-const MACROS = { calories: 1500, protein: 165, carbs: 86, fat: 55 };
-const TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — Strava adds run calories on top
+// ── Auth & Onboarding ──
+const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
+let _authToken = null;
+let _currentUser = null;
+
+function showScreen(screen) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('onboarding-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'none';
+  if (screen === 'login') document.getElementById('login-screen').classList.remove('hidden');
+  else if (screen === 'onboarding') document.getElementById('onboarding-screen').classList.remove('hidden');
+  else if (screen === 'app') document.getElementById('app').style.display = '';
+}
+
+async function handleGoogleSignIn(response) {
+  _authToken = response.credential;
+  try {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: _authToken })
+    });
+    const data = await res.json();
+    if (data.error) { alert('Sign-in failed: ' + data.error); return; }
+    _currentUser = data.user;
+    localStorage.setItem('authToken', _authToken);
+    if (!_currentUser.onboarded) {
+      showScreen('onboarding');
+    } else {
+      applyUserProfile(_currentUser);
+      showScreen('app');
+      _initApp();
+    }
+  } catch (e) {
+    alert('Sign-in error: ' + e.message);
+  }
+}
+
+function applyUserProfile(user) {
+  if (user.calories) MACROS.calories = user.calories;
+  if (user.protein)  MACROS.protein  = user.protein;
+  if (user.carbs)    MACROS.carbs    = user.carbs;
+  if (user.fat)      MACROS.fat      = user.fat;
+  if (user.tdee)     TDEE = user.tdee;
+  // Sync to localStorage so existing settings UI works
+  const goals = getStorage('userGoals', {});
+  goals.weight   = user.current_weight || goals.weight;
+  goals.goal     = user.goal_weight || goals.goal;
+  goals.goalDate = user.goal_date || goals.goalDate;
+  setStorage('userGoals', goals);
+  const macros = { calories: MACROS.calories, protein: MACROS.protein, carbs: MACROS.carbs, fat: MACROS.fat };
+  setStorage('userMacros', macros);
+  // Clear any cached adjusted macros so D1 profile takes priority
+  localStorage.removeItem('adaptiveMacros');
+  localStorage.removeItem('garminAdjustedMacros');
+}
+
+// Onboarding navigation
+let _onbStep = 0;
+function onbGoTo(step) {
+  document.querySelectorAll('.onb-step').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.onb-dot').forEach(d => d.classList.remove('active'));
+  document.querySelector(`.onb-step[data-step="${step}"]`).classList.add('active');
+  for (let i = 0; i <= step; i++) document.querySelector(`.onb-dot[data-step="${i}"]`).classList.add('active');
+  _onbStep = step;
+  if (step === 3) renderOnbSummary();
+}
+function onbNext(from) {
+  if (from === 0) {
+    if (!document.getElementById('onb-gender').value || !document.getElementById('onb-age').value) { alert('Please fill in all fields'); return; }
+  } else if (from === 1) {
+    if (!document.getElementById('onb-height').value || !document.getElementById('onb-weight').value) { alert('Please fill in all fields'); return; }
+  } else if (from === 2) {
+    if (!document.getElementById('onb-goal-weight').value || !document.getElementById('onb-activity').value) { alert('Please fill in all fields'); return; }
+  }
+  onbGoTo(from + 1);
+}
+function onbBack(from) { onbGoTo(from - 1); }
+
+function calcOnbMacros() {
+  const gender = document.getElementById('onb-gender').value;
+  const age = parseInt(document.getElementById('onb-age').value) || 25;
+  const heightIn = parseInt(document.getElementById('onb-height').value) || 70;
+  const weightLbs = parseFloat(document.getElementById('onb-weight').value) || 170;
+  const goalLbs = parseFloat(document.getElementById('onb-goal-weight').value) || weightLbs;
+  const goalDate = document.getElementById('onb-goal-date').value;
+  const activity = document.getElementById('onb-activity').value;
+
+  // Mifflin-St Jeor
+  const weightKg = weightLbs * 0.453592;
+  const heightCm = heightIn * 2.54;
+  let bmr;
+  if (gender === 'male') bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+  else bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+
+  const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, extra: 1.9 };
+  const tdee = Math.round(bmr * (multipliers[activity] || 1.375));
+
+  // Calculate deficit from goal
+  let deficit = 500; // default
+  if (goalDate && goalLbs < weightLbs) {
+    const daysLeft = Math.max(1, Math.round((new Date(goalDate + 'T12:00:00') - new Date()) / 86400000));
+    const lbsToLose = weightLbs - goalLbs;
+    const calsToLose = lbsToLose * 3500;
+    deficit = Math.min(1000, Math.max(250, Math.round(calsToLose / daysLeft)));
+  }
+
+  const calories = Math.max(1200, tdee - deficit);
+  const protein = Math.round(weightLbs * 1.0); // 1g per lb
+  const fat = Math.round(calories * 0.25 / 9);
+  const carbs = Math.round((calories - protein * 4 - fat * 9) / 4);
+
+  return { gender, age, heightIn, weightLbs, goalLbs, goalDate, activity, tdee, deficit, calories, protein, fat, carbs };
+}
+
+function renderOnbSummary() {
+  const m = calcOnbMacros();
+  document.getElementById('onb-summary').innerHTML =
+    `<div class="onb-summary-row"><span class="onb-summary-label">TDEE</span><span class="onb-summary-val">${m.tdee.toLocaleString()} kcal</span></div>` +
+    `<div class="onb-summary-row"><span class="onb-summary-label">Daily Deficit</span><span class="onb-summary-val">~${m.deficit} kcal</span></div>`;
+  document.getElementById('onb-macros').innerHTML =
+    `<div class="onb-macro-card"><div class="onb-macro-val" style="color:#f59e0b">${m.calories.toLocaleString()}</div><div class="onb-macro-label">Calories</div></div>` +
+    `<div class="onb-macro-card"><div class="onb-macro-val" style="color:#4ade80">${m.protein}g</div><div class="onb-macro-label">Protein</div></div>` +
+    `<div class="onb-macro-card"><div class="onb-macro-val" style="color:#60a5fa">${m.carbs}g</div><div class="onb-macro-label">Carbs</div></div>` +
+    `<div class="onb-macro-card"><div class="onb-macro-val" style="color:#f87171">${m.fat}g</div><div class="onb-macro-label">Fat</div></div>`;
+  const weeksEst = m.goalLbs < m.weightLbs ? Math.round((m.weightLbs - m.goalLbs) / (m.deficit * 7 / 3500) * 10) / 10 : 0;
+  const lbsPerWeek = m.deficit * 7 / 3500;
+  document.getElementById('onb-deficit-note').textContent = m.goalLbs < m.weightLbs
+    ? `~${lbsPerWeek.toFixed(1)} lbs/week loss | ~${weeksEst} weeks to goal`
+    : 'Maintenance / lean gain targets';
+}
+
+async function onbFinish() {
+  const m = calcOnbMacros();
+  const body = {
+    gender: m.gender, age: m.age, height_inches: m.heightIn,
+    current_weight: m.weightLbs, goal_weight: m.goalLbs, goal_date: m.goalDate,
+    activity_level: m.activity, tdee: m.tdee, calories: m.calories,
+    protein: m.protein, carbs: m.carbs, fat: m.fat
+  };
+  try {
+    const res = await fetch('/api/user/profile', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + _authToken },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.error) { alert('Save failed: ' + data.error); return; }
+    _currentUser = data.user;
+    applyUserProfile(_currentUser);
+    showScreen('app');
+    _initApp();
+  } catch (e) {
+    alert('Error saving profile: ' + e.message);
+  }
+}
+
+// On page load: check for saved token
+async function checkAuth() {
+  const saved = localStorage.getItem('authToken');
+  if (saved) {
+    _authToken = saved;
+    try {
+      const res = await fetch('/api/user', { headers: { 'authorization': 'Bearer ' + saved } });
+      const data = await res.json();
+      if (data.user) {
+        _currentUser = data.user;
+        if (!_currentUser.onboarded) {
+          showScreen('onboarding');
+        } else {
+          applyUserProfile(_currentUser);
+          showScreen('app');
+          _initApp();
+        }
+        return;
+      }
+    } catch (e) {}
+    localStorage.removeItem('authToken');
+  }
+  showScreen('login');
+  initGoogleSignIn();
+}
+
+function initGoogleSignIn() {
+  if (typeof google === 'undefined' || !google.accounts) {
+    setTimeout(initGoogleSignIn, 200);
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleSignIn
+  });
+  google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
+    theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 280
+  });
+}
+
+// ── End Auth ──
+
+let MACROS = { calories: 1500, protein: 165, carbs: 86, fat: 55 };
+let TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — Strava adds run calories on top
 const MACRO_COLORS = { calories: '#f59e0b', protein: '#4ade80', carbs: '#60a5fa', fat: '#f87171' };
 
 const PROGRAM = {
@@ -2218,7 +2626,7 @@ function scheduleMidnightRefresh() {
     renderWeeklyBalance();
     checkCopyYesterday();
     checkAdaptiveMacros();
-    loadDailyQuote();
+    initGreetingTile();
     showToast('🌅 Good morning! New day started.');
     scheduleMidnightRefresh();
   }, msUntilMidnight);
@@ -4144,7 +4552,15 @@ function showToast(msg, undoFn) {
 }
 
 
-const USDA_API_KEY = 'DEMO_KEY'; // free tier: 30 req/hr, 50/day
+// All USDA searches go through /api/usda/search backend proxy (API key stays server-side)
+async function fetchUSDA(query, opts = {}) {
+  const params = new URLSearchParams({ query });
+  if (opts.dataType) params.set('dataType', opts.dataType);
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
+  const res = await fetch(`/api/usda/search?${params}`);
+  if (!res.ok) throw new Error(`USDA proxy error ${res.status}`);
+  return res.json();
+}
 
 // ── Barcode Scanner ──
 let scannerStream = null;
@@ -4171,12 +4587,125 @@ async function openScanner() {
   selectedTimeSlot = currentSlot;
 
   try {
-    await startQuagga();
+    await startScanner();
   } catch (e) {
     document.getElementById('scanStatus').textContent = '⚠️ Camera access denied. Please allow camera in browser settings.';
   }
 }
 
+// Consensus-based scanning: require the same barcode N times before accepting
+let _scanBuffer = {};
+let _scanAccepted = false;
+const SCAN_CONSENSUS = 3;       // need 3 matching reads
+const SCAN_WINDOW_MS = 3000;    // reset buffer after 3s of no matches
+let _nativeScanRAF = null;      // requestAnimationFrame handle for native scanner
+
+// Try native BarcodeDetector first (much more accurate), fall back to QuaggaJS
+async function startScanner() {
+  _scanBuffer = {};
+  _scanAccepted = false;
+
+  // Check for native BarcodeDetector API (Chrome, Edge, Android, Safari 17.2+)
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const needed = ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter(f => formats.includes(f));
+      if (needed.length > 0) {
+        await startNativeScanner(needed);
+        return;
+      }
+    } catch(e) { /* fall through to QuaggaJS */ }
+  }
+
+  // Fallback to QuaggaJS
+  await startQuagga();
+}
+
+// ── Native BarcodeDetector scanner (high accuracy) ──
+async function startNativeScanner(formats) {
+  const container = document.getElementById('quagga-container');
+  const detector = new BarcodeDetector({ formats });
+
+  // Get camera stream
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: 'environment',
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    }
+  });
+  scannerStream = stream;
+
+  // Create/reuse video element
+  let vid = container.querySelector('video');
+  if (!vid) {
+    vid = document.createElement('video');
+    container.appendChild(vid);
+  }
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:18px;display:block';
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('autoplay', '');
+  vid.srcObject = stream;
+  await vid.play();
+
+  // Hide any QuaggaJS canvas artifacts
+  container.querySelectorAll('canvas').forEach(c => c.style.display = 'none');
+
+  // Scan loop using requestAnimationFrame for smooth performance
+  let lastScanTime = 0;
+  const SCAN_INTERVAL = 150; // scan every 150ms for responsiveness
+
+  async function scanFrame(timestamp) {
+    if (_scanAccepted) return;
+
+    if (timestamp - lastScanTime >= SCAN_INTERVAL) {
+      lastScanTime = timestamp;
+      try {
+        const barcodes = await detector.detect(vid);
+        for (const barcode of barcodes) {
+          const code = barcode.rawValue;
+          if (!code || !isValidBarcode(code)) continue;
+
+          handleScanResult(code);
+          if (_scanAccepted) return;
+        }
+      } catch(e) { /* frame not ready, skip */ }
+    }
+
+    _nativeScanRAF = requestAnimationFrame(scanFrame);
+  }
+
+  _nativeScanRAF = requestAnimationFrame(scanFrame);
+}
+
+// ── Shared consensus handler ──
+function handleScanResult(code) {
+  if (_scanAccepted) return;
+
+  const now = Date.now();
+  if (!_scanBuffer[code]) _scanBuffer[code] = [];
+  _scanBuffer[code].push(now);
+
+  // Clean old entries
+  _scanBuffer[code] = _scanBuffer[code].filter(t => now - t < SCAN_WINDOW_MS);
+
+  // Find the code with the most reads
+  const best = Object.keys(_scanBuffer).reduce((a, b) =>
+    (_scanBuffer[a]?.length || 0) >= (_scanBuffer[b]?.length || 0) ? a : b, code);
+  const count = _scanBuffer[best]?.length || 0;
+
+  if (count < SCAN_CONSENSUS) {
+    document.getElementById('scanStatus').textContent = `🔍 Reading barcode… (${count}/${SCAN_CONSENSUS})`;
+    return;
+  }
+
+  // Consensus reached!
+  _scanAccepted = true;
+  stopCamera();
+  lookupBarcode(best);
+}
+
+// ── QuaggaJS fallback (for older browsers) ──
 function startQuagga() {
   return new Promise((resolve, reject) => {
     if (!window.Quagga) {
@@ -4184,6 +4713,9 @@ function startQuagga() {
       reject(new Error('Quagga not loaded'));
       return;
     }
+
+    _scanBuffer = {};
+    _scanAccepted = false;
 
     Quagga.init({
       inputStream: {
@@ -4196,11 +4728,18 @@ function startQuagga() {
           height: { ideal: 720 },
         },
       },
+      frequency: 15,
       decoder: {
-        readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader', 'code_39_reader'],
-        debug: { drawBoundingBox: false, showFrequency: false, drawScanline: false, showPattern: false }
+        readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader'],
+        debug: { drawBoundingBox: false, showFrequency: false, drawScanline: false, showPattern: false },
+        multiple: false,
+      },
+      locator: {
+        patchSize: 'medium',
+        halfSample: false,
       },
       locate: true,
+      area: { top: '20%', right: '5%', bottom: '20%', left: '5%' },
     }, (err) => {
       if (err) {
         document.getElementById('scanStatus').textContent = '⚠️ Could not start camera: ' + err.message;
@@ -4221,12 +4760,39 @@ function startQuagga() {
     });
 
     Quagga.onDetected((result) => {
+      if (_scanAccepted) return;
+
       const code = result.codeResult?.code;
       if (!code) return;
-      Quagga.stop();
-      lookupBarcode(code);
+
+      // Check confidence: average decodedCodes error (lower = better)
+      const errors = (result.codeResult.decodedCodes || [])
+        .filter(d => d.error != null)
+        .map(d => d.error);
+      const avgError = errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 1;
+      if (avgError > 0.12) return; // stricter threshold for noisy reads
+
+      // Validate checksum for UPC/EAN
+      if (!isValidBarcode(code)) return;
+
+      handleScanResult(code);
     });
   });
+}
+
+function isValidBarcode(code) {
+  if (!/^\d{8,14}$/.test(code)) return false;
+  // UPC-A (12), EAN-13 (13), EAN-8 (8) checksum validation
+  const digits = code.split('').map(Number);
+  const len = digits.length;
+  if (len !== 8 && len !== 12 && len !== 13 && len !== 14) return false;
+  let sum = 0;
+  for (let i = 0; i < len - 1; i++) {
+    const weight = (len - 1 - i) % 2 === 0 ? 1 : 3;
+    sum += digits[i] * weight;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return check === digits[len - 1];
 }
 
 
@@ -4412,7 +4978,7 @@ function showBarcodeNotFound(barcode, productName) {
         Point camera at the <b style="color:#fff">Nutrition Facts label</b> to read it automatically
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <button onclick="scanNutritionLabel('${barcode}','${productName.replace(/'/g,"\\\'")}')"
+        <button onclick="scanNutritionLabel('${esc(barcode)}','${esc(productName).replace(/'/g,"&#39;")}')"
           style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;border-radius:12px;padding:12px 16px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
           📸 Scan Nutrition Label
         </button>
@@ -4499,6 +5065,8 @@ function rescanBarcode() {
   document.getElementById('foodResult').style.display = 'none';
   document.getElementById('scanStatus').textContent = '🔍 Scanning for barcode…';
   scannedProduct = null;
+  _scanBuffer = {};
+  _scanAccepted = false;
   openScannerCamera();
 }
 
@@ -4545,74 +5113,47 @@ async function lookupBarcodeMultiDB(barcode) {
     return product;
   }
 
-  // 1. Open Food Facts .net (CDN-accelerated, preferred per docs)
-  try {
-    log('⏳ Searching Open Food Facts…');
-    for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.net/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
-    }
-  } catch(e) { console.warn('OFF.net:', e); }
+  // 1-3. Search OFF.net, USDA, OFF.org in parallel — first valid result wins
+  log('⏳ Searching food databases…');
 
-  // 2. USDA FoodData Central — direct gtinUpc lookup (most reliable for branded foods)
-  try {
-    log('⏳ Searching USDA…');
+  const offSearch = async (baseUrl, label) => {
     for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_API_KEY}&query=${code}&dataType=Branded&pageSize=5`
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        const foods = d.foods || [];
-        // Prefer exact UPC match, fallback to first result
-        const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
-        const hit   = exact || foods.find(f => f.gtinUpc);
-        if (hit) {
-          const p = parseUSDAProduct(hit);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log(exact ? '✅ Found — USDA (exact UPC)' : '✅ Found — USDA');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next code */ }
+      const r = await fetch(`${baseUrl}/api/v2/product/${code}?fields=${OFF_FIELDS}`, { headers: OFF_HDR });
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = parseOFProduct(d.product);
+        if (isSaneProduct(p) && p.calories > 0) return p;
+      }
     }
-  } catch(e) { console.warn('USDA:', e); }
+    throw new Error(`${label}: not found`);
+  };
 
-  // 3. Open Food Facts .org (different CDN node, second chance)
-  try {
-    log('⏳ Searching Open Food Facts (alt)…');
+  const usdaSearch = async () => {
     for (const code of allCodes) {
-      try {
-        const r = await fetch(
-          `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-          { headers: OFF_HDR }
-        );
-        if (!r.ok) continue;
-        const d = await r.json();
-        if (d.status === 1 && d.product) {
-          const p = parseOFProduct(d.product);
-          if (isSaneProduct(p) && p.calories > 0) {
-            log('✅ Found — Open Food Facts');
-            return saveCache(p);
-          }
-        }
-      } catch(e) { /* try next */ }
+      const r = await fetch(`/api/usda/search?query=${code}&dataType=Branded&pageSize=5`);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const foods = d.foods || [];
+      const exact = foods.find(f => f.gtinUpc && allCodes.includes(f.gtinUpc));
+      const hit = exact || foods.find(f => f.gtinUpc);
+      if (hit) {
+        const p = parseUSDAProduct(hit);
+        if (isSaneProduct(p) && p.calories > 0) return p;
+      }
     }
-  } catch(e) { console.warn('OFF.org:', e); }
+    throw new Error('USDA: not found');
+  };
+
+  try {
+    const result = await Promise.any([
+      offSearch('https://world.openfoodfacts.net', 'OFF.net'),
+      usdaSearch(),
+      offSearch('https://world.openfoodfacts.org', 'OFF.org'),
+    ]);
+    log('✅ Found in food database');
+    return saveCache(result);
+  } catch(e) { /* all three failed, continue to fallbacks */ }
 
   // 5. UPC ItemDB → USDA name lookup
   try {
@@ -4660,8 +5201,8 @@ async function lookupBarcodeMultiDB(barcode) {
 async function searchUSDAByName(name) {
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(name)}` +
-      `&dataType=Branded,Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(name)}` +
+      `&dataType=Branded,Foundation,SR%20Legacy&pageSize=3`
     );
     const d = await r.json();
     const hit = (d.foods||[])[0];
@@ -4678,8 +5219,7 @@ async function searchFoodMultiDB(query) {
   // 1. USDA Foundation + SR Legacy (best micros)
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
-      `&dataType=Foundation,SR%20Legacy&pageSize=5&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=5`
     );
     const d = await r.json();
     (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'full'}); });
@@ -4688,8 +5228,7 @@ async function searchFoodMultiDB(query) {
   // 2. USDA Branded
   try {
     const r = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}` +
-      `&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`
+      `/api/usda/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=5`
     );
     const d = await r.json();
     (d.foods||[]).forEach(f => { const p=parseUSDAProduct(f); if(isSaneProduct(p)&&dedup(p)) results.push({...p,microQuality:'partial'}); });
@@ -4859,10 +5398,15 @@ Return ONLY JSON:
 
 
 async function openScannerCamera() {
-  try { await startQuagga(); } catch(e) {}
+  try { await startScanner(); } catch(e) {}
 }
 
 function stopCamera() {
+  // Cancel native BarcodeDetector scan loop
+  if (_nativeScanRAF) {
+    cancelAnimationFrame(_nativeScanRAF);
+    _nativeScanRAF = null;
+  }
   try {
     if (window.Quagga) Quagga.stop();
   } catch(e) {}
@@ -4959,10 +5503,9 @@ function usdaFoodToProduct(f) {
 // Search USDA — Foundation + SR Legacy first (best micros), then Branded
 async function searchUSDAFull(query) {
   // First: whole foods (Foundation Foods + SR Legacy) — most complete micronutrient data
-  const wholeFoodsUrl = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${USDA_API_KEY}`;
   const [wfRes, brandedRes] = await Promise.all([
-    fetch(wholeFoodsUrl),
-    fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=6&api_key=${USDA_API_KEY}`)
+    fetch(`/api/usda/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6`),
+    fetch(`/api/usda/search?query=${encodeURIComponent(query)}&dataType=Branded&pageSize=6`)
   ]);
 
   let results = [];
@@ -5550,7 +6093,15 @@ const GARMIN_REQ_URL   = GARMIN_BASE + '/oauth-service/oauth/request_token';
 const GARMIN_AUTH_URL  = 'https://connect.garmin.com/oauthConfirm';
 const GARMIN_ACCESS_URL= GARMIN_BASE + '/oauth-service/oauth/access_token';
 const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/activities';
-const CORS_PROXY       = 'https://corsproxy.io/?';
+// Garmin requests proxied through our backend to avoid third-party CORS proxy
+async function garminProxy(url, method, headers) {
+  const res = await fetch('/api/garmin/proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
+  });
+  return res;
+}
 
 function b64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function rfc3986(str) { return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
@@ -5614,9 +6165,8 @@ async function startGarminOAuth() {
     const callbackUrl = encodeURIComponent(window.location.href.split('?')[0]);
     const authHeader = await buildAuthHeader('POST', GARMIN_REQ_URL, { oauth_callback: callbackUrl }, key, secret);
 
-    const res = await fetch(CORS_PROXY + encodeURIComponent(GARMIN_REQ_URL), {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' }
+    const res = await garminProxy(GARMIN_REQ_URL, 'POST', {
+      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
     });
     const text = await res.text();
     const params = Object.fromEntries(new URLSearchParams(text));
@@ -5655,9 +6205,8 @@ async function handleOAuthCallback() {
       creds.key, creds.secret,
       reqToken.oauth_token, reqToken.oauth_token_secret
     );
-    const res = await fetch(CORS_PROXY + encodeURIComponent(GARMIN_ACCESS_URL), {
-      method: 'POST',
-      headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' }
+    const res = await garminProxy(GARMIN_ACCESS_URL, 'POST', {
+      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
     });
     const text = await res.text();
     const accessParams = Object.fromEntries(new URLSearchParams(text));
@@ -5741,8 +6290,8 @@ async function fetchGarminToday() {
       creds.key, creds.secret,
       tok.token, tok.secret
     );
-    const res = await fetch(CORS_PROXY + encodeURIComponent(apiUrl), {
-      headers: { 'Authorization': authHeader, 'Accept': 'application/json' }
+    const res = await garminProxy(apiUrl, 'GET', {
+      'Authorization': authHeader, 'Accept': 'application/json'
     });
     if (!res.ok) throw new Error(`Garmin API error ${res.status}`);
     const activities = await res.json();
@@ -5872,75 +6421,43 @@ function adjustMacrosForBurn(burnCalories) {
   renderWeeklyBalance();
 }
 
-// ── Strava OAuth 2.0 ──
-const STRAVA_AUTH_URL   = 'https://www.strava.com/oauth/authorize';
-const STRAVA_TOKEN_URL  = 'https://www.strava.com/oauth/token';
+// ── Strava OAuth 2.0 (server-side) ──
 const STRAVA_API_BASE   = 'https://www.strava.com/api/v3';
 
 function startStravaOAuth() {
-  const clientId = document.getElementById('stravaClientId').value.trim();
-  const secret   = document.getElementById('stravaClientSecret').value.trim();
-  if (!clientId || !secret) { showToast('⚠️ Enter your Client ID and Secret first'); return; }
-  setStorage('stravaCreds', { clientId, secret });
-
-  const redirectUri = encodeURIComponent('https://macro.jeremy-39c.workers.dev');
-  const scope = 'read,activity:read';
-  window.location.href = `${STRAVA_AUTH_URL}?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=strava_oauth`;
+  // Server handles the redirect to Strava with credentials
+  window.location.href = '/api/strava/auth';
 }
 
-async function handleStravaCallback() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const code  = urlParams.get('code');
-  const state = urlParams.get('state');
-  if (!code || state !== 'strava_oauth') return;
+function handleStravaCallback() {
+  // Server redirects back with token in hash fragment: #strava_token={...}
+  const hash = window.location.hash;
+  if (!hash.startsWith('#strava_token=')) return;
 
   // Clean URL immediately
   window.history.replaceState({}, '', window.location.pathname);
 
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthIcon').textContent  = '🟠';
-  document.getElementById('oauthTitle').textContent = 'Connecting to Strava…';
-  document.getElementById('oauthMsg').textContent   = 'Exchanging authorization code for access token…';
-
-  const creds = getStorage('stravaCreds', {});
+  let tokenData;
   try {
-    const res = await fetch(STRAVA_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id:     creds.clientId,
-        client_secret: creds.secret,
-        code,
-        grant_type:    'authorization_code',
-        redirect_uri:  'https://macro.jeremy-39c.workers.dev'
-      })
-    });
-    const data = await res.json();
-    if (!data.access_token) throw new Error(data.message || 'Token exchange failed');
-
-    setStorage('stravaToken', {
-      accessToken:  data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt:    data.expires_at,
-      athlete:      data.athlete,
-    });
-
-    const name = `${data.athlete?.firstname || ''} ${data.athlete?.lastname || ''}`.trim() || 'Strava User';
-    document.getElementById('oauthIcon').textContent  = '✅';
-    document.getElementById('oauthTitle').textContent = 'Strava Connected!';
-    document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
-
-    setTimeout(() => {
-      document.getElementById('oauthModal').classList.remove('open');
-      updateStravaSettingsUI();
-      fetchStravaToday();
-    }, 2000);
-
-  } catch (err) {
-    document.getElementById('oauthIcon').textContent  = '❌';
-    document.getElementById('oauthTitle').textContent = 'Connection failed';
-    document.getElementById('oauthMsg').textContent   = err.message;
+    tokenData = JSON.parse(decodeURIComponent(hash.replace('#strava_token=', '')));
+  } catch (e) {
+    showToast('⚠️ Failed to parse Strava token');
+    return;
   }
+
+  setStorage('stravaToken', tokenData);
+
+  document.getElementById('oauthModal').classList.add('open');
+  document.getElementById('oauthIcon').textContent  = '✅';
+  document.getElementById('oauthTitle').textContent = 'Strava Connected!';
+  const name = `${tokenData.athlete?.firstname || ''} ${tokenData.athlete?.lastname || ''}`.trim() || 'Strava User';
+  document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
+
+  setTimeout(() => {
+    document.getElementById('oauthModal').classList.remove('open');
+    updateStravaSettingsUI();
+    fetchStravaToday();
+  }, 2000);
 }
 
 async function refreshStravaTokenIfNeeded() {
@@ -5950,33 +6467,22 @@ async function refreshStravaTokenIfNeeded() {
   // Token still valid
   if (Date.now() / 1000 < tok.expiresAt - 300) return tok.accessToken;
 
-  // Need to refresh
-  const creds = getStorage('stravaCreds', {});
-  if (!creds.clientId || !creds.secret) {
-    showToast('⚠️ Strava credentials missing — reconnect in Settings');
-    return tok.accessToken; // try with existing token
-  }
-
+  // Refresh via server-side proxy (keeps client_secret server-side)
   try {
-    const res = await fetch(STRAVA_TOKEN_URL, {
+    const res = await fetch('/api/strava/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id:     creds.clientId,
-        client_secret: creds.secret,
-        refresh_token: tok.refreshToken,
-        grant_type:    'refresh_token'
-      })
+      body: JSON.stringify({ refreshToken: tok.refreshToken })
     });
     const data = await res.json();
-    if (!data.access_token) {
+    if (!data.accessToken) {
       console.warn('Strava refresh response:', data);
       showToast('⚠️ Strava token refresh failed — try reconnecting in Settings');
       return tok.accessToken;
     }
-    const updated = { ...tok, accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt: data.expires_at };
+    const updated = { ...tok, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt };
     setStorage('stravaToken', updated);
-    return data.access_token;
+    return data.accessToken;
   } catch(e) {
     console.warn('Strava refresh error:', e);
     return tok.accessToken;
@@ -6084,8 +6590,6 @@ function updateStravaSettingsUI() {
     const a = tok.athlete;
     document.getElementById('stravaUsername').textContent =
       a ? `${a.firstname || ''} ${a.lastname || ''}`.trim() : 'Strava User';
-    const creds = getStorage('stravaCreds', {});
-    if (creds.clientId) document.getElementById('stravaClientId').value = creds.clientId;
   } else {
     statusEl.className   = 'connect-status disconnected';
     statusEl.textContent = '⚪ Not connected';
@@ -6102,7 +6606,6 @@ function toggleStravaAutoAdjust(btn) {
 function disconnectStrava() {
   if (!confirm('Disconnect your Strava account?')) return;
   localStorage.removeItem('stravaToken');
-  localStorage.removeItem('stravaCreds');
   localStorage.removeItem('stravaToday');
   localStorage.removeItem('stravaAdjustedMacros');
   updateStravaSettingsUI();
@@ -6396,27 +6899,252 @@ function copyYesterdayMeals() {
   showToast(`📋 Copied ${yEntries.length} meals!`);
 }
 
+// ── Daily Greeting Tile (Calendar + Gmail + Quote) ──
+
+let _googleAccessToken = null;
+let _googleTokenClient = null;
+let _greetingDataLoading = false;
+
+function getTimeGreeting() {
+  const h = nowEST().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function initGreetingTile() {
+  // Set greeting and date
+  const hello = document.getElementById('greetingHello');
+  const dateEl = document.getElementById('greetingDate');
+  const name = (_currentUser && _currentUser.name) ? _currentUser.name.split(' ')[0] : 'Jeremy';
+  if (hello) hello.textContent = `${getTimeGreeting()}, ${esc(name)}`;
+  if (dateEl) dateEl.textContent = nowEST().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+
+  // Load quote
+  loadDailyQuote();
+
+  // Try loading calendar + gmail with saved token
+  const savedToken = localStorage.getItem('googleAccessToken');
+  const savedExp = parseInt(localStorage.getItem('googleTokenExpiry') || '0');
+  if (savedToken && Date.now() < savedExp) {
+    _googleAccessToken = savedToken;
+    loadGreetingCalendar();
+    loadGreetingGmail();
+  } else {
+    // Init token client for Gmail + Calendar scopes
+    initGoogleTokenClient();
+  }
+}
+
+function initGoogleTokenClient() {
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    setTimeout(initGoogleTokenClient, 300);
+    return;
+  }
+  _googleTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) {
+        console.warn('[Greeting] Token error:', tokenResponse.error);
+        renderGreetingNoAuth();
+        return;
+      }
+      _googleAccessToken = tokenResponse.access_token;
+      const expiresIn = (tokenResponse.expires_in || 3600) * 1000;
+      localStorage.setItem('googleAccessToken', _googleAccessToken);
+      localStorage.setItem('googleTokenExpiry', String(Date.now() + expiresIn));
+      loadGreetingCalendar();
+      loadGreetingGmail();
+    },
+    prompt: '',
+  });
+
+  // Auto-request token (silently if already consented)
+  requestGreetingToken();
+}
+
+function requestGreetingToken() {
+  if (!_googleTokenClient) return;
+  try {
+    _googleTokenClient.requestAccessToken({ prompt: '' });
+  } catch (e) {
+    console.warn('[Greeting] Silent token request failed:', e);
+    renderGreetingNoAuth();
+  }
+}
+
+function renderGreetingNoAuth() {
+  const calList = document.getElementById('greetingCalList');
+  const mailList = document.getElementById('greetingMailList');
+  if (calList) calList.innerHTML = `<button class="greeting-connect-btn" onclick="connectGreetingGoogle()">🔗 Connect Google Calendar</button>`;
+  if (mailList) mailList.innerHTML = `<button class="greeting-connect-btn" onclick="connectGreetingGoogle()">🔗 Connect Gmail</button>`;
+}
+
+function connectGreetingGoogle() {
+  if (_googleTokenClient) {
+    _googleTokenClient.requestAccessToken({ prompt: 'consent' });
+  } else {
+    initGoogleTokenClient();
+  }
+}
+
+async function loadGreetingCalendar() {
+  const calList = document.getElementById('greetingCalList');
+  if (!calList || !_googleAccessToken) return;
+  calList.innerHTML = '<div class="greeting-loading">Loading calendar…</div>';
+
+  try {
+    const now = nowEST();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const tomorrowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(todayStart)}&timeMax=${encodeURIComponent(tomorrowEnd)}&singleEvents=true&orderBy=startTime&maxResults=8`;
+
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
+    if (res.status === 401) {
+      localStorage.removeItem('googleAccessToken');
+      _googleAccessToken = null;
+      renderGreetingNoAuth();
+      return;
+    }
+    const data = await res.json();
+    const events = (data.items || []).filter(e => e.status !== 'cancelled');
+
+    if (events.length === 0) {
+      calList.innerHTML = '<div class="greeting-empty">No events scheduled</div>';
+      return;
+    }
+
+    // Split into today and tomorrow
+    const todayDate = dateToKey(now);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = dateToKey(tomorrow);
+
+    let html = '';
+    let lastGroup = '';
+
+    events.forEach(ev => {
+      const evStart = ev.start.dateTime || ev.start.date;
+      const evDate = evStart.slice(0, 10);
+      const isAllDay = !ev.start.dateTime;
+
+      // Group header
+      let group = evDate === todayDate ? 'Today' : evDate === tomorrowDate ? 'Tomorrow' : '';
+      if (group && group !== lastGroup) {
+        if (lastGroup) html += '<div style="height:6px"></div>';
+        if (group === 'Tomorrow') html += `<div style="font-size:9px;font-weight:700;color:#4d5468;text-transform:uppercase;letter-spacing:1px;margin:4px 0 2px">Tomorrow</div>`;
+        lastGroup = group;
+      }
+
+      let timeStr = 'All day';
+      if (!isAllDay) {
+        const d = new Date(evStart);
+        timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+      }
+
+      const title = esc(ev.summary || '(No title)');
+      const loc = ev.location ? `<div class="greeting-event-loc">📍 ${esc(ev.location.split(',')[0])}</div>` : '';
+
+      html += `<div class="greeting-event greet-animate">
+        <div class="greeting-event-time">${timeStr}</div>
+        <div class="greeting-event-title">${title}${loc}</div>
+      </div>`;
+    });
+
+    calList.innerHTML = html;
+  } catch (e) {
+    console.warn('[Greeting] Calendar fetch error:', e);
+    calList.innerHTML = '<div class="greeting-empty">Could not load calendar</div>';
+  }
+}
+
+async function loadGreetingGmail() {
+  const mailList = document.getElementById('greetingMailList');
+  if (!mailList || !_googleAccessToken) return;
+  mailList.innerHTML = '<div class="greeting-loading">Loading emails…</div>';
+
+  try {
+    // Fetch recent unread important/primary emails
+    const q = encodeURIComponent('is:unread category:primary newer_than:1d');
+    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=5`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + _googleAccessToken } });
+    if (res.status === 401) {
+      localStorage.removeItem('googleAccessToken');
+      _googleAccessToken = null;
+      renderGreetingNoAuth();
+      return;
+    }
+    const data = await res.json();
+    const messages = data.messages || [];
+
+    if (messages.length === 0) {
+      mailList.innerHTML = '<div class="greeting-empty">No new important emails</div>';
+      return;
+    }
+
+    // Fetch details for each message (parallel, max 5)
+    const details = await Promise.all(
+      messages.slice(0, 5).map(async (m) => {
+        try {
+          const r = await fetch(`https://www.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, {
+            headers: { 'Authorization': 'Bearer ' + _googleAccessToken }
+          });
+          return await r.json();
+        } catch { return null; }
+      })
+    );
+
+    let html = '';
+    details.filter(Boolean).forEach(msg => {
+      const headers = msg.payload?.headers || [];
+      const fromH = headers.find(h => h.name === 'From')?.value || '';
+      const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
+
+      // Parse "Name <email>" format
+      let fromName = fromH;
+      const nameMatch = fromH.match(/^"?([^"<]+)"?\s*</);
+      if (nameMatch) fromName = nameMatch[1].trim();
+      else if (fromH.includes('@')) fromName = fromH.split('@')[0];
+
+      html += `<div class="greeting-email greet-animate">
+        <div class="greeting-email-from">${esc(fromName)}</div>
+        <div class="greeting-email-subject">${esc(subject)}</div>
+      </div>`;
+    });
+
+    mailList.innerHTML = html || '<div class="greeting-empty">No new emails</div>';
+  } catch (e) {
+    console.warn('[Greeting] Gmail fetch error:', e);
+    mailList.innerHTML = '<div class="greeting-empty">Could not load emails</div>';
+  }
+}
+
+function refreshGreetingTile() {
+  localStorage.removeItem('dailyQuote');
+  localStorage.removeItem('greetingCache');
+  initGreetingTile();
+  showToast('Refreshing daily briefing…');
+}
+
 // ── Daily Motivational Quote (Claude AI) ──
 async function loadDailyQuote() {
   const QUOTE_KEY = 'dailyQuote';
   const today = todayKey();
 
-  // Use cached quote if already generated today (and it has content)
   const cached = getStorage(QUOTE_KEY, null);
   if (cached && cached.date === today && cached.quote) {
     renderQuote(cached.quote, cached.author);
     return;
   }
 
-  // Clear any stale cache
   localStorage.removeItem(QUOTE_KEY);
 
   const textEl   = document.getElementById('dailyQuoteText');
   const authorEl = document.getElementById('dailyQuoteAuthor');
-  if (textEl)   { textEl.textContent = "Generating today's motivation…"; textEl.className = 'quote-text quote-loading'; }
+  if (textEl)   { textEl.textContent = 'Generating…'; textEl.className = 'greeting-quote-text greeting-loading'; }
   if (authorEl) authorEl.textContent = '';
 
-  // Pull current user stats for a personalised prompt
   const goals  = getStorage('userGoals', {});
   const macros = getStorage('userMacros', null) || MACROS;
   const cw     = goals.weight || 165;
@@ -6479,21 +7207,18 @@ Keep it under 30 words. Respond ONLY with valid JSON, no markdown:
     const d = nowEST();
     const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
     const fb = fallbacks[dayOfYear % fallbacks.length];
-    // Store WITHOUT _apiFetched so startup cache-bust retries the API tomorrow
     setStorage(QUOTE_KEY, { date: 'retry', quote: fb.quote, author: fb.author });
     renderQuote(fb.quote, fb.author);
-    // Show error hint under quote so we can diagnose
-    const authorEl = document.getElementById('dailyQuoteAuthor');
-    if (authorEl) authorEl.innerHTML += `<span style="font-size:9px;color:var(--text3);display:block;margin-top:4px">⚠️ ${e.message.slice(0,80)}</span>`;
   }
 }
 
 function renderQuote(quote, author) {
   const textEl   = document.getElementById('dailyQuoteText');
   const authorEl = document.getElementById('dailyQuoteAuthor');
+  if (!textEl) return;
   textEl.textContent = `"${quote}"`;
-  textEl.className   = 'quote-text quote-animate';
-  authorEl.textContent = author || '';
+  textEl.className   = 'greeting-quote-text greet-animate';
+  if (authorEl) authorEl.textContent = author || '';
 }
 
 // ── Weekly Calorie Balance ──
@@ -6724,7 +7449,7 @@ async function callClaudeAPI(payload) {
 }
 
 async function searchUSDA(query, maxResults = 8) {
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=${maxResults}&api_key=${USDA_API_KEY}`;
+  const url = `/api/usda/search?query=${encodeURIComponent(query)}&pageSize=${maxResults}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error('USDA API error');
   const data = await res.json();
@@ -6756,7 +7481,7 @@ async function runRestaurantSearch() {
   resEl.innerHTML = '';
   try {
     // Use USDA branded foods (dataType=Branded catches restaurant items)
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&dataType=Branded&pageSize=12&api_key=${USDA_API_KEY}`;
+    const url = `/api/usda/search?query=${encodeURIComponent(q)}&dataType=Branded&pageSize=12`;
     const res  = await fetch(url);
     const data = await res.json();
     const foods = (data.foods || []).map(f => {
@@ -6867,7 +7592,10 @@ function closeRecipeBarcode() {
   document.getElementById('recipeScanOverlay').style.display = 'none';
 }
 
-function startRecipeBarcode() {
+let _recipeScanRAF = null;
+let _recipeScanStream = null;
+
+async function startRecipeBarcode() {
   const container = document.getElementById('recipeScanContainer');
   const status    = document.getElementById('recipeScanStatus');
   const btn       = document.getElementById('recipeScanBtn');
@@ -6875,14 +7603,27 @@ function startRecipeBarcode() {
   btn.textContent = '⏳ Starting…';
   status.textContent = 'Requesting camera…';
 
+  // Clear previous video
+  container.innerHTML = '<div id="recipeScanHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">Initializing…</div>';
+
+  // Try native BarcodeDetector first
+  if ('BarcodeDetector' in window) {
+    try {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const needed = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'].filter(f => formats.includes(f));
+      if (needed.length > 0) {
+        await startRecipeNativeScanner(container, status, btn, needed);
+        return;
+      }
+    } catch(e) { /* fall through */ }
+  }
+
+  // Fallback: QuaggaJS
   if (!window.Quagga) {
     status.textContent = '⚠️ Scanner not loaded. Try text search.';
     btn.disabled = false; btn.textContent = '▶ Start Camera';
     return;
   }
-
-  // Clear previous video
-  container.innerHTML = '<div id="recipeScanHint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:12px">Initializing…</div>';
 
   Quagga.init({
     inputStream: {
@@ -6893,7 +7634,8 @@ function startRecipeBarcode() {
     },
     decoder: { readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'] },
     locate: true,
-    frequency: 5,
+    locator: { patchSize: 'medium', halfSample: false },
+    frequency: 10,
   }, function(err) {
     if (err) {
       status.textContent = '⚠️ Camera error: ' + err.message;
@@ -6907,18 +7649,62 @@ function startRecipeBarcode() {
     btn.onclick = stopRecipeCamera;
     status.textContent = 'Point at a barcode…';
 
-    // Style the video
     const video = container.querySelector('video');
     if (video) { video.style.cssText = 'width:100%;height:100%;object-fit:cover'; }
     const canvas = container.querySelector('canvas.drawingBuffer');
     if (canvas) canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
   });
 
-  // One-time detection handler scoped to recipe
   Quagga.onDetected(onRecipeBarcodeDetected);
 }
 
+async function startRecipeNativeScanner(container, status, btn, formats) {
+  const detector = new BarcodeDetector({ formats });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+  });
+  _recipeScanStream = stream;
+
+  const vid = document.createElement('video');
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover';
+  vid.setAttribute('playsinline', '');
+  vid.setAttribute('autoplay', '');
+  vid.srcObject = stream;
+  container.innerHTML = '';
+  container.appendChild(vid);
+  await vid.play();
+
+  _recipeScanActive = true;
+  btn.textContent = '⏹ Stop';
+  btn.disabled = false;
+  btn.onclick = stopRecipeCamera;
+  status.textContent = 'Point at a barcode…';
+
+  let lastScan = 0;
+  async function scanLoop(ts) {
+    if (!_recipeScanActive) return;
+    if (ts - lastScan >= 150) {
+      lastScan = ts;
+      try {
+        const barcodes = await detector.detect(vid);
+        for (const b of barcodes) {
+          if (b.rawValue) {
+            _recipeScanActive = false;
+            stopRecipeCamera();
+            lookupBarcodeForRecipe(b.rawValue);
+            return;
+          }
+        }
+      } catch(e) {}
+    }
+    _recipeScanRAF = requestAnimationFrame(scanLoop);
+  }
+  _recipeScanRAF = requestAnimationFrame(scanLoop);
+}
+
 function stopRecipeCamera() {
+  if (_recipeScanRAF) { cancelAnimationFrame(_recipeScanRAF); _recipeScanRAF = null; }
+  if (_recipeScanStream) { _recipeScanStream.getTracks().forEach(t => t.stop()); _recipeScanStream = null; }
   if (_recipeScanActive) {
     try { Quagga.offDetected(onRecipeBarcodeDetected); Quagga.stop(); } catch(e) {}
     _recipeScanActive = false;
@@ -6929,7 +7715,7 @@ function stopRecipeCamera() {
 
 function onRecipeBarcodeDetected(result) {
   const code = result.codeResult.code;
-  if (!code) return;
+  if (!code || !isValidBarcode(code)) return;
   stopRecipeCamera();
   lookupBarcodeForRecipe(code);
 }
@@ -6992,7 +7778,7 @@ async function lookupBarcodeForRecipe(barcode) {
       throw new Error('not found');
     });
 
-  const usda = fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${barcode}&dataType=Branded&pageSize=5&api_key=${USDA_API_KEY}`)
+  const usda = fetch(`/api/usda/search?query=${barcode}&dataType=Branded&pageSize=5`)
     .then(r => r.json())
     .then(data => {
       const foods = data.foods || [];
@@ -7660,7 +8446,7 @@ async function handleShoePhoto(input) {
         if (match) {
           const parsed = JSON.parse(match[0]);
           const fullName = parsed.fullName||`${parsed.brand} ${parsed.model}`;
-          statusEl.innerHTML = `✅ Identified: <strong>${fullName}</strong>`;
+          statusEl.innerHTML = `✅ Identified: <strong>${esc(fullName)}</strong>`;
           statusEl.style.color = 'var(--green)';
           if (!document.getElementById('shoeNameInput').value) document.getElementById('shoeNameInput').value = fullName;
           if (!document.getElementById('shoeBrandInput').value) document.getElementById('shoeBrandInput').value = parsed.brand||'';
@@ -7785,7 +8571,7 @@ Closet shoes:\n`;
         const confColor = parsed.confidence === 'high' ? '#22c55e' : parsed.confidence === 'medium' ? '#f59e0b' : '#94a3b8';
         const confEmoji = parsed.confidence === 'high' ? '✅' : parsed.confidence === 'medium' ? '⚠️' : '❓';
         statusEl.style.color = confColor;
-        statusEl.innerHTML   = `${confEmoji} <strong>${parsed.matchedName}</strong> — ${parsed.confidence} confidence<br><span style="font-size:10px;opacity:0.8">${parsed.reasoning||''}</span>`;
+        statusEl.innerHTML   = `${confEmoji} <strong>${esc(parsed.matchedName)}</strong> — ${esc(parsed.confidence)} confidence<br><span style="font-size:10px;opacity:0.8">${esc(parsed.reasoning||'')}</span>`;
         // Visually highlight the matched button and auto-scroll to it
         document.querySelectorAll('.assign-shoe-btn').forEach(btn => {
           btn.style.border = '';
@@ -9970,7 +10756,7 @@ function formatAIResponse(text, opts) {
       else if (tl.includes('summary')) icon = '📊';
       html += `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:12px;padding:12px 14px;margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:${c.icon_color};letter-spacing:0.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-          <span>${icon}</span><span>${title}</span>
+          <span>${icon}</span><span>${esc(title)}</span>
         </div>
         <div class="_ai-section-body" style="font-size:13px;color:#cbd5e1;line-height:1.65">`;
       continue;
@@ -10340,8 +11126,41 @@ function safeCall(fn, label) {
   try { fn(); } catch(e) { console.error('[safeCall] ' + (label||fn.name||'?') + ':', e); }
 }
 
+// Prune old localStorage data to prevent quota exhaustion
+function pruneOldData() {
+  const KEEP_DAYS = 90;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - KEEP_DAYS);
+  const cutoffKey = cutoff.toISOString().slice(0, 10);
+
+  // Prune per-date food entry keys (foodEntries_YYYY-MM-DD)
+  const foodEntries = getStorage('foodEntries', {});
+  let pruned = 0;
+  Object.keys(foodEntries).forEach(date => {
+    if (date < cutoffKey && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      delete foodEntries[date];
+      localStorage.removeItem('foodEntries_' + date);
+      pruned++;
+    }
+  });
+  if (pruned > 0) {
+    setStorage('foodEntries', foodEntries);
+    console.log(`[prune] Removed ${pruned} food entry days older than ${KEEP_DAYS} days`);
+  }
+
+  // Cap barcode cache to 500 entries
+  const cache = getStorage('barcodeCache', {});
+  const cacheKeys = Object.keys(cache);
+  if (cacheKeys.length > 500) {
+    cacheKeys.slice(0, cacheKeys.length - 500).forEach(k => delete cache[k]);
+    setStorage('barcodeCache', cache);
+    console.log(`[prune] Trimmed barcode cache to 500 entries`);
+  }
+}
+
 function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
+  safeCall(pruneOldData, 'pruneOldData');
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 
@@ -10436,7 +11255,7 @@ function _initApp() {
   const _qc = getStorage('dailyQuote', null);
   if (_qc && (!_qc._apiFetched || _qc.date === 'retry')) localStorage.removeItem('dailyQuote');
 
-  safeCall(loadDailyQuote, 'loadDailyQuote');
+  safeCall(initGreetingTile, 'initGreetingTile');
   safeCall(initNewFeatures, 'initNewFeatures');
   safeCall(renderRecipeList, 'renderRecipeList');
   safeCall(updateHeaderDate, 'updateHeaderDate');
@@ -10444,32 +11263,19 @@ function _initApp() {
   safeCall(scheduleMidnightRefresh, 'scheduleMidnightRefresh');
   setTimeout(renderShoePage, 0);
 
-  // Safety net: re-render Today page after browser has fully painted.
-  // Catches any edge case where initial renders wrote to elements before layout.
+  // Safety net: re-render critical above-fold elements after paint.
+  // Only rings and macros need this — other renders are stable after init.
   requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      safeCall(renderRings, 'renderRings-paint');
-      safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow-paint');
-      safeCall(renderFoodLog, 'renderFoodLog-paint');
-      safeCall(renderWeekStrip, 'renderWeekStrip-paint');
-      safeCall(renderWeeklyBalance, 'renderWeeklyBalance-paint');
-      safeCall(renderStreakCard, 'renderStreakCard-paint');
-      safeCall(renderProteinPace, 'renderProteinPace-paint');
-      safeCall(renderEventCountdowns, 'renderEventCountdowns-paint');
-      safeCall(renderWeightTrend, 'renderWeightTrend-paint');
-      safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner-paint');
-      safeCall(renderQuickRecs, 'renderQuickRecs-paint');
-      safeCall(renderUsualFoods, 'renderUsualFoods-paint');
-    });
+    safeCall(renderRings, 'renderRings-paint');
+    safeCall(updateMacroTargetsRow, 'updateMacroTargetsRow-paint');
   });
 }
 
-// Ensure init runs after DOM is fully ready — fixes data not showing on initial load
+// Ensure init runs after DOM is fully ready — uses auth flow instead of direct init
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', _initApp);
+  document.addEventListener('DOMContentLoaded', checkAuth);
 } else {
-  // DOM already parsed (e.g. script is at bottom of body), run immediately
-  _initApp();
+  checkAuth();
 }
 
 // Mobile resume fix — when app comes back from background, check if day changed or run needs sync
@@ -10484,7 +11290,7 @@ document.addEventListener('visibilitychange', () => {
       renderWeightTrend();
       renderWeeklyBalance();
       checkCopyYesterday();
-      loadDailyQuote();
+      initGreetingTile();
     }
     // Re-check Strava/Garmin on resume — catches runs finished while app was in background
     try {
@@ -10606,8 +11412,14 @@ async function startRetroEnrichment() {
   }
 
   // 3. Look up each unique food — USDA first, AI fallback
-  // Process in small batches to avoid rate limiting
+  // Process in small batches with delay to avoid rate limiting
   const BATCH_SIZE = 3;
+  const BATCH_DELAY_MS = 500; // pause between batches to respect rate limits
+  const MAX_LOOKUPS = 150; // cap total API calls per enrichment run
+  if (needsEnrich.length > MAX_LOOKUPS) {
+    needsEnrich.length = MAX_LOOKUPS;
+    statusEl.textContent += ` (capped at ${MAX_LOOKUPS} per run)`;
+  }
   let processed = 0, usdaHits = 0, aiHits = 0, missed = 0;
   const microCache = new Map(); // food key → micros object (normalized per 100 cal proxy)
 
@@ -10625,7 +11437,7 @@ async function startRetroEnrichment() {
       const key = food.name.toLowerCase().trim();
       try {
         // Try Foundation + SR Legacy first
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(food.name)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=3&api_key=${USDA_API_KEY}`;
+        const url = `/api/usda/search?query=${encodeURIComponent(food.name)}&dataType=Foundation,SR%20Legacy,Branded&pageSize=3`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -10652,6 +11464,10 @@ async function startRetroEnrichment() {
     }));
 
     processed += batch.length;
+    // Delay between batches to respect rate limits
+    if (i + BATCH_SIZE < needsEnrich.length) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    }
   }
 
   // 4. AI fallback for any still missing — batch them together
@@ -10780,7 +11596,7 @@ async function analyzeMealDescription() {
       ingredients.map(async ing => {
         try {
           // SR Legacy first for best micros
-          const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(ing.name)}&dataType=Foundation,SR%20Legacy&pageSize=3&api_key=${USDA_API_KEY}`;
+          const url = `/api/usda/search?query=${encodeURIComponent(ing.name)}&dataType=Foundation,SR%20Legacy&pageSize=3`;
           const res = await fetch(url);
           if (!res.ok) return { ing, product: null, found: false };
           const data = await res.json();
@@ -11065,6 +11881,7 @@ function logCustomSupplement() {
 
 
 // ── Claude AI Chat ──
+const CLAUDE_HISTORY_MAX = 20; // keep last 20 messages (10 exchanges)
 let claudeHistory = [];
 
 function getAppContext() {
@@ -11302,14 +12119,14 @@ function renderEventCountdowns() {
       const diff = currentWeight ? +(currentWeight - target).toFixed(1) : null;
       const color2 = '#22c55e';
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color2};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${esc(e.name)}</div>
         <div style="font-size:26px;font-weight:900;color:${color2};letter-spacing:-1px">${target}<span style="font-size:12px;font-weight:600;color:var(--text2)">lbs</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">by ${byDate}</div>
         <div style="font-size:11px;color:${color2};font-weight:700;margin-top:2px">${diff !== null ? (diff <= 0 ? '✅ Achieved!' : diff + ' lbs to go') : daysToGoal + ' days left'}</div>
       </div>`;
     } else {
       return `<div style="flex:1;text-align:center;padding:0 8px">
-        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${e.name}</div>
+        <div style="font-size:10px;font-weight:700;color:${color};letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${emoji} ${esc(e.name)}</div>
         <div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-1px">${days}<span style="font-size:12px;font-weight:600;color:var(--text2)"> days</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">to go</div>
         <div style="font-size:10px;color:var(--text3);margin-top:1px">${dateStr}</div>
@@ -11349,7 +12166,7 @@ function renderEventList() {
     }
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
       <div>
-        <div style="font-size:14px;font-weight:700;color:var(--text)">${emoji} ${e.name}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">${emoji} ${esc(e.name)}</div>
         <div style="font-size:11px;color:${color};font-weight:600;margin-top:2px">${sub} · ${new Date(e.date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
       </div>
       <div style="display:flex;gap:4px">
@@ -11536,13 +12353,17 @@ async function sendClaudeMessage() {
     document.getElementById(typingId)?.remove();
 
     claudeHistory.push({ role: 'assistant', content: reply });
+    // Cap history to prevent unbounded token growth
+    if (claudeHistory.length > CLAUDE_HISTORY_MAX) {
+      claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
+    }
     processClaudeMemory(reply);
     const displayReply = reply.replace(/REMEMBER:\s*.+/gi, '').trim();
     appendClaudeMessage('assistant', displayReply);
 
   } catch(e) {
     document.getElementById(typingId)?.remove();
-    appendClaudeMessage('assistant', '❌ Error: ' + e.message + ' | ' + e.constructor.name);
+    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error'));
   }
 
   document.getElementById('claudeSendBtn').disabled = false;
@@ -11585,7 +12406,7 @@ function appendClaudeMessage(role, text, id) {
       // Simple response - styled bubble
       const inner = document.createElement('div');
       inner.style.cssText = 'padding:11px 15px;border-radius:18px 18px 18px 4px;background:#111827;color:#e2e8f0;border:1px solid #1e293b';
-      inner.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
+      inner.innerHTML = esc(text).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
       bubble.appendChild(inner);
     }
   }
@@ -11899,105 +12720,20 @@ function onSliderChange(type) {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 6: DAILY AI BRIEF
+// FEATURE 6: DAILY AI BRIEF (uses greeting tile + dailyBriefCard)
 // ══════════════════════════════════════════════════════
 
-async function loadDailyBrief() {
-  const el = document.getElementById('dailyBriefCard');
-  if (!el) return;
-
-  const cached = getStorage('dailyBrief', null);
-  if (cached && cached.date === todayKey()) {
-    renderDailyBrief(cached.text);
-    return;
-  }
-
-  // Build context
-  const macroLog  = getStorage('macroLog', {});
-  const userMacros = getStorage('userMacros', null);
-  const userGoals  = getStorage('userGoals', {});
-  const weightLog  = getStorage('weightLog', {});
-  const whoopData  = getStorage('whoopData', {});
-
-  // Yesterday's nutrition
-  const yestKey = (() => { const d = nowEST(); d.setDate(d.getDate()-1); return dateToKey(d); })();
-  const yestLog = macroLog[yestKey] || null;
-  const target  = userMacros?.calories || 2000;
-
-  // WHOOP recovery
-  const whoopIdx = getWhoopIndex ? getWhoopIndex() : {};
-  const todayWhoop = whoopIdx[todayKey()] || whoopIdx[yestKey] || null;
-  const recovery = todayWhoop?.recovery_score || null;
-  const sleep    = todayWhoop ? Math.round((todayWhoop.total_sleep_time||0)/3600*10)/10 : null;
-
-  // Weight vs goal
-  const weights = Object.entries(weightLog).sort((a,b)=>b[0].localeCompare(a[0]));
-  const currentWt = weights[0]?.[1] || null;
-  const goalWt    = userGoals.goal || 160;
-  const goalDate  = userGoals.goalDate || '2026-03-31';
-
-  // Days until marathon
-  const marathon = new Date('2026-06-20T12:00:00');
-  const daysToRace = Math.ceil((marathon - new Date()) / 86400000);
-
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <div style="font-size:22px">☀️</div>
-      <div>
-        <div style="font-size:15px;font-weight:800;color:var(--text)">Good morning, Jeremy</div>
-        <div style="font-size:11px;color:var(--text2)">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
-      </div>
-      <button onclick="refreshDailyBrief()" style="margin-left:auto;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit">🔄</button>
-    </div>
-    <div id="dailyBriefText" style="font-size:13px;color:var(--text2);line-height:1.6">
-      <div style="display:flex;align-items:center;gap:8px;color:var(--text2);font-size:12px">
-        <div class="spinner" style="width:14px;height:14px;border:2px solid #334155;border-top-color:#7c3aed;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-        Generating your daily brief…
-      </div>
-    </div>`;
-
-  try {
-    const prompt = `You are Jeremy's personal health coach. Write a concise morning brief (4-5 sentences max) based on this data:
-
-Yesterday's nutrition: ${yestLog ? `${yestLog.calories} kcal (target: ${target}), ${yestLog.protein}g protein, ${yestLog.carbs}g carbs, ${yestLog.fat}g fat` : 'No data logged'}
-WHOOP recovery score: ${recovery !== null ? recovery + '/100' : 'No data'}
-Sleep last night: ${sleep !== null ? sleep + ' hours' : 'No data'}
-Current weight: ${currentWt ? currentWt + ' lbs' : 'Unknown'} (goal: ${goalWt} lbs by ${goalDate})
-Days until Grandma's Marathon (June 20 2026): ${daysToRace} days
-Jeremy's age: 52, endurance runner, weight goal in progress
-
-Be specific, encouraging, and practical. Mention 1-2 concrete action items for today. Keep it under 80 words. No bullet points — conversational tone.`;
-
-    const resp = await callClaudeAPI({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: prompt }]
-    });
-    const text = resp.content?.find(b => b.type === 'text')?.text || '';
-    setStorage('dailyBrief', { date: todayKey(), text });
-    renderDailyBrief(text);
-  } catch(e) {
-    const el2 = document.getElementById('dailyBriefText');
-    if (el2) el2.innerHTML = '<span style="color:var(--text2);font-size:12px">Could not load brief — tap 🔄 to retry</span>';
-  }
-}
-
-function refreshDailyBrief() {
-  const cached = getStorage('dailyBrief', null);
-  if (cached) {
-    const log = getStorage('dailyBrief', {});
-    setStorage('dailyBrief', null);
-  }
-  localStorage.removeItem('dailyBrief');
-  loadDailyBrief();
-}
-
+// Legacy compat — these are now handled by generateDailyBrief (Feature 7a)
+function loadDailyBrief() { generateDailyBrief(false); }
+function refreshDailyBrief() { regenerateDailyBrief(); }
 function renderDailyBrief(text) {
   const el = document.getElementById('dailyBriefText');
   if (!el || !text) return;
   el.innerHTML = text.replace(/\n/g, '<br>');
   el.style.color = 'var(--text)';
 }
+// Legacy compat for any cached references
+function renderBriefHTML() { generateDailyBrief(false); }
 
 
 // ══════════════════════════════════════════════════════
@@ -12903,7 +13639,7 @@ function renderMicronutrients() {
   if (document.getElementById('moodBtnStyle')) return;
   const s = document.createElement('style');
   s.id = 'moodBtnStyle';
-  s.textContent = `.mood-btn { background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;font-size:18px;width:38px;height:38px;cursor:pointer;transition:all 0.2s;opacity:0.45;display:flex;align-items:center;justify-content:center; } .mood-btn:hover { transform:scale(1.15);opacity:0.8; }`;
+  s.textContent = `.mood-btn { background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;font-size:18px;min-width:0;flex:1;height:36px;cursor:pointer;transition:all 0.2s;opacity:0.45;display:flex;align-items:center;justify-content:center;padding:0;box-sizing:border-box; } .mood-btn:hover { transform:scale(1.15);opacity:0.8; }`;
   document.head.appendChild(s);
 })();
 
