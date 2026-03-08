@@ -12676,21 +12676,44 @@ async function generateDailyBrief(force = false) {
   const moodToday = (getMoodLog ? getMoodLog() : {})[key] || {};
 
   try {
-    const resp = await fetch('/api/brief', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        date: key, force,
-        healthContext: {
-          weight, targetWeight: goals.targetWeight || 163,
-          calories: Math.round(todayMacros.calories),
-          protein:  Math.round(todayMacros.protein),
-          energy:   moodToday.energy || null,
-          mood:     moodToday.mood   || null,
-          water:    getTodayWaterOz ? Math.round(getTodayWaterOz()) : 0,
+    // Load email context — try local cache first, then D1
+    let emailContext = [];
+    const emailCache = getStorage('briefEmailContext', null);
+    if (emailCache && emailCache.date === key) {
+      emailContext = emailCache.emails || [];
+    } else {
+      try {
+        const ctxResp = await fetch('/api/brief-context?date=' + key);
+        if (ctxResp.ok) {
+          const ctx = await ctxResp.json();
+          emailContext = ctx.emails || [];
+          setStorage('briefEmailContext', { date: key, emails: emailContext });
         }
-      })
-    });
+      } catch(_) {}
+    }
+
+    const controller = new AbortController();
+    const briefTimeout = setTimeout(() => controller.abort(), 12000);
+    let resp;
+    try {
+      resp = await fetch('/api/brief', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          date: key, force,
+          emailContext,
+          healthContext: {
+            weight, targetWeight: goals.targetWeight || 163,
+            calories: Math.round(todayMacros.calories),
+            protein:  Math.round(todayMacros.protein),
+            energy:   moodToday.energy || null,
+            mood:     moodToday.mood   || null,
+            water:    getTodayWaterOz ? Math.round(getTodayWaterOz()) : 0,
+          }
+        })
+      });
+    } finally { clearTimeout(briefTimeout); }
     if (!resp.ok) throw new Error('Brief API ' + resp.status);
     const result = await resp.json();
     if (!result.ok || (!result.brief && !result.raw)) throw new Error(result.error || 'no data');
