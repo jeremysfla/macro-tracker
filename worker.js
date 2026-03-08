@@ -1,18 +1,19 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-function withTimeout(promise, ms, fallback) {
-  return Promise.race([
-    promise.catch(() => fallback !== undefined ? fallback : []),
-    new Promise(resolve => setTimeout(() => resolve(fallback !== undefined ? fallback : []), ms))
-  ]);
+// AbortController-based timeout — works in Cloudflare Workers (setTimeout does NOT)
+function fetchWithTimeout(url, options, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
 }
-__name(withTimeout, "withTimeout");
+__name(fetchWithTimeout, "fetchWithTimeout");
 
 async function getGoogleAccessToken(env) {
   if (!env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
   try {
-    const fetchPromise = fetch("https://oauth2.googleapis.com/token", {
+    const r = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -21,9 +22,8 @@ async function getGoogleAccessToken(env) {
         client_id: env.GOOGLE_CLIENT_ID,
         client_secret: env.GOOGLE_CLIENT_SECRET,
       })
-    });
-    const r = await withTimeout(fetchPromise, 3000, null);
-    if (!r || !r.ok) return null;
+    }, 4000);
+    if (!r.ok) return null;
     const d = await r.json();
     return d.access_token || null;
   } catch(_) { return null; }
@@ -37,7 +37,7 @@ async function getCalendarEvents(token, date) {
     const calId = encodeURIComponent("jeremy@dronenerds.com");
     const fields = encodeURIComponent("items(summary,start,end,eventType,location)");
     const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime&fields=${fields}&maxResults=20`;
-    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    const r = await fetchWithTimeout(url, { headers: { Authorization: "Bearer " + token } }, 5000);
     if (!r.ok) return [];
     const d = await r.json();
     return (d.items || [])
@@ -56,7 +56,7 @@ __name(getCalendarEvents, "getCalendarEvents");
 async function getUrgentEmails(token) {
   try {
     const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is%3Aunread%20is%3Aimportant%20-category%3Apromotions%20-category%3Aupdates&maxResults=4";
-    const listR = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
+    const listR = await fetchWithTimeout(listUrl, { headers: { Authorization: "Bearer " + token } }, 5000);
     if (!listR.ok) return [];
     const listD = await listR.json();
     const msgs = (listD.messages || []).slice(0, 3);
@@ -64,9 +64,10 @@ async function getUrgentEmails(token) {
     const skip = /noreply|no-reply|donotreply|unsubscribe|notifications?@|alerts?@|americanairlines|caesars|linkedin|twitter|reddit/i;
     const results = await Promise.all(msgs.map(async m => {
       try {
-        const r = await fetch(
+        const r = await fetchWithTimeout(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-          { headers: { Authorization: "Bearer " + token } }
+          { headers: { Authorization: "Bearer " + token } },
+          4000
         );
         if (!r.ok) return null;
         const d = await r.json();
@@ -106,13 +107,13 @@ var worker_default = {
         const body = await req.json();
         const { healthContext = {}, date = new Date().toISOString().slice(0, 10) } = body;
 
-        // All Google calls wrapped in a single 6s timeout
+        // Get Google token first, then fetch calendar + email in parallel
         let events = [], urgentEmails = [];
-        const googleToken = await withTimeout(getGoogleAccessToken(env), 3000, null);
+        const googleToken = await getGoogleAccessToken(env);
         if (googleToken) {
           [events, urgentEmails] = await Promise.all([
-            withTimeout(getCalendarEvents(googleToken, date), 4000, []),
-            withTimeout(getUrgentEmails(googleToken), 4000, []),
+            getCalendarEvents(googleToken, date),
+            getUrgentEmails(googleToken),
           ]);
         }
 
@@ -139,9 +140,9 @@ Return ONLY this JSON (no markdown, no preamble):
   "health_note": "one sentence with actual numbers",
   "focus": "single most important thing today"
 }
-Rules: urgent_emails max 4, only real human emails; health_note use actual numbers; Return ONLY valid JSON`;
+Rules: urgent_emails max 4, only real human emails needing response; health_note use actual numbers; Return ONLY valid JSON`;
 
-        const r = await fetch("https://api.anthropic.com/v1/messages", {
+        const r = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -153,7 +154,8 @@ Rules: urgent_emails max 4, only real human emails; health_note use actual numbe
             max_tokens: 800,
             messages: [{ role: "user", content: prompt }]
           })
-        });
+        }, 15000);
+
         const data = await r.json();
         if (!r.ok) {
           return new Response(JSON.stringify({ ok: false, error: data?.error?.message || "API error" }), { status: r.status, headers: CORS });
