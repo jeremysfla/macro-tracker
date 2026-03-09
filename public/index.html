@@ -1068,6 +1068,9 @@ PROMISE ERROR:
           </div>
           <button class="btn-save-food" style="margin-top:10px;width:100%" onclick="saveManualFood()">Save Food</button>
         </div>
+        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none;margin-top:12px">
+          📋 Copy Yesterday's Meals
+        </button>
       </div>
 
       <!-- 5. Food recommendations -->
@@ -1307,9 +1310,6 @@ PROMISE ERROR:
           <div class="card-label" style="color:#8b5cf6;margin-bottom:0">Today's Food Log</div>
           <button onclick="clearAllEntries()" style="font-size:11px;font-weight:700;color:var(--red);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:8px;background:var(--red-soft)">Clear All</button>
         </div>
-        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none">
-          📋 Copy Yesterday's Meals
-        </button>
         <div id="foodLogList"></div>
       </div>
 
