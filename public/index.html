@@ -3747,7 +3747,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); renderMoodCard(); initMoodBtns(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   if (name === 'lift') renderWorkoutPage();
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
@@ -12782,41 +12782,8 @@ function renderBodyCompLatest() {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 5: MOOD & ENERGY SLIDER
+// FEATURE 5: MOOD & ENERGY (legacy stubs removed — see FEATURE 3)
 // ══════════════════════════════════════════════════════
-
-const MOOD_EMOJIS   = ['😴','😕','😐','🙂','💪'];
-const ENERGY_EMOJIS = ['🪫','😓','⚡','🔥','🚀'];
-
-function saveMood() {
-  const energy = parseInt(document.getElementById('energySlider')?.value || 3);
-  const mood   = parseInt(document.getElementById('moodSlider')?.value   || 3);
-  const log = getStorage('moodLog', {});
-  log[todayKey()] = { date: todayKey(), energy, mood, ts: Date.now() };
-  setStorage('moodLog', log);
-  renderMoodCard();
-  showToast('✅ Mood & energy logged');
-}
-
-function renderMoodCard() {
-  const energyEl = document.getElementById('energyEmojiDisplay');
-  const moodEl   = document.getElementById('moodEmojiDisplay');
-  const log = getStorage('moodLog', {});
-  const today = log[todayKey()];
-  if (today) {
-    if (energyEl) energyEl.textContent = ENERGY_EMOJIS[today.energy - 1] || '⚡';
-    if (moodEl)   moodEl.textContent   = MOOD_EMOJIS[today.mood - 1]     || '🙂';
-    const savedEl = document.getElementById('moodSavedMsg');
-    if (savedEl) { savedEl.style.display='block'; savedEl.textContent=`Logged today · Energy ${today.energy}/5 · Mood ${today.mood}/5`; }
-  }
-}
-
-function onSliderChange(type) {
-  const val = parseInt(document.getElementById(type+'Slider')?.value || 3);
-  const emojis = type === 'energy' ? ENERGY_EMOJIS : MOOD_EMOJIS;
-  const el = document.getElementById(type+'EmojiDisplay');
-  if (el) el.textContent = emojis[val-1] || emojis[2];
-}
 
 
 // ══════════════════════════════════════════════════════
