@@ -2195,6 +2195,20 @@ PROMISE ERROR:
   </div>
 </div>
 
+<!-- Copy Yesterday Modal -->
+<div class="modal-overlay" id="copyYesterdayModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📋 Yesterday's Meals</div>
+    <div class="modal-sub">Select which meals to copy to today</div>
+    <div id="copyYesterdayList" style="margin-bottom:16px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="toggleAllYesterdayItems()" class="btn-outline" style="flex:1;font-size:12px">Select All</button>
+      <button onclick="copySelectedYesterdayMeals()" class="btn-green" style="flex:1">Copy Selected</button>
+    </div>
+    <button class="btn-outline" onclick="document.getElementById('copyYesterdayModal').classList.remove('open')">Cancel</button>
+  </div>
+</div>
 
     <!-- CLAUDE AI PAGE -->
     <div id="page-claude" class="page">
@@ -3747,7 +3761,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); renderMoodCard(); initMoodBtns(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   if (name === 'lift') renderWorkoutPage();
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
@@ -6884,23 +6898,60 @@ function checkCopyYesterday() {
 
 function copyYesterdayMeals() {
   const all = getStorage('foodEntries', {});
-  // "yesterday" relative to selected day
   const selDate = new Date(getSelectedDateKey() + 'T12:00:00');
   selDate.setDate(selDate.getDate() - 1);
   const prevKey = dateToKey(selDate);
-  const yEntries = (all[prevKey] || []).map(e => ({
-    ...e,
-    id:   Date.now() + Math.random(),
-    time: nowEST().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone:'America/New_York' }),
-  }));
+  const yEntries = all[prevKey] || [];
   if (yEntries.length === 0) { showToast('No meals logged the previous day'); return; }
 
+  // Store for the modal
+  window._copyYesterdayEntries = yEntries;
+
+  // Build the list
+  const listEl = document.getElementById('copyYesterdayList');
+  if (!listEl) return;
+  listEl.innerHTML = yEntries.map((e, i) => {
+    const cals = Math.round(e.calories || 0);
+    const prot = Math.round(e.protein || 0);
+    return `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" checked data-yi="${i}" class="copy-y-cb" style="width:18px;height:18px;accent-color:#7c3aed;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.name || 'Unknown'}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${cals} cal · ${prot}g protein${e.servings && e.servings !== 1 ? ' · ' + e.servings + ' servings' : ''}</div>
+      </div>
+    </label>`;
+  }).join('');
+
+  document.getElementById('copyYesterdayModal').classList.add('open');
+}
+
+function toggleAllYesterdayItems() {
+  const cbs = document.querySelectorAll('#copyYesterdayList .copy-y-cb');
+  const allChecked = [...cbs].every(cb => cb.checked);
+  cbs.forEach(cb => cb.checked = !allChecked);
+}
+
+function copySelectedYesterdayMeals() {
+  const cbs = document.querySelectorAll('#copyYesterdayList .copy-y-cb:checked');
+  if (cbs.length === 0) { showToast('No meals selected'); return; }
+
+  const entries = window._copyYesterdayEntries || [];
+  const selected = [...cbs].map(cb => {
+    const idx = parseInt(cb.dataset.yi);
+    return {
+      ...entries[idx],
+      id:   Date.now() + Math.random(),
+      time: nowEST().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone:'America/New_York' }),
+    };
+  });
+
   const todayEntries = getFoodEntries();
-  setFoodEntries([...todayEntries, ...yEntries]);
+  setFoodEntries([...todayEntries, ...selected]);
+  document.getElementById('copyYesterdayModal').classList.remove('open');
   renderRings();
   renderFoodLog();
   renderWeeklyBalance();
-  showToast(`📋 Copied ${yEntries.length} meals!`);
+  showToast(`📋 Copied ${selected.length} meal${selected.length > 1 ? 's' : ''}!`);
 }
 
 // ── Daily Greeting Tile (Calendar + Gmail + Quote) ──
@@ -12782,41 +12833,8 @@ function renderBodyCompLatest() {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 5: MOOD & ENERGY SLIDER
+// FEATURE 5: MOOD & ENERGY (legacy stubs removed — see FEATURE 3)
 // ══════════════════════════════════════════════════════
-
-const MOOD_EMOJIS   = ['😴','😕','😐','🙂','💪'];
-const ENERGY_EMOJIS = ['🪫','😓','⚡','🔥','🚀'];
-
-function saveMood() {
-  const energy = parseInt(document.getElementById('energySlider')?.value || 3);
-  const mood   = parseInt(document.getElementById('moodSlider')?.value   || 3);
-  const log = getStorage('moodLog', {});
-  log[todayKey()] = { date: todayKey(), energy, mood, ts: Date.now() };
-  setStorage('moodLog', log);
-  renderMoodCard();
-  showToast('✅ Mood & energy logged');
-}
-
-function renderMoodCard() {
-  const energyEl = document.getElementById('energyEmojiDisplay');
-  const moodEl   = document.getElementById('moodEmojiDisplay');
-  const log = getStorage('moodLog', {});
-  const today = log[todayKey()];
-  if (today) {
-    if (energyEl) energyEl.textContent = ENERGY_EMOJIS[today.energy - 1] || '⚡';
-    if (moodEl)   moodEl.textContent   = MOOD_EMOJIS[today.mood - 1]     || '🙂';
-    const savedEl = document.getElementById('moodSavedMsg');
-    if (savedEl) { savedEl.style.display='block'; savedEl.textContent=`Logged today · Energy ${today.energy}/5 · Mood ${today.mood}/5`; }
-  }
-}
-
-function onSliderChange(type) {
-  const val = parseInt(document.getElementById(type+'Slider')?.value || 3);
-  const emojis = type === 'energy' ? ENERGY_EMOJIS : MOOD_EMOJIS;
-  const el = document.getElementById(type+'EmojiDisplay');
-  if (el) el.textContent = emojis[val-1] || emojis[2];
-}
 
 
 // ══════════════════════════════════════════════════════
