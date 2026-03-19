@@ -13374,9 +13374,9 @@ function scheduleCheckinSync(delay) {
 }
 
 function skipWelcomeCheckin() {
-  setStorage('lastCheckinDate', dateToKey(nowEST()));
+  // Don't mark as checked in — modal will reappear next time the app opens
+  // until the user actually submits a mood/energy selection
   closeWelcomeModal();
-  updateCheckinSummaryCard();
 }
 
 function reopenCheckin() {
@@ -13952,7 +13952,7 @@ function renderMicronutrients() {
         Let's go 🚀
       </button>
       <div style="text-align:center;margin-top:12px">
-        <button onclick="skipWelcomeCheckin()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit">Skip for today</button>
+        <button onclick="skipWelcomeCheckin()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit">Not now</button>
       </div>
     </div>
   </div>
