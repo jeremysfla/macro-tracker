@@ -2280,8 +2280,15 @@ PROMISE ERROR:
 
 // ── Auth & Onboarding ──
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
-let _authToken = null;
+let _authToken = null;   // long-lived session token (NOT the Google ID token)
 let _currentUser = null;
+
+// Helper: returns auth headers for all protected API calls
+function authHeaders(extra) {
+  const h = { 'Content-Type': 'application/json' };
+  if (_authToken) h['authorization'] = 'Bearer ' + _authToken;
+  return Object.assign(h, extra || {});
+}
 
 function showScreen(screen) {
   document.getElementById('login-screen').classList.add('hidden');
@@ -2293,17 +2300,19 @@ function showScreen(screen) {
 }
 
 async function handleGoogleSignIn(response) {
-  _authToken = response.credential;
   try {
+    // Send the short-lived Google ID token to the server once
+    // Server verifies it and returns a long-lived session token (30 days)
     const res = await fetch('/api/auth/google', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idToken: _authToken })
+      body: JSON.stringify({ idToken: response.credential })
     });
     const data = await res.json();
     if (data.error) { alert('Sign-in failed: ' + data.error); return; }
     _currentUser = data.user;
-    localStorage.setItem('authToken', _authToken);
+    _authToken = data.sessionToken;
+    localStorage.setItem('authToken', data.sessionToken);
     if (!_currentUser.onboarded) {
       showScreen('onboarding');
     } else {
@@ -2679,7 +2688,7 @@ function scheduleRender(fn) {
 }
 
 function getStorage(key, def) {
-  try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; }
+  try { const v = localStorage.getItem(key); if (v === null) return def; const parsed = JSON.parse(v); return parsed !== null && parsed !== undefined ? parsed : def; } catch { return def; }
 }
 function setStorage(key, val) {
   try {
@@ -6115,7 +6124,7 @@ const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/
 async function garminProxy(url, method, headers) {
   const res = await fetch('/api/garmin/proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
   });
   return res;
@@ -6546,9 +6555,8 @@ async function fetchStravaToday() {
 
     let totalCalories = 0, totalDistance = 0, totalDuration = 0, count = todayRuns.length;
 
-    // The list endpoint doesn't return calories — fetch detail for each run
-    // (Strava detail endpoint includes the calories field shown in app)
-    for (const a of todayRuns) {
+    // Fetch detail for each run in parallel (calories not in list endpoint)
+    const details = await Promise.all(todayRuns.map(async (a) => {
       let cal = 0;
       try {
         const detailRes = await fetch(
@@ -6560,12 +6568,14 @@ async function fetchStravaToday() {
           cal = detail.calories || 0;
         }
       } catch(e) {
-        // Fallback: estimate from kilojoules if detail fetch fails
         cal = a.kilojoules ? Math.round(a.kilojoules / 4.184) : 0;
       }
-      totalCalories += cal;
-      totalDistance += a.distance || 0;
-      totalDuration += a.moving_time || 0;
+      return { cal, distance: a.distance || 0, duration: a.moving_time || 0 };
+    }));
+    for (const d of details) {
+      totalCalories += d.cal;
+      totalDistance += d.distance;
+      totalDuration += d.duration;
     }
 
     renderGarminCard(totalCalories, totalDistance, totalDuration, count, 'strava');
@@ -7589,7 +7599,7 @@ function selectWeekDay(key) {
 async function callClaudeAPI(payload) {
   const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(payload)
   });
   const data = await res.json();
@@ -9469,7 +9479,7 @@ Be direct, data-driven, and specific to his numbers. No fluff.`;
 
   try {
     const resp = await fetch('/api/claude', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:authHeaders(),
       body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user',content:prompt}] })
     });
     const d = await resp.json();
@@ -12485,9 +12495,7 @@ async function sendClaudeMessage() {
   try {
     const resp = await fetch('/api/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: authHeaders(),
       body: JSON.stringify({
         model: 'claude-opus-4-6',
         max_tokens: 1024,

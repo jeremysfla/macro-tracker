@@ -3,6 +3,57 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
 
+// ── Session helpers ─────────────────────────────────────────────────────
+function generateSessionToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+__name(generateSessionToken, "generateSessionToken");
+
+const SESSION_TTL_DAYS = 30;
+
+async function ensureSessionsTable(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `).run();
+}
+__name(ensureSessionsTable, "ensureSessionsTable");
+
+async function createSession(db, userId) {
+  const token = generateSessionToken();
+  const expires = new Date(Date.now() + SESSION_TTL_DAYS * 86400000).toISOString();
+  await db.prepare(
+    "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
+  ).bind(token, userId, expires).run();
+  return { token, expiresAt: expires };
+}
+__name(createSession, "createSession");
+
+async function validateSession(db, token) {
+  if (!token) return null;
+  const row = await db.prepare(
+    "SELECT s.*, u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > datetime('now')"
+  ).bind(token).first();
+  if (!row) return null;
+  return row;
+}
+__name(validateSession, "validateSession");
+
+async function getSessionUser(db, req) {
+  const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+  if (!auth) return null;
+  return validateSession(db, auth);
+}
+__name(getSessionUser, "getSessionUser");
+
+// ── Google token verification ───────────────────────────────────────────
 async function verifyGoogleToken(idToken) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   if (!res.ok) return null;
@@ -11,14 +62,6 @@ async function verifyGoogleToken(idToken) {
   return payload;
 }
 __name(verifyGoogleToken, "verifyGoogleToken");
-
-async function getUser(db, idToken) {
-  const payload = await verifyGoogleToken(idToken);
-  if (!payload) return null;
-  const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(payload.sub).first();
-  return { payload, row };
-}
-__name(getUser, "getUser");
 
 var worker_default = {
   async fetch(req, env) {
@@ -31,7 +74,7 @@ var worker_default = {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET,POST,PUT,OPTIONS",
+          "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
           "access-control-allow-headers": "content-type,authorization",
           "access-control-max-age": "86400"
         }
@@ -45,9 +88,83 @@ var worker_default = {
       }), { headers: CORS });
     }
 
+    // ── Ensure sessions table exists (runs once, cached by D1) ────────
+    if (env.DB) {
+      try { await ensureSessionsTable(env.DB); } catch(_) {}
+    }
 
-    // ── Brief context (email cache from D1) ───────────────────────────────
+    // ── Auth: Google Sign-In → create session ───────────────────────────
+    if (u.pathname === "/api/auth/google" && req.method === "POST") {
+      try {
+        const { idToken } = await req.json();
+        const payload = await verifyGoogleToken(idToken);
+        if (!payload) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
+
+        let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
+
+        if (!user) {
+          await env.DB.prepare(
+            "INSERT INTO users (id, email, name, picture) VALUES (?, ?, ?, ?)"
+          ).bind(payload.sub, payload.email, payload.name || "", payload.picture || "").run();
+          user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
+        }
+
+        // Create a long-lived session token
+        const session = await createSession(env.DB, payload.sub);
+
+        return new Response(JSON.stringify({ user, sessionToken: session.token, expiresAt: session.expiresAt }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Get user profile (now uses session token) ────────────────────────
+    if (u.pathname === "/api/user" && req.method === "GET") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: CORS });
+      return new Response(JSON.stringify({ user }), { headers: CORS });
+    }
+
+    // ── Save onboarding / update profile ────────────────────────────────
+    if (u.pathname === "/api/user/profile" && req.method === "PUT") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: CORS });
+
+      const body = await req.json();
+      const { gender, age, height_inches, current_weight, goal_weight, goal_date,
+              activity_level, tdee, calories, protein, carbs, fat } = body;
+
+      await env.DB.prepare(`
+        UPDATE users SET
+          gender = ?, age = ?, height_inches = ?, current_weight = ?, goal_weight = ?,
+          goal_date = ?, activity_level = ?, tdee = ?, calories = ?, protein = ?,
+          carbs = ?, fat = ?, onboarded = 1, updated_at = datetime('now')
+        WHERE id = ?
+      `).bind(
+        gender, age, height_inches, current_weight, goal_weight,
+        goal_date, activity_level, tdee, calories, protein,
+        carbs, fat, user.id
+      ).run();
+
+      const updated = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
+      return new Response(JSON.stringify({ user: updated }), { headers: CORS });
+    }
+
+    // ── Logout: delete session ──────────────────────────────────────────
+    if (u.pathname === "/api/auth/logout" && req.method === "POST") {
+      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+      if (auth) {
+        try { await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(auth).run(); } catch(_) {}
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+    }
+
+    // ── Protected endpoints — require valid session ─────────────────────
+
+    // Brief context (email cache from D1)
     if (u.pathname === "/api/brief-context" && req.method === "GET") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const date = u.searchParams.get("date") || new Date().toISOString().slice(0,10);
         if (!env.DB) return new Response(JSON.stringify({ ok: false }), { headers: CORS });
@@ -60,8 +177,10 @@ var worker_default = {
       } catch(e) { return new Response(JSON.stringify({ ok: false, emails: [], calendar: [] }), { headers: CORS }); }
     }
 
-    // ── Daily Brief: health data only, fast ───────────────────────────────
+    // Daily Brief
     if (u.pathname === "/api/brief" && req.method === "POST") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ ok: false, error: "no key" }), { status: 500, headers: CORS });
 
@@ -117,6 +236,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
     // ── Checkin upsert ─────────────────────────────────────────────────────
     if (u.pathname === "/api/checkin" && req.method === "POST") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const b = await req.json();
         if (!b.date || !env.DB) return new Response(JSON.stringify({ ok: false, error: "missing date or DB" }), { headers: CORS });
@@ -127,6 +248,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
     }
 
     if (u.pathname === "/api/checkin" && req.method === "GET") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const days = Math.min(parseInt(u.searchParams.get("days")||"90"), 365);
         const rows = await env.DB.prepare(`SELECT * FROM daily_checkin WHERE user_id='jeremy' AND date>=date('now','-'||?||' days') ORDER BY date DESC`).bind(days).all();
@@ -175,8 +298,10 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       return new Response(JSON.stringify({ found: false }), { headers: CORS });
     }
 
-    // ── Claude proxy ───────────────────────────────────────────────────────
+    // ── Claude proxy (now auth-protected) ───────────────────────────────
     if (u.pathname === "/api/claude" && req.method === "POST") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
       try {
         if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
         const b = await req.json();
@@ -188,64 +313,6 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         const data = await r.json();
         return new Response(JSON.stringify(data), { status: r.ok?200:r.status, headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS }); }
-    }
-
-    // ── Auth: Google Sign-In → get or create user ───────────────────────
-    if (u.pathname === "/api/auth/google" && req.method === "POST") {
-      try {
-        const { idToken } = await req.json();
-        const payload = await verifyGoogleToken(idToken);
-        if (!payload) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
-
-        let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
-
-        if (!user) {
-          await env.DB.prepare(
-            "INSERT INTO users (id, email, name, picture) VALUES (?, ?, ?, ?)"
-          ).bind(payload.sub, payload.email, payload.name || "", payload.picture || "").run();
-          user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
-        }
-
-        return new Response(JSON.stringify({ user }), { headers: CORS });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
-      }
-    }
-
-    // ── Get user profile ────────────────────────────────────────────────
-    if (u.pathname === "/api/user" && req.method === "GET") {
-      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
-      if (!auth) return new Response(JSON.stringify({ error: "No token" }), { status: 401, headers: CORS });
-      const result = await getUser(env.DB, auth);
-      if (!result) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
-      return new Response(JSON.stringify({ user: result.row }), { headers: CORS });
-    }
-
-    // ── Save onboarding / update profile ────────────────────────────────
-    if (u.pathname === "/api/user/profile" && req.method === "PUT") {
-      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
-      if (!auth) return new Response(JSON.stringify({ error: "No token" }), { status: 401, headers: CORS });
-      const result = await getUser(env.DB, auth);
-      if (!result) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
-
-      const body = await req.json();
-      const { gender, age, height_inches, current_weight, goal_weight, goal_date,
-              activity_level, tdee, calories, protein, carbs, fat } = body;
-
-      await env.DB.prepare(`
-        UPDATE users SET
-          gender = ?, age = ?, height_inches = ?, current_weight = ?, goal_weight = ?,
-          goal_date = ?, activity_level = ?, tdee = ?, calories = ?, protein = ?,
-          carbs = ?, fat = ?, onboarded = 1, updated_at = datetime('now')
-        WHERE id = ?
-      `).bind(
-        gender, age, height_inches, current_weight, goal_weight,
-        goal_date, activity_level, tdee, calories, protein,
-        carbs, fat, result.payload.sub
-      ).run();
-
-      const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(result.payload.sub).first();
-      return new Response(JSON.stringify({ user }), { headers: CORS });
     }
 
     // ── USDA API proxy ──────────────────────────────────────────────────
@@ -267,6 +334,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
     // ── Garmin OAuth proxy ──────────────────────────────────────────────
     if (u.pathname === "/api/garmin/proxy" && req.method === "POST") {
+      const user = await getSessionUser(env.DB, req);
+      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const { url, method: m, headers: h } = await req.json();
         if (!url || !url.startsWith("https://connectapi.garmin.com/")) {
