@@ -11453,6 +11453,8 @@ document.addEventListener('visibilitychange', () => {
       checkCopyYesterday();
       initGreetingTile();
     }
+    // Show daily check-in if not done yet today (handles mobile resume / tab switch)
+    try { maybeShowWelcomeModal(); } catch(e) {}
     // Re-check Strava/Garmin on resume — catches runs finished while app was in background
     try {
       const stravaTok = getStorage('stravaToken', null);
@@ -13329,6 +13331,39 @@ function submitWelcomeCheckin() {
   updateCheckinSummaryCard();
   renderWeightTrend && renderWeightTrend();
   scheduleCheckinSync && scheduleCheckinSync(500);
+}
+
+// Sync check-in data (mood, energy, weight) to D1 via the /api/checkin endpoint
+function scheduleCheckinSync(delay) {
+  setTimeout(async () => {
+    try {
+      const key = dateToKey(nowEST());
+      const mood = getMoodLog()[key] || {};
+      const wLog = getStorage('weightLog', {});
+      const foodEntries = getStorage('foodEntries', {})[key] || [];
+      const totals = foodEntries.reduce((acc, e) => ({
+        cal: acc.cal + (e.calories || 0), p: acc.p + (e.protein || 0),
+        c: acc.c + (e.carbs || 0), f: acc.f + (e.fat || 0)
+      }), { cal: 0, p: 0, c: 0, f: 0 });
+      const waterLog = getStorage('waterLog', {});
+
+      await fetch('/api/checkin', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          date: key,
+          energy: mood.energy || null,
+          mood: mood.mood || null,
+          weight_lbs: wLog[key] || null,
+          water_oz: waterLog[key] || null,
+          calories_consumed: totals.cal || null,
+          protein_g: totals.p || null,
+          carbs_g: totals.c || null,
+          fat_g: totals.f || null,
+        })
+      });
+    } catch(e) { console.warn('Checkin sync failed:', e); }
+  }, delay || 0);
 }
 
 function skipWelcomeCheckin() {
