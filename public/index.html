@@ -731,10 +731,14 @@
 
   /* ── Daily Welcome Modal ── */
   #welcomeOverlay {
-    position:fixed;inset:0;z-index:9999;
+    position:fixed;inset:0;z-index:10000;
     background:rgba(0,0,0,0.85);
-    display:flex;align-items:flex-end;justify-content:center;
+    display:none !important;
+    align-items:flex-end;justify-content:center;
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  }
+  #welcomeOverlay.open {
+    display:flex !important;
     animation:fadeIn 0.25s ease;
   }
   #welcomeSheet {
@@ -11424,7 +11428,9 @@ function _initApp() {
   safeCall(initGreetingTile, 'initGreetingTile');
   safeCall(initNewFeatures, 'initNewFeatures');
   // Safety net: ensure check-in modal shows even if initNewFeatures partially failed
-  setTimeout(() => { try { maybeShowWelcomeModal(); } catch(e) {} }, 600);
+  setTimeout(() => { try { maybeShowWelcomeModal(); } catch(e) { console.error('[checkin] safety net error:', e); } }, 600);
+  // Last-resort guard at 3 seconds
+  setTimeout(() => { try { _checkinGuard(); } catch(e) {} }, 3000);
   safeCall(renderRecipeList, 'renderRecipeList');
   safeCall(updateHeaderDate, 'updateHeaderDate');
   safeCall(updateDateNavBar, 'updateDateNavBar');
@@ -11461,6 +11467,7 @@ document.addEventListener('visibilitychange', () => {
       initGreetingTile();
     }
     // Show daily check-in if not done yet today (handles mobile resume / tab switch)
+    _checkinGuardFired = false; // reset guard so it can fire again if needed
     try { maybeShowWelcomeModal(); } catch(e) {}
     // Re-check Strava/Garmin on resume — catches runs finished while app was in background
     try {
@@ -13255,15 +13262,17 @@ const MOOD_EMOJIS_MAP   = ['😣','😞','😐','😊','😄'];
 let _wmState = { energy: null, mood: null };
 
 function showWelcomeModal() {
+  console.log('[checkin] showWelcomeModal called');
   const overlay = document.getElementById('welcomeOverlay');
-  if (!overlay) return;
+  if (!overlay) { console.warn('[checkin] welcomeOverlay element not found!'); return; }
 
   // Set greeting
   const hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+  const name = (_currentUser && _currentUser.name) ? _currentUser.name.split(' ')[0] : 'Jeremy';
   const greetEl = document.getElementById('wmGreeting');
   const dateEl  = document.getElementById('wmDate');
-  if (greetEl) greetEl.textContent = greet + ', Jeremy 👋';
+  if (greetEl) greetEl.textContent = greet + ', ' + name + ' 👋';
   if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
   // Pre-fill weight if logged recently
@@ -13280,13 +13289,19 @@ function showWelcomeModal() {
     if (el) el.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
   });
 
-  overlay.style.display = 'flex';
+  // Enable submit button fresh
+  const btn = document.getElementById('wmSubmitBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+  overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
+  console.log('[checkin] modal opened, overlay.classList:', overlay.className);
 }
 
 function closeWelcomeModal() {
+  console.log('[checkin] closeWelcomeModal called');
   const overlay = document.getElementById('welcomeOverlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
 }
 
@@ -13419,12 +13434,15 @@ function updateCheckinSummaryCard() {
 function maybeShowWelcomeModal() {
   const key = dateToKey(nowEST());
   const lastCheckin = getStorage('lastCheckinDate', null);
+  console.log('[checkin] maybeShowWelcomeModal: today=' + key + ', lastCheckin=' + lastCheckin);
   if (lastCheckin === key) {
     // Already done today — just show the summary card
+    console.log('[checkin] already checked in today, showing summary card');
     updateCheckinSummaryCard();
     return;
   }
   // First visit of the day — show modal
+  console.log('[checkin] first visit today, showing welcome modal');
   showWelcomeModal();
 }
 
@@ -13619,6 +13637,7 @@ Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 a
 // INIT: Call all render functions on app startup
 // ════════════════════════════════════════════════════════════════
 function initNewFeatures() {
+  console.log('[init] initNewFeatures started');
   // Schedule the welcome check-in FIRST so it's not blocked by render errors
   setTimeout(maybeShowWelcomeModal, 400);
 
@@ -13627,6 +13646,22 @@ function initNewFeatures() {
   renderBPPanel();
   renderBodyCompPanel();
   renderSuppLog();
+}
+
+// Aggressive fallback: if the app has been visible for 3 seconds and
+// the check-in hasn't been done, force-show the modal.
+// This catches edge cases where the normal init path silently fails.
+let _checkinGuardFired = false;
+function _checkinGuard() {
+  if (_checkinGuardFired) return;
+  const key = dateToKey(nowEST());
+  const lastCheckin = getStorage('lastCheckinDate', null);
+  const overlay = document.getElementById('welcomeOverlay');
+  if (lastCheckin !== key && overlay && !overlay.classList.contains('open')) {
+    console.log('[checkin] guard triggered — forcing modal open');
+    showWelcomeModal();
+  }
+  _checkinGuardFired = true;
 }
 
 
@@ -13905,7 +13940,7 @@ function renderMicronutrients() {
 
 
   <!-- ── DAILY WELCOME MODAL ── -->
-  <div id="welcomeOverlay" style="display:none">
+  <div id="welcomeOverlay">
     <div id="welcomeSheet">
       <!-- Greeting -->
       <div id="wmGreeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px">Good morning, Jeremy 👋</div>
