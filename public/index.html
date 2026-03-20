@@ -733,13 +733,18 @@
   #welcomeOverlay {
     position:fixed;inset:0;z-index:10000;
     background:rgba(0,0,0,0.85);
-    display:none !important;
+    display:flex;
     align-items:flex-end;justify-content:center;
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    visibility:hidden;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease, visibility 0.25s ease;
   }
   #welcomeOverlay.open {
-    display:flex !important;
-    animation:fadeIn 0.25s ease;
+    visibility:visible;
+    opacity:1;
+    pointer-events:auto;
   }
   #welcomeSheet {
     background:var(--surface);
@@ -747,7 +752,11 @@
     width:100%;max-width:480px;
     padding:28px 20px 44px;
     border-top:1px solid var(--border2);
-    animation:slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    transform:translateY(100%);
+    transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #welcomeOverlay.open #welcomeSheet {
+    transform:translateY(0);
   }
   @keyframes fadeIn {
     from{opacity:0;}
@@ -2327,6 +2336,8 @@ async function handleGoogleSignIn(response) {
       applyUserProfile(_currentUser);
       showScreen('app');
       _initApp();
+      // Ensure mood check-in prompt shows after fresh sign-in
+      setTimeout(maybeShowWelcomeModal, 800);
     }
   } catch (e) {
     alert('Sign-in error: ' + e.message);
@@ -2459,6 +2470,14 @@ async function checkAuth() {
     _authToken = saved;
     try {
       const res = await fetch('/api/user', { headers: { 'authorization': 'Bearer ' + saved } });
+      if (res.status === 401) {
+        // Session genuinely expired or invalid — clear and re-login
+        localStorage.removeItem('authToken');
+        _authToken = null;
+        showScreen('login');
+        initGoogleSignIn();
+        return;
+      }
       const data = await res.json();
       if (data.user) {
         _currentUser = data.user;
@@ -2471,8 +2490,17 @@ async function checkAuth() {
         }
         return;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Network error — keep the token and load the app in offline mode
+      // rather than forcing re-login on every connectivity blip
+      console.warn('[auth] Network error checking session, loading app offline:', e.message);
+      showScreen('app');
+      _initApp();
+      return;
+    }
+    // Server responded but no user data — token may be corrupt
     localStorage.removeItem('authToken');
+    _authToken = null;
   }
   showScreen('login');
   initGoogleSignIn();
