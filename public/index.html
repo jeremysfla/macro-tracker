@@ -731,11 +731,20 @@
 
   /* ── Daily Welcome Modal ── */
   #welcomeOverlay {
-    position:fixed;inset:0;z-index:9999;
+    position:fixed;inset:0;z-index:10000;
     background:rgba(0,0,0,0.85);
-    display:flex;align-items:flex-end;justify-content:center;
+    display:flex;
+    align-items:flex-end;justify-content:center;
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-    animation:fadeIn 0.25s ease;
+    visibility:hidden;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease, visibility 0.25s ease;
+  }
+  #welcomeOverlay.open {
+    visibility:visible;
+    opacity:1;
+    pointer-events:auto;
   }
   #welcomeSheet {
     background:var(--surface);
@@ -743,7 +752,15 @@
     width:100%;max-width:480px;
     padding:28px 20px 44px;
     border-top:1px solid var(--border2);
-    animation:slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    transform:translateY(100%);
+    transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #welcomeOverlay.open #welcomeSheet {
+    transform:translateY(0);
+  }
+  @keyframes fadeIn {
+    from{opacity:0;}
+    to{opacity:1;}
   }
   @keyframes slideUp {
     from{transform:translateY(100%);opacity:0;}
@@ -1246,7 +1263,7 @@ PROMISE ERROR:
             <div style="display:flex;gap:6px">
               <input id="waterCustomInput" type="number" min="1" max="200" placeholder="Custom oz"
                 style="flex:1;padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
-              <button onclick="addWaterCustom()" style="background:#134e4a;border:1.5px solid #0d9488;border-radius:10px;padding:7px 12px;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Add</button>
+              <button onclick="const v=parseInt(document.getElementById('waterCustomInput').value);if(v>0){addWater(v);document.getElementById('waterCustomInput').value='';}" style="background:#134e4a;border:1.5px solid #0d9488;border-radius:10px;padding:7px 12px;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Add</button>
               <button onclick="resetWater()" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:7px 10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺</button>
             </div>
           </div>
@@ -2280,8 +2297,15 @@ PROMISE ERROR:
 
 // ── Auth & Onboarding ──
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
-let _authToken = null;
+let _authToken = null;   // long-lived session token (NOT the Google ID token)
 let _currentUser = null;
+
+// Helper: returns auth headers for all protected API calls
+function authHeaders(extra) {
+  const h = { 'Content-Type': 'application/json' };
+  if (_authToken) h['authorization'] = 'Bearer ' + _authToken;
+  return Object.assign(h, extra || {});
+}
 
 function showScreen(screen) {
   document.getElementById('login-screen').classList.add('hidden');
@@ -2293,23 +2317,27 @@ function showScreen(screen) {
 }
 
 async function handleGoogleSignIn(response) {
-  _authToken = response.credential;
   try {
+    // Send the short-lived Google ID token to the server once
+    // Server verifies it and returns a long-lived session token (30 days)
     const res = await fetch('/api/auth/google', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idToken: _authToken })
+      body: JSON.stringify({ idToken: response.credential })
     });
     const data = await res.json();
     if (data.error) { alert('Sign-in failed: ' + data.error); return; }
     _currentUser = data.user;
-    localStorage.setItem('authToken', _authToken);
+    _authToken = data.sessionToken;
+    localStorage.setItem('authToken', data.sessionToken);
     if (!_currentUser.onboarded) {
       showScreen('onboarding');
     } else {
       applyUserProfile(_currentUser);
       showScreen('app');
       _initApp();
+      // Ensure mood check-in prompt shows after fresh sign-in
+      setTimeout(maybeShowWelcomeModal, 800);
     }
   } catch (e) {
     alert('Sign-in error: ' + e.message);
@@ -2379,7 +2407,7 @@ function calcOnbMacros() {
   // Calculate deficit from goal
   let deficit = 500; // default
   if (goalDate && goalLbs < weightLbs) {
-    const daysLeft = Math.max(1, Math.round((new Date(goalDate + 'T12:00:00') - new Date()) / 86400000));
+    const daysLeft = Math.max(1, Math.round((new Date(goalDate + 'T12:00:00') - nowEST()) / 86400000));
     const lbsToLose = weightLbs - goalLbs;
     const calsToLose = lbsToLose * 3500;
     deficit = Math.min(1000, Math.max(250, Math.round(calsToLose / daysLeft)));
@@ -2442,6 +2470,14 @@ async function checkAuth() {
     _authToken = saved;
     try {
       const res = await fetch('/api/user', { headers: { 'authorization': 'Bearer ' + saved } });
+      if (res.status === 401) {
+        // Session genuinely expired or invalid — clear and re-login
+        localStorage.removeItem('authToken');
+        _authToken = null;
+        showScreen('login');
+        initGoogleSignIn();
+        return;
+      }
       const data = await res.json();
       if (data.user) {
         _currentUser = data.user;
@@ -2454,8 +2490,17 @@ async function checkAuth() {
         }
         return;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Network error — keep the token and load the app in offline mode
+      // rather than forcing re-login on every connectivity blip
+      console.warn('[auth] Network error checking session, loading app offline:', e.message);
+      showScreen('app');
+      _initApp();
+      return;
+    }
+    // Server responded but no user data — token may be corrupt
     localStorage.removeItem('authToken');
+    _authToken = null;
   }
   showScreen('login');
   initGoogleSignIn();
@@ -2645,6 +2690,7 @@ function scheduleMidnightRefresh() {
     checkCopyYesterday();
     checkAdaptiveMacros();
     initGreetingTile();
+    maybeShowWelcomeModal();
     showToast('🌅 Good morning! New day started.');
     scheduleMidnightRefresh();
   }, msUntilMidnight);
@@ -2679,7 +2725,7 @@ function scheduleRender(fn) {
 }
 
 function getStorage(key, def) {
-  try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; }
+  try { const v = localStorage.getItem(key); if (v === null) return def; const parsed = JSON.parse(v); return parsed !== null && parsed !== undefined ? parsed : def; } catch { return def; }
 }
 function setStorage(key, val) {
   try {
@@ -6115,7 +6161,7 @@ const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/
 async function garminProxy(url, method, headers) {
   const res = await fetch('/api/garmin/proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
   });
   return res;
@@ -6546,9 +6592,8 @@ async function fetchStravaToday() {
 
     let totalCalories = 0, totalDistance = 0, totalDuration = 0, count = todayRuns.length;
 
-    // The list endpoint doesn't return calories — fetch detail for each run
-    // (Strava detail endpoint includes the calories field shown in app)
-    for (const a of todayRuns) {
+    // Fetch detail for each run in parallel (calories not in list endpoint)
+    const details = await Promise.all(todayRuns.map(async (a) => {
       let cal = 0;
       try {
         const detailRes = await fetch(
@@ -6560,12 +6605,14 @@ async function fetchStravaToday() {
           cal = detail.calories || 0;
         }
       } catch(e) {
-        // Fallback: estimate from kilojoules if detail fetch fails
         cal = a.kilojoules ? Math.round(a.kilojoules / 4.184) : 0;
       }
-      totalCalories += cal;
-      totalDistance += a.distance || 0;
-      totalDuration += a.moving_time || 0;
+      return { cal, distance: a.distance || 0, duration: a.moving_time || 0 };
+    }));
+    for (const d of details) {
+      totalCalories += d.cal;
+      totalDistance += d.distance;
+      totalDuration += d.duration;
     }
 
     renderGarminCard(totalCalories, totalDistance, totalDuration, count, 'strava');
@@ -7589,7 +7636,7 @@ function selectWeekDay(key) {
 async function callClaudeAPI(payload) {
   const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify(payload)
   });
   const data = await res.json();
@@ -9469,7 +9516,7 @@ Be direct, data-driven, and specific to his numbers. No fluff.`;
 
   try {
     const resp = await fetch('/api/claude', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:authHeaders(),
       body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user',content:prompt}] })
     });
     const d = await resp.json();
@@ -11408,6 +11455,10 @@ function _initApp() {
 
   safeCall(initGreetingTile, 'initGreetingTile');
   safeCall(initNewFeatures, 'initNewFeatures');
+  // Safety net: ensure check-in modal shows even if initNewFeatures partially failed
+  setTimeout(() => { try { maybeShowWelcomeModal(); } catch(e) { console.error('[checkin] safety net error:', e); } }, 600);
+  // Last-resort guard at 3 seconds
+  setTimeout(() => { try { _checkinGuard(); } catch(e) {} }, 3000);
   safeCall(renderRecipeList, 'renderRecipeList');
   safeCall(updateHeaderDate, 'updateHeaderDate');
   safeCall(updateDateNavBar, 'updateDateNavBar');
@@ -11443,6 +11494,9 @@ document.addEventListener('visibilitychange', () => {
       checkCopyYesterday();
       initGreetingTile();
     }
+    // Show daily check-in if not done yet today (handles mobile resume / tab switch)
+    _checkinGuardFired = false; // reset guard so it can fire again if needed
+    try { maybeShowWelcomeModal(); } catch(e) {}
     // Re-check Strava/Garmin on resume — catches runs finished while app was in background
     try {
       const stravaTok = getStorage('stravaToken', null);
@@ -12485,9 +12539,7 @@ async function sendClaudeMessage() {
   try {
     const resp = await fetch('/api/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: authHeaders(),
       body: JSON.stringify({
         model: 'claude-opus-4-6',
         max_tokens: 1024,
@@ -12569,76 +12621,7 @@ function appendClaudeMessage(role, text, id) {
 
 
 
-// ══════════════════════════════════════════════════════
-// FEATURE 1: WATER TRACKING
-// ══════════════════════════════════════════════════════
-
-const WATER_GOAL_OZ = 100;
-
-function getWaterToday() {
-  const log = getStorage('waterLog', {});
-  const today = todayKey();
-  return (log[today] && log[today].date === today) ? log[today].oz : 0;
-}
-
-function setWaterToday(oz) {
-  const log = getStorage('waterLog', {});
-  const today = todayKey();
-  log[today] = { date: today, oz: Math.max(0, oz) };
-  setStorage('waterLog', log);
-  renderWaterCard();
-}
-
-function addWater(oz) {
-  setWaterToday(getWaterToday() + oz);
-}
-
-function addWaterCustom() {
-  const val = parseFloat(document.getElementById('waterCustomInput').value);
-  if (!val || val <= 0) return;
-  document.getElementById('waterCustomInput').value = '';
-  addWater(val);
-}
-
-function resetWater() {
-  setWaterToday(0);
-}
-
-function renderWaterCard() {
-  const oz = getWaterToday();
-  const pct = Math.min(1, oz / WATER_GOAL_OZ);
-  const circumference = 2 * Math.PI * 28; // r=28 → 175.93
-
-  const arc = document.getElementById('waterRingArc');
-  const display = document.getElementById('waterOzDisplay');
-  const msg = document.getElementById('waterStatusMsg');
-  const goalLabel = document.getElementById('waterGoalLabel');
-
-  if (!arc) return;
-
-  arc.style.strokeDashoffset = circumference * (1 - pct);
-  if (display) display.textContent = Math.round(oz);
-  if (goalLabel) goalLabel.textContent = `Goal: ${WATER_GOAL_OZ} oz`;
-
-  // Color shifts green when done
-  if (pct >= 1) {
-    arc.style.stroke = '#16a34a';
-    if (msg) msg.textContent = '🎉 Daily goal reached! Great hydration!';
-    if (msg) msg.style.color = '#16a34a';
-  } else if (pct >= 0.75) {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = `${Math.round(WATER_GOAL_OZ - oz)} oz to go — almost there!`;
-    if (msg) msg.style.color = 'var(--text2)';
-  } else if (pct >= 0.5) {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = `${Math.round(WATER_GOAL_OZ - oz)} oz remaining`;
-    if (msg) msg.style.color = 'var(--text2)';
-  } else {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = oz > 0 ? `${Math.round(WATER_GOAL_OZ - oz)} oz to reach your goal` : 'Tap a button to log water';
-    if (msg) msg.style.color = 'var(--text2)';
-  }
-}
+// (Legacy water tracking code removed — active implementation below in FEATURE 1)
 
 
 // ══════════════════════════════════════════════════════
@@ -12717,119 +12700,7 @@ function renderSleepCard() {
 }
 
 
-// ══════════════════════════════════════════════════════
-// FEATURE 3: BLOOD PRESSURE LOG
-// ══════════════════════════════════════════════════════
-
-function saveBP() {
-  const sys = parseInt(document.getElementById('bpSystolic')?.value);
-  const dia = parseInt(document.getElementById('bpDiastolic')?.value);
-  const hr  = parseInt(document.getElementById('bpHR')?.value) || null;
-  if (!sys || !dia || sys < 60 || sys > 250 || dia < 40 || dia > 150) {
-    showToast('⚠️ Enter valid BP values (systolic 60-250, diastolic 40-150)');
-    return;
-  }
-  const log = getStorage('bloodPressureLog', []);
-  log.unshift({ date: todayKey(), time: new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}), sys, dia, hr, id: Date.now() });
-  setStorage('bloodPressureLog', log);
-  document.getElementById('bpSystolic').value = '';
-  document.getElementById('bpDiastolic').value = '';
-  if (document.getElementById('bpHR')) document.getElementById('bpHR').value = '';
-  renderBPSection();
-  showToast('💓 Blood pressure saved');
-}
-
-function deleteBP(id) {
-  const log = getStorage('bloodPressureLog', []).filter(e => e.id !== id);
-  setStorage('bloodPressureLog', log);
-  renderBPSection();
-}
-
-function getBPCategory(sys, dia) {
-  if (sys < 120 && dia < 80)  return { label: 'Optimal',  color: '#16a34a', bg: '#0a2a1a' };
-  if (sys < 130 && dia < 80)  return { label: 'Elevated', color: '#d97706', bg: '#2a1f0a' };
-  if (sys < 140 || dia < 90)  return { label: 'High 1',   color: '#f59e0b', bg: '#2a1f0a' };
-  return                               { label: 'High 2',   color: '#dc2626', bg: '#2a0a0a' };
-}
-
-function renderBPSection() {
-  const el = document.getElementById('bpLogSection');
-  if (!el) return;
-  const log = getStorage('bloodPressureLog', []);
-  if (!log.length) {
-    el.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:8px">No readings yet — add one above</div>';
-    return;
-  }
-  el.innerHTML = log.slice(0,10).map(e => {
-    const cat = getBPCategory(e.sys, e.dia);
-    return `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${cat.bg};border:1px solid ${cat.color}33;border-radius:10px;margin-bottom:6px">
-        <div>
-          <span style="font-size:18px;font-weight:800;color:${cat.color}">${e.sys}/${e.dia}</span>
-          <span style="font-size:10px;color:var(--text2);margin-left:8px">mmHg</span>
-          ${e.hr ? `<span style="font-size:11px;color:var(--text2);margin-left:8px">· ${e.hr} bpm</span>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:10px;font-weight:700;color:${cat.color};background:${cat.color}22;padding:2px 8px;border-radius:10px;margin-bottom:3px">${cat.label}</div>
-          <div style="font-size:10px;color:var(--text2)">${e.date} ${e.time||''}</div>
-        </div>
-        <button onclick="deleteBP(${e.id})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px;margin-left:8px">✕</button>
-      </div>`;
-  }).join('');
-}
-
-
-// ══════════════════════════════════════════════════════
-// FEATURE 4: BODY COMPOSITION LOG
-// ══════════════════════════════════════════════════════
-
-function saveBodyComp() {
-  const bf = parseFloat(document.getElementById('bodyFatInput')?.value);
-  const lm = parseFloat(document.getElementById('leanMassInput')?.value);
-  const wt = parseFloat(document.getElementById('bodyCompWeightInput')?.value);
-  if (!bf && !lm && !wt) { showToast('⚠️ Enter at least one value'); return; }
-  const log = getStorage('bodyCompLog', {});
-  const today = todayKey();
-  log[today] = { date: today, bodyFat: bf||null, leanMass: lm||null, weight: wt||null, ts: Date.now() };
-  setStorage('bodyCompLog', log);
-  renderBodyCompLatest();
-  // Also save weight to weightLog if provided
-  if (wt) {
-    const wlog = getStorage('weightLog', {});
-    wlog[today] = wt;
-    setStorage('weightLog', wlog);
-    if (typeof renderWeightTrend === 'function') safeCall(renderWeightTrend);
-  }
-  showToast('📊 Body composition saved');
-  ['bodyFatInput','leanMassInput','bodyCompWeightInput'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-}
-
-function renderBodyCompLatest() {
-  const el = document.getElementById('bodyCompLatest');
-  if (!el) return;
-  const log = getStorage('bodyCompLog', {});
-  const entries = Object.values(log).sort((a,b) => b.date.localeCompare(a.date));
-  if (!entries.length) { el.innerHTML = '<div style="color:var(--text2);font-size:12px;text-align:center;padding:8px">No entries yet</div>'; return; }
-  const latest = entries[0];
-  const wt = getStorage('weightLog', {});
-  const currentWt = wt[latest.date] || latest.weight;
-  el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
-      ${currentWt ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:var(--text)">${currentWt}</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">lbs</div></div>` : ''}
-      ${latest.bodyFat ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:#f59e0b">${latest.bodyFat}%</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">Body Fat</div></div>` : ''}
-      ${latest.leanMass ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:#22c55e">${latest.leanMass}</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">Lean Mass lbs</div></div>` : ''}
-    </div>
-    <div style="font-size:10px;color:var(--text2);text-align:center;margin-top:6px">Last updated: ${latest.date}</div>`;
-}
+// (Legacy BP and body comp code removed — active implementations below in FEATURES 4-5)
 
 
 // ══════════════════════════════════════════════════════
@@ -13238,15 +13109,17 @@ const MOOD_EMOJIS_MAP   = ['😣','😞','😐','😊','😄'];
 let _wmState = { energy: null, mood: null };
 
 function showWelcomeModal() {
+  console.log('[checkin] showWelcomeModal called');
   const overlay = document.getElementById('welcomeOverlay');
-  if (!overlay) return;
+  if (!overlay) { console.warn('[checkin] welcomeOverlay element not found!'); return; }
 
   // Set greeting
   const hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+  const name = (_currentUser && _currentUser.name) ? _currentUser.name.split(' ')[0] : 'Jeremy';
   const greetEl = document.getElementById('wmGreeting');
   const dateEl  = document.getElementById('wmDate');
-  if (greetEl) greetEl.textContent = greet + ', Jeremy 👋';
+  if (greetEl) greetEl.textContent = greet + ', ' + name + ' 👋';
   if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
   // Pre-fill weight if logged recently
@@ -13263,13 +13136,19 @@ function showWelcomeModal() {
     if (el) el.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
   });
 
-  overlay.style.display = 'flex';
+  // Enable submit button fresh
+  const btn = document.getElementById('wmSubmitBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+  overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
+  console.log('[checkin] modal opened, overlay.classList:', overlay.className);
 }
 
 function closeWelcomeModal() {
+  console.log('[checkin] closeWelcomeModal called');
   const overlay = document.getElementById('welcomeOverlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
 }
 
@@ -13323,10 +13202,43 @@ function submitWelcomeCheckin() {
   scheduleCheckinSync && scheduleCheckinSync(500);
 }
 
+// Sync check-in data (mood, energy, weight) to D1 via the /api/checkin endpoint
+function scheduleCheckinSync(delay) {
+  setTimeout(async () => {
+    try {
+      const key = dateToKey(nowEST());
+      const mood = getMoodLog()[key] || {};
+      const wLog = getStorage('weightLog', {});
+      const foodEntries = getStorage('foodEntries', {})[key] || [];
+      const totals = foodEntries.reduce((acc, e) => ({
+        cal: acc.cal + (e.calories || 0), p: acc.p + (e.protein || 0),
+        c: acc.c + (e.carbs || 0), f: acc.f + (e.fat || 0)
+      }), { cal: 0, p: 0, c: 0, f: 0 });
+      const waterLog = getStorage('waterLog', {});
+
+      await fetch('/api/checkin', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          date: key,
+          energy: mood.energy || null,
+          mood: mood.mood || null,
+          weight_lbs: wLog[key] || null,
+          water_oz: waterLog[key] || null,
+          calories_consumed: totals.cal || null,
+          protein_g: totals.p || null,
+          carbs_g: totals.c || null,
+          fat_g: totals.f || null,
+        })
+      });
+    } catch(e) { console.warn('Checkin sync failed:', e); }
+  }, delay || 0);
+}
+
 function skipWelcomeCheckin() {
-  setStorage('lastCheckinDate', dateToKey(nowEST()));
+  // Don't mark as checked in — modal will reappear next time the app opens
+  // until the user actually submits a mood/energy selection
   closeWelcomeModal();
-  updateCheckinSummaryCard();
 }
 
 function reopenCheckin() {
@@ -13369,12 +13281,15 @@ function updateCheckinSummaryCard() {
 function maybeShowWelcomeModal() {
   const key = dateToKey(nowEST());
   const lastCheckin = getStorage('lastCheckinDate', null);
+  console.log('[checkin] maybeShowWelcomeModal: today=' + key + ', lastCheckin=' + lastCheckin);
   if (lastCheckin === key) {
     // Already done today — just show the summary card
+    console.log('[checkin] already checked in today, showing summary card');
     updateCheckinSummaryCard();
     return;
   }
   // First visit of the day — show modal
+  console.log('[checkin] first visit today, showing welcome modal');
   showWelcomeModal();
 }
 
@@ -13505,13 +13420,6 @@ function renderBodyCompPanel() {
   el.innerHTML = parts.join(' · ') + `<span style="color:var(--text3);font-size:11px;margin-left:8px">${src} · ${d}</span>`;
 }
 
-// ════════════════════════════════════════════════════════════════
-// FEATURE 6: SUPPLEMENT LOG
-// ════════════════════════════════════════════════════════════════
-let _suppTimeSelected = 'morning';
-
-
-
 
 
 
@@ -13558,7 +13466,7 @@ ${JSON.stringify(days, null, 2)}
 Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 area to improve. Max 80 words.`;
 
   try {
-    const resp = await callClaudeAPI({ model:'claude-sonnet-4-20250514', max_tokens:200, messages:[{role:'user',content:prompt}] });
+    const resp = await callClaudeAPI({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{role:'user',content:prompt}] });
     el.textContent = resp?.content?.[0]?.text || 'Keep logging consistently for better insights!';
   } catch(e) {
     el.textContent = 'Unable to generate summary right now. Keep up the great work!';
@@ -13569,13 +13477,31 @@ Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 a
 // INIT: Call all render functions on app startup
 // ════════════════════════════════════════════════════════════════
 function initNewFeatures() {
+  console.log('[init] initNewFeatures started');
+  // Schedule the welcome check-in FIRST so it's not blocked by render errors
+  setTimeout(maybeShowWelcomeModal, 400);
+
   renderWater();
   renderSleepPanel();
   renderBPPanel();
   renderBodyCompPanel();
   renderSuppLog();
-  // Show welcome check-in modal if first visit today
-  setTimeout(maybeShowWelcomeModal, 400);
+}
+
+// Aggressive fallback: if the app has been visible for 3 seconds and
+// the check-in hasn't been done, force-show the modal.
+// This catches edge cases where the normal init path silently fails.
+let _checkinGuardFired = false;
+function _checkinGuard() {
+  if (_checkinGuardFired) return;
+  const key = dateToKey(nowEST());
+  const lastCheckin = getStorage('lastCheckinDate', null);
+  const overlay = document.getElementById('welcomeOverlay');
+  if (lastCheckin !== key && overlay && !overlay.classList.contains('open')) {
+    console.log('[checkin] guard triggered — forcing modal open');
+    showWelcomeModal();
+  }
+  _checkinGuardFired = true;
 }
 
 
@@ -13608,7 +13534,7 @@ async function getMealSuggestions() {
 
   try {
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 400,
       messages: [{
         role: 'user',
@@ -13854,7 +13780,7 @@ function renderMicronutrients() {
 
 
   <!-- ── DAILY WELCOME MODAL ── -->
-  <div id="welcomeOverlay" style="display:none">
+  <div id="welcomeOverlay">
     <div id="welcomeSheet">
       <!-- Greeting -->
       <div id="wmGreeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px">Good morning, Jeremy 👋</div>
@@ -13901,7 +13827,7 @@ function renderMicronutrients() {
         Let's go 🚀
       </button>
       <div style="text-align:center;margin-top:12px">
-        <button onclick="skipWelcomeCheckin()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit">Skip for today</button>
+        <button onclick="skipWelcomeCheckin()" style="font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit">Not now</button>
       </div>
     </div>
   </div>
