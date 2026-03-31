@@ -1263,7 +1263,7 @@ PROMISE ERROR:
             <div style="display:flex;gap:6px">
               <input id="waterCustomInput" type="number" min="1" max="200" placeholder="Custom oz"
                 style="flex:1;padding:7px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
-              <button onclick="addWaterCustom()" style="background:#134e4a;border:1.5px solid #0d9488;border-radius:10px;padding:7px 12px;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Add</button>
+              <button onclick="const v=parseInt(document.getElementById('waterCustomInput').value);if(v>0){addWater(v);document.getElementById('waterCustomInput').value='';}" style="background:#134e4a;border:1.5px solid #0d9488;border-radius:10px;padding:7px 12px;color:#0d9488;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Add</button>
               <button onclick="resetWater()" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:7px 10px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺</button>
             </div>
           </div>
@@ -2407,7 +2407,7 @@ function calcOnbMacros() {
   // Calculate deficit from goal
   let deficit = 500; // default
   if (goalDate && goalLbs < weightLbs) {
-    const daysLeft = Math.max(1, Math.round((new Date(goalDate + 'T12:00:00') - new Date()) / 86400000));
+    const daysLeft = Math.max(1, Math.round((new Date(goalDate + 'T12:00:00') - nowEST()) / 86400000));
     const lbsToLose = weightLbs - goalLbs;
     const calsToLose = lbsToLose * 3500;
     deficit = Math.min(1000, Math.max(250, Math.round(calsToLose / daysLeft)));
@@ -12621,76 +12621,7 @@ function appendClaudeMessage(role, text, id) {
 
 
 
-// ══════════════════════════════════════════════════════
-// FEATURE 1: WATER TRACKING
-// ══════════════════════════════════════════════════════
-
-const WATER_GOAL_OZ = 100;
-
-function getWaterToday() {
-  const log = getStorage('waterLog', {});
-  const today = todayKey();
-  return (log[today] && log[today].date === today) ? log[today].oz : 0;
-}
-
-function setWaterToday(oz) {
-  const log = getStorage('waterLog', {});
-  const today = todayKey();
-  log[today] = { date: today, oz: Math.max(0, oz) };
-  setStorage('waterLog', log);
-  renderWaterCard();
-}
-
-function addWater(oz) {
-  setWaterToday(getWaterToday() + oz);
-}
-
-function addWaterCustom() {
-  const val = parseFloat(document.getElementById('waterCustomInput').value);
-  if (!val || val <= 0) return;
-  document.getElementById('waterCustomInput').value = '';
-  addWater(val);
-}
-
-function resetWater() {
-  setWaterToday(0);
-}
-
-function renderWaterCard() {
-  const oz = getWaterToday();
-  const pct = Math.min(1, oz / WATER_GOAL_OZ);
-  const circumference = 2 * Math.PI * 28; // r=28 → 175.93
-
-  const arc = document.getElementById('waterRingArc');
-  const display = document.getElementById('waterOzDisplay');
-  const msg = document.getElementById('waterStatusMsg');
-  const goalLabel = document.getElementById('waterGoalLabel');
-
-  if (!arc) return;
-
-  arc.style.strokeDashoffset = circumference * (1 - pct);
-  if (display) display.textContent = Math.round(oz);
-  if (goalLabel) goalLabel.textContent = `Goal: ${WATER_GOAL_OZ} oz`;
-
-  // Color shifts green when done
-  if (pct >= 1) {
-    arc.style.stroke = '#16a34a';
-    if (msg) msg.textContent = '🎉 Daily goal reached! Great hydration!';
-    if (msg) msg.style.color = '#16a34a';
-  } else if (pct >= 0.75) {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = `${Math.round(WATER_GOAL_OZ - oz)} oz to go — almost there!`;
-    if (msg) msg.style.color = 'var(--text2)';
-  } else if (pct >= 0.5) {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = `${Math.round(WATER_GOAL_OZ - oz)} oz remaining`;
-    if (msg) msg.style.color = 'var(--text2)';
-  } else {
-    arc.style.stroke = '#0d9488';
-    if (msg) msg.textContent = oz > 0 ? `${Math.round(WATER_GOAL_OZ - oz)} oz to reach your goal` : 'Tap a button to log water';
-    if (msg) msg.style.color = 'var(--text2)';
-  }
-}
+// (Legacy water tracking code removed — active implementation below in FEATURE 1)
 
 
 // ══════════════════════════════════════════════════════
@@ -12769,119 +12700,7 @@ function renderSleepCard() {
 }
 
 
-// ══════════════════════════════════════════════════════
-// FEATURE 3: BLOOD PRESSURE LOG
-// ══════════════════════════════════════════════════════
-
-function saveBP() {
-  const sys = parseInt(document.getElementById('bpSystolic')?.value);
-  const dia = parseInt(document.getElementById('bpDiastolic')?.value);
-  const hr  = parseInt(document.getElementById('bpHR')?.value) || null;
-  if (!sys || !dia || sys < 60 || sys > 250 || dia < 40 || dia > 150) {
-    showToast('⚠️ Enter valid BP values (systolic 60-250, diastolic 40-150)');
-    return;
-  }
-  const log = getStorage('bloodPressureLog', []);
-  log.unshift({ date: todayKey(), time: new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}), sys, dia, hr, id: Date.now() });
-  setStorage('bloodPressureLog', log);
-  document.getElementById('bpSystolic').value = '';
-  document.getElementById('bpDiastolic').value = '';
-  if (document.getElementById('bpHR')) document.getElementById('bpHR').value = '';
-  renderBPSection();
-  showToast('💓 Blood pressure saved');
-}
-
-function deleteBP(id) {
-  const log = getStorage('bloodPressureLog', []).filter(e => e.id !== id);
-  setStorage('bloodPressureLog', log);
-  renderBPSection();
-}
-
-function getBPCategory(sys, dia) {
-  if (sys < 120 && dia < 80)  return { label: 'Optimal',  color: '#16a34a', bg: '#0a2a1a' };
-  if (sys < 130 && dia < 80)  return { label: 'Elevated', color: '#d97706', bg: '#2a1f0a' };
-  if (sys < 140 || dia < 90)  return { label: 'High 1',   color: '#f59e0b', bg: '#2a1f0a' };
-  return                               { label: 'High 2',   color: '#dc2626', bg: '#2a0a0a' };
-}
-
-function renderBPSection() {
-  const el = document.getElementById('bpLogSection');
-  if (!el) return;
-  const log = getStorage('bloodPressureLog', []);
-  if (!log.length) {
-    el.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:8px">No readings yet — add one above</div>';
-    return;
-  }
-  el.innerHTML = log.slice(0,10).map(e => {
-    const cat = getBPCategory(e.sys, e.dia);
-    return `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${cat.bg};border:1px solid ${cat.color}33;border-radius:10px;margin-bottom:6px">
-        <div>
-          <span style="font-size:18px;font-weight:800;color:${cat.color}">${e.sys}/${e.dia}</span>
-          <span style="font-size:10px;color:var(--text2);margin-left:8px">mmHg</span>
-          ${e.hr ? `<span style="font-size:11px;color:var(--text2);margin-left:8px">· ${e.hr} bpm</span>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:10px;font-weight:700;color:${cat.color};background:${cat.color}22;padding:2px 8px;border-radius:10px;margin-bottom:3px">${cat.label}</div>
-          <div style="font-size:10px;color:var(--text2)">${e.date} ${e.time||''}</div>
-        </div>
-        <button onclick="deleteBP(${e.id})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px;margin-left:8px">✕</button>
-      </div>`;
-  }).join('');
-}
-
-
-// ══════════════════════════════════════════════════════
-// FEATURE 4: BODY COMPOSITION LOG
-// ══════════════════════════════════════════════════════
-
-function saveBodyComp() {
-  const bf = parseFloat(document.getElementById('bodyFatInput')?.value);
-  const lm = parseFloat(document.getElementById('leanMassInput')?.value);
-  const wt = parseFloat(document.getElementById('bodyCompWeightInput')?.value);
-  if (!bf && !lm && !wt) { showToast('⚠️ Enter at least one value'); return; }
-  const log = getStorage('bodyCompLog', {});
-  const today = todayKey();
-  log[today] = { date: today, bodyFat: bf||null, leanMass: lm||null, weight: wt||null, ts: Date.now() };
-  setStorage('bodyCompLog', log);
-  renderBodyCompLatest();
-  // Also save weight to weightLog if provided
-  if (wt) {
-    const wlog = getStorage('weightLog', {});
-    wlog[today] = wt;
-    setStorage('weightLog', wlog);
-    if (typeof renderWeightTrend === 'function') safeCall(renderWeightTrend);
-  }
-  showToast('📊 Body composition saved');
-  ['bodyFatInput','leanMassInput','bodyCompWeightInput'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-}
-
-function renderBodyCompLatest() {
-  const el = document.getElementById('bodyCompLatest');
-  if (!el) return;
-  const log = getStorage('bodyCompLog', {});
-  const entries = Object.values(log).sort((a,b) => b.date.localeCompare(a.date));
-  if (!entries.length) { el.innerHTML = '<div style="color:var(--text2);font-size:12px;text-align:center;padding:8px">No entries yet</div>'; return; }
-  const latest = entries[0];
-  const wt = getStorage('weightLog', {});
-  const currentWt = wt[latest.date] || latest.weight;
-  el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
-      ${currentWt ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:var(--text)">${currentWt}</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">lbs</div></div>` : ''}
-      ${latest.bodyFat ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:#f59e0b">${latest.bodyFat}%</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">Body Fat</div></div>` : ''}
-      ${latest.leanMass ? `<div style="text-align:center;background:var(--surface2);border-radius:10px;padding:10px">
-        <div style="font-size:20px;font-weight:800;color:#22c55e">${latest.leanMass}</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">Lean Mass lbs</div></div>` : ''}
-    </div>
-    <div style="font-size:10px;color:var(--text2);text-align:center;margin-top:6px">Last updated: ${latest.date}</div>`;
-}
+// (Legacy BP and body comp code removed — active implementations below in FEATURES 4-5)
 
 
 // ══════════════════════════════════════════════════════
