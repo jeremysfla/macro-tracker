@@ -13420,13 +13420,6 @@ function renderBodyCompPanel() {
   el.innerHTML = parts.join(' · ') + `<span style="color:var(--text3);font-size:11px;margin-left:8px">${src} · ${d}</span>`;
 }
 
-// ════════════════════════════════════════════════════════════════
-// FEATURE 6: SUPPLEMENT LOG
-// ════════════════════════════════════════════════════════════════
-let _suppTimeSelected = 'morning';
-
-
-
 
 
 
@@ -13473,7 +13466,7 @@ ${JSON.stringify(days, null, 2)}
 Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 area to improve. Max 80 words.`;
 
   try {
-    const resp = await callClaudeAPI({ model:'claude-sonnet-4-20250514', max_tokens:200, messages:[{role:'user',content:prompt}] });
+    const resp = await callClaudeAPI({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{role:'user',content:prompt}] });
     el.textContent = resp?.content?.[0]?.text || 'Keep logging consistently for better insights!';
   } catch(e) {
     el.textContent = 'Unable to generate summary right now. Keep up the great work!';
@@ -13541,7 +13534,7 @@ async function getMealSuggestions() {
 
   try {
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 400,
       messages: [{
         role: 'user',
