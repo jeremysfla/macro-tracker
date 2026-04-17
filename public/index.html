@@ -2513,11 +2513,16 @@ function initGoogleSignIn() {
   }
   google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
-    callback: handleGoogleSignIn
+    callback: handleGoogleSignIn,
+    auto_select: true,
+    itp_support: true
   });
   google.accounts.id.renderButton(document.getElementById('g_id_signin'), {
     theme: 'filled_black', size: 'large', shape: 'pill', text: 'signin_with', width: 280
   });
+  // Silently re-auth if they're already signed in to Google (covers iOS Safari ITP
+  // localStorage wipes and fresh devices where they're signed in to Google)
+  google.accounts.id.prompt();
 }
 
 // ── End Auth ──
