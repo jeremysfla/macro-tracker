@@ -42,6 +42,17 @@ async function validateSession(db, token) {
     "SELECT s.*, u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > datetime('now')"
   ).bind(token).first();
   if (!row) return null;
+
+  // Sliding expiration: if session has less than 7 days left, extend it 30 more days.
+  // Keeps active users logged in indefinitely without hammering D1 on every request.
+  const msLeft = new Date(row.expires_at).getTime() - Date.now();
+  if (msLeft < 7 * 86400000) {
+    const newExpires = new Date(Date.now() + SESSION_TTL_DAYS * 86400000).toISOString();
+    try {
+      await db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").bind(newExpires, token).run();
+      row.expires_at = newExpires;
+    } catch(_) {}
+  }
   return row;
 }
 __name(validateSession, "validateSession");
