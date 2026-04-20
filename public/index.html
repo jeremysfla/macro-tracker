@@ -2463,23 +2463,24 @@ async function onbFinish() {
   }
 }
 
-// On page load: check for saved token
+// On page load: check for saved token (localStorage) or cookie fallback
 async function checkAuth() {
   const saved = localStorage.getItem('authToken');
-  if (saved) {
-    _authToken = saved;
-    try {
-      const res = await fetch('/api/user', { headers: { 'authorization': 'Bearer ' + saved } });
-      if (res.status === 401) {
-        // Session genuinely expired or invalid — clear and re-login
-        localStorage.removeItem('authToken');
-        _authToken = null;
-        showScreen('login');
-        initGoogleSignIn();
-        return;
-      }
+  if (saved) _authToken = saved;
+
+  // Always hit /api/user — if localStorage was wiped (iOS Safari ITP),
+  // the HttpOnly session cookie still gets sent automatically by the browser.
+  try {
+    const headers = _authToken ? { 'authorization': 'Bearer ' + _authToken } : {};
+    const res = await fetch('/api/user', { headers, credentials: 'same-origin' });
+    if (res.ok) {
       const data = await res.json();
       if (data.user) {
+        // Re-populate localStorage from cookie-authenticated session
+        if (data.sessionToken && data.sessionToken !== _authToken) {
+          _authToken = data.sessionToken;
+          localStorage.setItem('authToken', data.sessionToken);
+        }
         _currentUser = data.user;
         if (!_currentUser.onboarded) {
           showScreen('onboarding');
@@ -2490,18 +2491,19 @@ async function checkAuth() {
         }
         return;
       }
-    } catch (e) {
-      // Network error — keep the token and load the app in offline mode
-      // rather than forcing re-login on every connectivity blip
+    }
+  } catch (e) {
+    if (_authToken) {
       console.warn('[auth] Network error checking session, loading app offline:', e.message);
       showScreen('app');
       _initApp();
       return;
     }
-    // Server responded but no user data — token may be corrupt
-    localStorage.removeItem('authToken');
-    _authToken = null;
   }
+
+  // No valid session from either localStorage or cookie
+  localStorage.removeItem('authToken');
+  _authToken = null;
   showScreen('login');
   initGoogleSignIn();
 }

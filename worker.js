@@ -57,8 +57,20 @@ async function validateSession(db, token) {
 }
 __name(validateSession, "validateSession");
 
+function parseCookie(req, name) {
+  const hdr = req.headers.get("cookie") || "";
+  const match = hdr.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? match[1] : null;
+}
+__name(parseCookie, "parseCookie");
+
+function sessionCookie(token, maxAge) {
+  return `session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+}
+__name(sessionCookie, "sessionCookie");
+
 async function getSessionUser(db, req) {
-  const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+  const auth = req.headers.get("authorization")?.replace("Bearer ", "") || parseCookie(req, "session");
   if (!auth) return null;
   return validateSession(db, auth);
 }
@@ -123,7 +135,9 @@ var worker_default = {
         // Create a long-lived session token
         const session = await createSession(env.DB, payload.sub);
 
-        return new Response(JSON.stringify({ user, sessionToken: session.token, expiresAt: session.expiresAt }), { headers: CORS });
+        return new Response(JSON.stringify({ user, sessionToken: session.token, expiresAt: session.expiresAt }), {
+          headers: { ...CORS, "set-cookie": sessionCookie(session.token, SESSION_TTL_DAYS * 86400) }
+        });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
       }
@@ -131,9 +145,12 @@ var worker_default = {
 
     // ── Get user profile (now uses session token) ────────────────────────
     if (u.pathname === "/api/user" && req.method === "GET") {
-      const user = await getSessionUser(env.DB, req);
+      const token = req.headers.get("authorization")?.replace("Bearer ", "") || parseCookie(req, "session");
+      const user = await validateSession(env.DB, token);
       if (!user) return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: CORS });
-      return new Response(JSON.stringify({ user }), { headers: CORS });
+      return new Response(JSON.stringify({ user, sessionToken: token }), {
+        headers: { ...CORS, "set-cookie": sessionCookie(token, SESSION_TTL_DAYS * 86400) }
+      });
     }
 
     // ── Save onboarding / update profile ────────────────────────────────
@@ -163,11 +180,13 @@ var worker_default = {
 
     // ── Logout: delete session ──────────────────────────────────────────
     if (u.pathname === "/api/auth/logout" && req.method === "POST") {
-      const auth = req.headers.get("authorization")?.replace("Bearer ", "");
+      const auth = req.headers.get("authorization")?.replace("Bearer ", "") || parseCookie(req, "session");
       if (auth) {
         try { await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(auth).run(); } catch(_) {}
       }
-      return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...CORS, "set-cookie": sessionCookie("", 0) }
+      });
     }
 
     // ── Protected endpoints — require valid session ─────────────────────
