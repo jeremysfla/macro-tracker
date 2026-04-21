@@ -13,18 +13,7 @@ __name(generateSessionToken, "generateSessionToken");
 
 const SESSION_TTL_DAYS = 30;
 
-async function ensureSessionsTable(db) {
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      expires_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-  `).run();
-}
-__name(ensureSessionsTable, "ensureSessionsTable");
+// Sessions table is provisioned via migrations/0001_sessions.sql — no runtime DDL.
 
 async function createSession(db, userId) {
   const token = generateSessionToken();
@@ -109,11 +98,6 @@ var worker_default = {
         ok: true, hasKey: !!env.ANTHROPIC_KEY,
         keyPrefix: env.ANTHROPIC_KEY ? env.ANTHROPIC_KEY.slice(0, 7) + "..." : "NOT SET"
       }), { headers: CORS });
-    }
-
-    // ── Ensure sessions table exists (runs once, cached by D1) ────────
-    if (env.DB) {
-      try { await ensureSessionsTable(env.DB); } catch(_) {}
     }
 
     // ── Auth: Google Sign-In → create session ───────────────────────────
@@ -272,7 +256,7 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         const b = await req.json();
         if (!b.date || !env.DB) return new Response(JSON.stringify({ ok: false, error: "missing date or DB" }), { headers: CORS });
         const sql = `INSERT INTO daily_checkin (date,user_id,energy,mood,water_oz,weight_lbs,sleep_hrs,sleep_deep,sleep_rem,sleep_score,calories_consumed,protein_g,carbs_g,fat_g,steps,active_cals,notes,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(date,user_id) DO UPDATE SET energy=excluded.energy,mood=excluded.mood,water_oz=excluded.water_oz,weight_lbs=excluded.weight_lbs,sleep_hrs=excluded.sleep_hrs,sleep_deep=excluded.sleep_deep,sleep_rem=excluded.sleep_rem,sleep_score=excluded.sleep_score,calories_consumed=excluded.calories_consumed,protein_g=excluded.protein_g,carbs_g=excluded.carbs_g,fat_g=excluded.fat_g,steps=excluded.steps,active_cals=excluded.active_cals,notes=excluded.notes,updated_at=datetime('now')`;
-        await env.DB.prepare(sql).bind(b.date,b.user_id||"jeremy",b.energy??null,b.mood??null,b.water_oz??null,b.weight_lbs??null,b.sleep_hrs??null,b.sleep_deep??null,b.sleep_rem??null,b.sleep_score??null,b.calories_consumed??null,b.protein_g??null,b.carbs_g??null,b.fat_g??null,b.steps??null,b.active_cals??null,b.notes??null).run();
+        await env.DB.prepare(sql).bind(b.date,user.id,b.energy??null,b.mood??null,b.water_oz??null,b.weight_lbs??null,b.sleep_hrs??null,b.sleep_deep??null,b.sleep_rem??null,b.sleep_score??null,b.calories_consumed??null,b.protein_g??null,b.carbs_g??null,b.fat_g??null,b.steps??null,b.active_cals??null,b.notes??null).run();
         return new Response(JSON.stringify({ ok: true }), { headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
@@ -282,7 +266,7 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const days = Math.min(parseInt(u.searchParams.get("days")||"90"), 365);
-        const rows = await env.DB.prepare(`SELECT * FROM daily_checkin WHERE user_id='jeremy' AND date>=date('now','-'||?||' days') ORDER BY date DESC`).bind(days).all();
+        const rows = await env.DB.prepare(`SELECT * FROM daily_checkin WHERE user_id = ? AND date>=date('now','-'||?||' days') ORDER BY date DESC`).bind(user.id, days).all();
         return new Response(JSON.stringify({ ok: true, rows: rows.results }), { headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
