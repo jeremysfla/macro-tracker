@@ -3648,7 +3648,7 @@ function openSettings() {
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
 }
-function saveGoalSettings() {
+async function saveGoalSettings() {
   const w        = parseInt(document.getElementById('settingWeight').value)     || 165;
   const g        = parseInt(document.getElementById('settingGoalWeight').value) || 163;
   const goalDate = document.getElementById('settingGoalDate').value || '';
@@ -3657,12 +3657,39 @@ function saveGoalSettings() {
   const crb = parseInt(document.getElementById('settingCarbs').value)      || MACROS.carbs;
   const fat = parseInt(document.getElementById('settingFat').value)        || MACROS.fat;
   const tdee = parseInt(document.getElementById('settingTDEE').value)      || TDEE;
+
   setStorage('userGoals', { weight: w, goal: g, goalDate });
   setStorage('userMacros', { calories: cal, protein: pro, carbs: crb, fat: fat });
   setStorage('userTDEE',   tdee);
-  // Clear adaptive overrides so new base targets are used immediately
   localStorage.removeItem('adaptiveMacros');
   localStorage.removeItem('garminAdjustedMacros');
+
+  // Persist to D1 so a page refresh doesn't clobber these with the old server row.
+  // The /api/user/profile endpoint expects a full profile body, so preserve the
+  // onboarding-only fields (gender/age/height/activity_level) from _currentUser.
+  const u = _currentUser || {};
+  const body = {
+    gender:         u.gender || null,
+    age:            u.age || null,
+    height_inches:  u.height_inches || null,
+    current_weight: w,
+    goal_weight:    g,
+    goal_date:      goalDate || null,
+    activity_level: u.activity_level || null,
+    tdee, calories: cal, protein: pro, carbs: crb, fat
+  };
+  try {
+    const res = await fetch('/api/user/profile', {
+      method: 'PUT', headers: authHeaders(), body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+    _currentUser = data.user;
+  } catch (e) {
+    showToast('⚠️ Saved locally but not synced: ' + e.message);
+    return;
+  }
+
   renderRings();
   renderProteinPace();
   renderWeeklyBalance();
