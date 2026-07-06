@@ -3,6 +3,17 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
 
+// Only these Google accounts may sign in (override with env.ALLOWED_EMAILS, comma-separated)
+const ALLOWED_EMAILS = new Set(['jeremy@dronenerds.com']);
+
+const CLAUDE_ALLOWED_MODELS = new Set([
+  'claude-haiku-4-5-20251001',
+  'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+]);
+const CLAUDE_MAX_TOKENS_CAP = 4096;
+
 // ── Session helpers ─────────────────────────────────────────────────────
 function generateSessionToken() {
   const bytes = new Uint8Array(32);
@@ -11,7 +22,7 @@ function generateSessionToken() {
 }
 __name(generateSessionToken, "generateSessionToken");
 
-const SESSION_TTL_DAYS = 30;
+const SESSION_TTL_DAYS = 90;
 
 // Sessions table is provisioned via migrations/0001_sessions.sql — no runtime DDL.
 
@@ -32,10 +43,10 @@ async function validateSession(db, token) {
   ).bind(token).first();
   if (!row) return null;
 
-  // Sliding expiration: if session has less than 7 days left, extend it 30 more days.
+  // Sliding expiration: if session has less than 30 days left, extend it a full TTL.
   // Keeps active users logged in indefinitely without hammering D1 on every request.
   const msLeft = new Date(row.expires_at).getTime() - Date.now();
-  if (msLeft < 7 * 86400000) {
+  if (msLeft < 30 * 86400000) {
     const newExpires = new Date(Date.now() + SESSION_TTL_DAYS * 86400000).toISOString();
     try {
       await db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").bind(newExpires, token).run();
@@ -58,19 +69,41 @@ function sessionCookie(token, maxAge) {
 }
 __name(sessionCookie, "sessionCookie");
 
+// Try the Bearer token first, but fall back to the session cookie even when a
+// Bearer is present — a stale token in localStorage must not shadow a valid cookie.
+async function resolveSession(db, req) {
+  const bearer = req.headers.get("authorization")?.replace("Bearer ", "");
+  const cookie = parseCookie(req, "session");
+  if (bearer) {
+    const user = await validateSession(db, bearer);
+    if (user) return { user, token: bearer };
+  }
+  if (cookie && cookie !== bearer) {
+    const user = await validateSession(db, cookie);
+    if (user) return { user, token: cookie };
+  }
+  return { user: null, token: null };
+}
+__name(resolveSession, "resolveSession");
+
 async function getSessionUser(db, req) {
-  const auth = req.headers.get("authorization")?.replace("Bearer ", "") || parseCookie(req, "session");
-  if (!auth) return null;
-  return validateSession(db, auth);
+  return (await resolveSession(db, req)).user;
 }
 __name(getSessionUser, "getSessionUser");
 
 // ── Google token verification ───────────────────────────────────────────
-async function verifyGoogleToken(idToken) {
+async function verifyGoogleToken(idToken, env) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   if (!res.ok) return null;
   const payload = await res.json();
   if (payload.aud !== GOOGLE_CLIENT_ID) return null;
+  if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com") return null;
+  if (payload.email_verified !== true && payload.email_verified !== "true") return null;
+  if (Number(payload.exp) * 1000 < Date.now()) return null;
+  const allowed = env?.ALLOWED_EMAILS
+    ? new Set(env.ALLOWED_EMAILS.split(",").map(s => s.trim().toLowerCase()))
+    : ALLOWED_EMAILS;
+  if (!allowed.has((payload.email || "").toLowerCase())) return null;
   return payload;
 }
 __name(verifyGoogleToken, "verifyGoogleToken");
@@ -94,18 +127,20 @@ var worker_default = {
     }
 
     if (u.pathname === "/api/status") {
-      return new Response(JSON.stringify({
-        ok: true, hasKey: !!env.ANTHROPIC_KEY,
-        keyPrefix: env.ANTHROPIC_KEY ? env.ANTHROPIC_KEY.slice(0, 7) + "..." : "NOT SET"
-      }), { headers: CORS });
+      // Key details only for an authenticated session — public callers get a bare health check
+      const statusUser = await getSessionUser(env.DB, req).catch(() => null);
+      const body = statusUser
+        ? { ok: true, hasKey: !!env.ANTHROPIC_KEY }
+        : { ok: true };
+      return new Response(JSON.stringify(body), { headers: CORS });
     }
 
     // ── Auth: Google Sign-In → create session ───────────────────────────
     if (u.pathname === "/api/auth/google" && req.method === "POST") {
       try {
         const { idToken } = await req.json();
-        const payload = await verifyGoogleToken(idToken);
-        if (!payload) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: CORS });
+        const payload = await verifyGoogleToken(idToken, env);
+        if (!payload) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
 
         let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
 
@@ -116,8 +151,9 @@ var worker_default = {
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.sub).first();
         }
 
-        // Create a long-lived session token
+        // Create a long-lived session token; prune expired rows while we're here
         const session = await createSession(env.DB, payload.sub);
+        try { await env.DB.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run(); } catch(_) {}
 
         return new Response(JSON.stringify({ user, sessionToken: session.token, expiresAt: session.expiresAt }), {
           headers: { ...CORS, "set-cookie": sessionCookie(session.token, SESSION_TTL_DAYS * 86400) }
@@ -127,10 +163,9 @@ var worker_default = {
       }
     }
 
-    // ── Get user profile (now uses session token) ────────────────────────
+    // ── Get user profile (Bearer or cookie; cookie wins if Bearer is stale) ──
     if (u.pathname === "/api/user" && req.method === "GET") {
-      const token = req.headers.get("authorization")?.replace("Bearer ", "") || parseCookie(req, "session");
-      const user = await validateSession(env.DB, token);
+      const { user, token } = await resolveSession(env.DB, req);
       if (!user) return new Response(JSON.stringify({ error: "Invalid or expired session" }), { status: 401, headers: CORS });
       return new Response(JSON.stringify({ user, sessionToken: token }), {
         headers: { ...CORS, "set-cookie": sessionCookie(token, SESSION_TTL_DAYS * 86400) }
@@ -182,7 +217,7 @@ var worker_default = {
       try {
         const date = u.searchParams.get("date") || new Date().toISOString().slice(0,10);
         if (!env.DB) return new Response(JSON.stringify({ ok: false }), { headers: CORS });
-        const row = await env.DB.prepare("SELECT * FROM brief_cache WHERE date=?").bind(date).first();
+        const row = await env.DB.prepare("SELECT email_context, calendar_context FROM brief_cache WHERE user_id = ? AND date = ?").bind(user.id, date).first();
         return new Response(JSON.stringify({
           ok: true,
           emails: row?.email_context ? JSON.parse(row.email_context) : [],
@@ -200,7 +235,7 @@ var worker_default = {
 
         const body = await req.json();
         const { healthContext: h = {}, date = new Date().toISOString().slice(0, 10), emailContext = [] } = body;
-        const daysToMarathon = Math.ceil((new Date("2026-06-20") - new Date()) / 86400000);
+        const daysToMarathon = Math.max(0, Math.ceil((new Date("2026-06-20") - new Date()) / 86400000));
         const hr = new Date().getHours();
         const greeting = hr < 12 ? "Good Morning" : hr < 17 ? "Good Afternoon" : "Good Evening";
 
@@ -273,6 +308,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
     // ── Barcode lookup ─────────────────────────────────────────────────────
     if (u.pathname === "/api/barcode" && req.method === "GET") {
+      const bcUser = await getSessionUser(env.DB, req);
+      if (!bcUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       const raw = (u.searchParams.get("code")||"").replace(/\D/g,"");
       if (!raw) return new Response(JSON.stringify({ found: false }), { headers: CORS });
       const ean13 = raw.length===12 ? "0"+raw : raw;
@@ -287,7 +324,7 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           if (d.status===1 && d.product) { const p = parseOFF(d.product); if (p?.calories>0) return new Response(JSON.stringify({ found:true, product:{...p,source:"Open Food Facts"} }), { headers: CORS }); }
         } catch(_) {}
       }
-      const USDA_KEY = env.USDA_KEY || "DEMO_KEY";
+      const USDA_KEY = env.USDA_API_KEY || env.USDA_KEY || "DEMO_KEY";
       for (const code of codes) {
         try {
           const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_KEY}&query=${encodeURIComponent(code)}&dataType=Branded&pageSize=10`, { headers: { "User-Agent": UA } });
@@ -319,6 +356,12 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       try {
         if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
         const b = await req.json();
+        if (!b || typeof b !== "object" || !CLAUDE_ALLOWED_MODELS.has(b.model)) {
+          return new Response(JSON.stringify({ error: { message: "model not allowed" } }), { status: 400, headers: CORS });
+        }
+        b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
+        delete b.stream;
+        delete b.metadata;
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
@@ -331,6 +374,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
     // ── USDA API proxy ──────────────────────────────────────────────────
     if (u.pathname === "/api/usda/search" && req.method === "GET") {
+      const usdaUser = await getSessionUser(env.DB, req);
+      if (!usdaUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const apiKey = env.USDA_API_KEY || "DEMO_KEY";
         const query = u.searchParams.get("query") || "";
@@ -405,7 +450,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         }));
         return Response.redirect(`${u.origin}/#strava_token=${tokenPayload}`, 302);
       } catch (e) {
-        return new Response(`<h2>Strava connection failed</h2><p>${e.message}</p><script>setTimeout(()=>window.location='${u.origin}',3000)</script>`, {
+        const safeMsg = String(e.message || "").replace(/[<>&"']/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;", "'":"&#39;" }[c]));
+        return new Response(`<h2>Strava connection failed</h2><p>${safeMsg}</p><script>setTimeout(()=>window.location='${u.origin}',3000)</script>`, {
           headers: { "content-type": "text/html" }
         });
       }
@@ -413,6 +459,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
     // ── Strava: token refresh ───────────────────────────────────────────
     if (u.pathname === "/api/strava/refresh" && req.method === "POST") {
+      const stravaUser = await getSessionUser(env.DB, req);
+      if (!stravaUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
         const { refreshToken } = await req.json();
         if (!refreshToken) return new Response(JSON.stringify({ error: "Missing refreshToken" }), { status: 400, headers: CORS });

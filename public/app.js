@@ -175,6 +175,8 @@ async function checkAuth() {
 
   // Always hit /api/user — if localStorage was wiped (iOS Safari ITP),
   // the HttpOnly session cookie still gets sent automatically by the browser.
+  // The server validates the Bearer token AND falls back to the cookie, so a
+  // stale localStorage token can't lock us out while the cookie is still good.
   try {
     const headers = _authToken ? { 'authorization': 'Bearer ' + _authToken } : {};
     const res = await fetch('/api/user', { headers, credentials: 'same-origin' });
@@ -196,6 +198,18 @@ async function checkAuth() {
         }
         return;
       }
+    } else if (res.status !== 401) {
+      // Server hiccup (5xx, D1 blip) — NOT an auth failure. Never log the user
+      // out for this; load the app with cached data and let it retry later.
+      if (_authToken) {
+        console.warn('[auth] /api/user returned', res.status, '— loading app with cached session');
+        showScreen('app');
+        _initApp();
+        return;
+      }
+      showScreen('login');
+      initGoogleSignIn();
+      return;
     }
   } catch (e) {
     if (_authToken) {
@@ -206,7 +220,7 @@ async function checkAuth() {
     }
   }
 
-  // No valid session from either localStorage or cookie
+  // Explicit 401 — server rejected both the Bearer token and the cookie
   localStorage.removeItem('authToken');
   _authToken = null;
   showScreen('login');
