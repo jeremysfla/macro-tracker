@@ -456,12 +456,324 @@ function getStorage(key, def) {
 function setStorage(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    try { _syncOnWrite(key); } catch(_) {}
     return true;
   } catch(e) {
     console.error('setStorage failed for key:', key, e);
     return false;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// D1 LOG SYNC (Tier 1, item 1) — server-authoritative food/weight/shoes/lifts.
+// localStorage stays the offline cache; every entry carries _id (uuid) and
+// _u (unix ms). Merge is last-write-wins on _u/updated_at. A shadow copy of
+// the last-synced state ('_syncShadow_*') detects local changes + deletions.
+// Tombstones are only emitted for recent dates so the 90-day prune sweep
+// never deletes server history.
+// ═══════════════════════════════════════════════════════════════════════
+const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts'];
+const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts' };
+const SYNC_MERGE_DAYS = 90;      // only merge server rows this recent into local cache
+const SYNC_TOMBSTONE_DAYS = 30;  // only report deletions this recent (older = prune, not delete)
+let _syncApplying = false;       // guard: writes made by the sync engine itself
+const _syncTimers = {};
+
+function _syncUuid() {
+  try { return crypto.randomUUID(); } catch(_) {
+    return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+}
+
+function _syncOnWrite(key) {
+  if (_syncApplying) return;
+  const table = SYNC_KEY_MAP[key];
+  if (!table || !_authToken) return;
+  clearTimeout(_syncTimers[table]);
+  _syncTimers[table] = setTimeout(() => syncLogTable(table), 2000);
+}
+
+function _syncCutoffKey(days) {
+  const d = new Date(Date.now() - days * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+// Raw write that never re-triggers the sync scheduler
+function _syncSet(key, val) {
+  const was = _syncApplying; _syncApplying = true;
+  try { setStorage(key, val); } finally { _syncApplying = was; }
+}
+
+// ── Per-table serializers: local diff vs shadow → rows to push ──────────
+function _syncFoodRows() {
+  const all = getStorage('foodEntries', {});
+  const shadow = getStorage('_syncShadow_food', {});
+  const tombCutoff = _syncCutoffKey(SYNC_TOMBSTONE_DAYS);
+  const rows = []; let mutated = false;
+  for (const [date, arr] of Object.entries(all)) {
+    if (!Array.isArray(arr) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    for (const e of arr) {
+      if (!e._id) { e._id = _syncUuid(); mutated = true; }
+      const h = JSON.stringify({ ...e, _u: 0 });
+      const sh = shadow[date]?.[e._id];
+      if (!sh || sh.h !== h) {
+        e._u = Date.now(); mutated = true;
+        rows.push({ date, entry_id: e._id, payload: e, updated_at: e._u, deleted: 0 });
+      }
+    }
+    // Entries in shadow but gone locally → recent ones are real deletions
+    const localIds = new Set(arr.map(e => e._id));
+    for (const id of Object.keys(shadow[date] || {})) {
+      if (!localIds.has(id) && date >= tombCutoff) {
+        rows.push({ date, entry_id: id, payload: {}, updated_at: Date.now(), deleted: 1 });
+      }
+    }
+  }
+  // Whole days deleted locally
+  for (const date of Object.keys(shadow)) {
+    if (!all[date] && date >= tombCutoff) {
+      for (const id of Object.keys(shadow[date])) {
+        rows.push({ date, entry_id: id, payload: {}, updated_at: Date.now(), deleted: 1 });
+      }
+    }
+  }
+  if (mutated) _syncSet('foodEntries', all);
+  return rows;
+}
+
+function _syncWeightRows() {
+  const log = getStorage('weightLog', {});
+  const shadow = getStorage('_syncShadow_weight', {});
+  const rows = [];
+  for (const [date, lbs] of Object.entries(log)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(Number(lbs) > 0)) continue;
+    if (shadow[date] !== lbs) rows.push({ date, weight_lbs: Number(lbs), updated_at: Date.now() });
+  }
+  return rows;
+}
+
+function _syncShoeRows() {
+  const shoes = getStorage('shoeGarage', []);
+  const runs = getStorage('shoeRuns', []);
+  const shadow = getStorage('_syncShadow_shoes', {});
+  const rows = []; let mutShoes = false, mutRuns = false;
+  for (const s of shoes) {
+    if (!s.id) { s.id = _syncUuid(); mutShoes = true; }
+    const rowId = 'shoe:' + s.id, h = JSON.stringify({ ...s, _u: 0 });
+    if (shadow[rowId]?.h !== h) {
+      s._u = Date.now(); mutShoes = true;
+      rows.push({ shoe_id: rowId, payload: { kind: 'shoe', data: s }, updated_at: s._u, deleted: 0 });
+    }
+  }
+  for (const r of runs) {
+    if (!r._id) { r._id = _syncUuid(); mutRuns = true; }
+    const rowId = 'run:' + r._id, h = JSON.stringify({ ...r, _u: 0 });
+    if (shadow[rowId]?.h !== h) {
+      r._u = Date.now(); mutRuns = true;
+      rows.push({ shoe_id: rowId, payload: { kind: 'run', data: r }, updated_at: r._u, deleted: 0 });
+    }
+  }
+  const liveIds = new Set([...shoes.map(s => 'shoe:' + s.id), ...runs.map(r => 'run:' + r._id)]);
+  for (const rowId of Object.keys(shadow)) {
+    if (!liveIds.has(rowId)) rows.push({ shoe_id: rowId, payload: {}, updated_at: Date.now(), deleted: 1 });
+  }
+  if (mutShoes) _syncSet('shoeGarage', shoes);
+  if (mutRuns) _syncSet('shoeRuns', runs);
+  return rows;
+}
+
+function _syncLiftRows() {
+  const log = getStorage('liftLog2', {});
+  const shadow = getStorage('_syncShadow_lifts', {});
+  const tombCutoff = _syncCutoffKey(SYNC_TOMBSTONE_DAYS);
+  const rows = []; let mutated = false;
+  for (const [key, val] of Object.entries(log)) {
+    if (!val || typeof val !== 'object') continue;
+    const date = (val.date && /^\d{4}-\d{2}-\d{2}$/.test(val.date)) ? val.date : key.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const h = JSON.stringify({ ...val, _u: 0 });
+    if (shadow[key]?.h !== h) {
+      val._u = Date.now(); mutated = true;
+      rows.push({ date, entry_id: key, payload: val, updated_at: val._u, deleted: 0 });
+    }
+  }
+  for (const [key, sh] of Object.entries(shadow)) {
+    if (!log[key] && sh.d >= tombCutoff) {
+      rows.push({ date: sh.d, entry_id: key, payload: {}, updated_at: Date.now(), deleted: 1 });
+    }
+  }
+  if (mutated) _syncSet('liftLog2', log);
+  return rows;
+}
+
+// ── Per-table mergers: server rows → local (LWW, recent window only) ────
+function _syncApplyFood(rows) {
+  const all = getStorage('foodEntries', {});
+  const mergeCutoff = _syncCutoffKey(SYNC_MERGE_DAYS);
+  let changed = false;
+  for (const r of rows) {
+    if (!r.date || r.date < mergeCutoff) continue;
+    const arr = all[r.date] || (all[r.date] = []);
+    const idx = arr.findIndex(e => e._id === r.entry_id);
+    const localU = idx >= 0 ? (arr[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { arr.splice(idx, 1); changed = true; } }
+    else if (r.payload) {
+      const entry = { ...r.payload, _id: r.entry_id, _u: r.updated_at };
+      if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+      changed = true;
+    }
+    if (all[r.date] && all[r.date].length === 0) delete all[r.date];
+  }
+  if (changed) {
+    _syncSet('foodEntries', all);
+    try { renderFoodLog(); renderRings(); } catch(_) {}
+  }
+}
+
+function _syncApplyWeight(rows) {
+  const log = getStorage('weightLog', {});
+  const shadow = getStorage('_syncShadow_weight', {});
+  let changed = false;
+  for (const r of rows) {
+    // Local unsynced edit (differs from shadow) wins until pushed
+    const localDirty = log[r.date] !== undefined && log[r.date] !== shadow[r.date];
+    if (!localDirty && log[r.date] !== r.weight_lbs) { log[r.date] = r.weight_lbs; changed = true; }
+  }
+  if (changed) _syncSet('weightLog', log);
+}
+
+function _syncApplyShoes(rows) {
+  const shoes = getStorage('shoeGarage', []);
+  const runs = getStorage('shoeRuns', []);
+  let changed = false;
+  for (const r of rows) {
+    const [kind, id] = [r.shoe_id.slice(0, r.shoe_id.indexOf(':')), r.shoe_id.slice(r.shoe_id.indexOf(':') + 1)];
+    const list = kind === 'shoe' ? shoes : kind === 'run' ? runs : null;
+    if (!list) continue;
+    const idKey = kind === 'shoe' ? 'id' : '_id';
+    const idx = list.findIndex(x => x[idKey] === id);
+    const localU = idx >= 0 ? (list[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { list.splice(idx, 1); changed = true; } }
+    else if (r.payload?.data) {
+      const item = { ...r.payload.data, [idKey]: id, _u: r.updated_at };
+      if (idx >= 0) list[idx] = item; else list.push(item);
+      changed = true;
+    }
+  }
+  if (changed) { _syncSet('shoeGarage', shoes); _syncSet('shoeRuns', runs); }
+}
+
+function _syncApplyLifts(rows) {
+  const log = getStorage('liftLog2', {});
+  const mergeCutoff = _syncCutoffKey(SYNC_MERGE_DAYS);
+  let changed = false;
+  for (const r of rows) {
+    if (!r.date || r.date < mergeCutoff) continue;
+    const localU = log[r.entry_id]?._u || 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (log[r.entry_id]) { delete log[r.entry_id]; changed = true; } }
+    else if (r.payload) { log[r.entry_id] = { ...r.payload, _u: r.updated_at }; changed = true; }
+  }
+  if (changed) _syncSet('liftLog2', log);
+}
+
+// ── Shadow rebuild after a successful sync ──────────────────────────────
+function _syncRebuildShadow(table) {
+  if (table === 'food') {
+    const all = getStorage('foodEntries', {}), sh = {};
+    for (const [date, arr] of Object.entries(all)) {
+      if (!Array.isArray(arr)) continue;
+      sh[date] = {};
+      for (const e of arr) if (e._id) sh[date][e._id] = { h: JSON.stringify({ ...e, _u: 0 }) };
+    }
+    _syncSet('_syncShadow_food', sh);
+  } else if (table === 'weight') {
+    _syncSet('_syncShadow_weight', { ...getStorage('weightLog', {}) });
+  } else if (table === 'shoes') {
+    const sh = {};
+    for (const s of getStorage('shoeGarage', [])) if (s.id) sh['shoe:' + s.id] = { h: JSON.stringify({ ...s, _u: 0 }) };
+    for (const r of getStorage('shoeRuns', [])) if (r._id) sh['run:' + r._id] = { h: JSON.stringify({ ...r, _u: 0 }) };
+    _syncSet('_syncShadow_shoes', sh);
+  } else if (table === 'lifts') {
+    const sh = {};
+    for (const [key, val] of Object.entries(getStorage('liftLog2', {}))) {
+      if (!val || typeof val !== 'object') continue;
+      const date = (val.date && /^\d{4}-\d{2}-\d{2}$/.test(val.date)) ? val.date : key.slice(0, 10);
+      sh[key] = { h: JSON.stringify({ ...val, _u: 0 }), d: date };
+    }
+    _syncSet('_syncShadow_lifts', sh);
+  }
+}
+
+const _SYNC_IMPL = {
+  food:   { toRows: _syncFoodRows,   apply: _syncApplyFood },
+  weight: { toRows: _syncWeightRows, apply: _syncApplyWeight },
+  shoes:  { toRows: _syncShoeRows,   apply: _syncApplyShoes },
+  lifts:  { toRows: _syncLiftRows,   apply: _syncApplyLifts },
+};
+
+// ── Core sync: pull-merge, then push local diff, then settle shadow ─────
+async function syncLogTable(table) {
+  if (!_authToken) return false;
+  const impl = _SYNC_IMPL[table];
+  try {
+    const since = getStorage('_syncPull_' + table, 0);
+    const res = await fetch('/api/log/' + table + '?since=' + since, { headers: authHeaders() });
+    if (res.status === 401) return false;           // session problem — checkAuth owns that
+    if (!res.ok) throw new Error('pull ' + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'pull failed');
+    _syncApplying = true;
+    try { impl.apply(data.rows || []); } finally { _syncApplying = false; }
+
+    const rows = impl.toRows();
+    for (let i = 0; i < rows.length; i += 400) {
+      const pr = await fetch('/api/log/' + table, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ entries: rows.slice(i, i + 400) })
+      });
+      if (!pr.ok) throw new Error('push ' + pr.status);
+    }
+    _syncRebuildShadow(table);
+    _syncSet('_syncPull_' + table, data.now);
+    _syncSet('_syncDirty_' + table, 0);
+    _syncSet('_syncLastOk', Date.now());
+    return true;
+  } catch (e) {
+    _syncSet('_syncDirty_' + table, 1);
+    console.warn('[sync]', table, e.message);
+    return false;
+  }
+}
+
+async function syncAllLogs() {
+  for (const t of SYNC_TABLES) await syncLogTable(t);
+  try { updateSyncStatusUI(); } catch(_) {}
+}
+
+// Settings: force-push everything local → server (safety backfill)
+async function forceBackfillSync() {
+  showToast('☁️ Backfilling all local data to server…');
+  for (const t of SYNC_TABLES) {
+    _syncSet('_syncShadow_' + t, {});   // empty shadow = everything looks new
+  }
+  await syncAllLogs();
+  const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
+  showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+function updateSyncStatusUI() {
+  const el = document.getElementById('syncStatusLine');
+  if (!el) return;
+  const last = getStorage('_syncLastOk', 0);
+  const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
+  el.textContent = !last ? 'Never synced'
+    : dirty.length ? `⚠️ Pending: ${dirty.join(', ')} — retries automatically`
+    : `Last synced ${new Date(last).toLocaleTimeString()}`;
+}
+// ═══ End D1 log sync ═══
 
 // ── SVG Ring ──
 let ringMode = 'consumed'; // 'consumed' | 'remaining'
@@ -3652,6 +3964,7 @@ function openSettings() {
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
   updateTPSettingsUI();
+  updateSyncStatusUI();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
@@ -8776,6 +9089,7 @@ function pruneOldData() {
 function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
   safeCall(pruneOldData, 'pruneOldData');
+  safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 
@@ -8923,6 +9237,12 @@ document.addEventListener('visibilitychange', () => {
         const stale = !sc || (sc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
         if (stale) fetchTPToday();
       }
+    } catch(e) {}
+    // Log sync on resume: retry anything dirty, or refresh if it's been a while
+    try {
+      const dirty = SYNC_TABLES.some(t => getStorage('_syncDirty_' + t, 0));
+      const lastOk = getStorage('_syncLastOk', 0);
+      if (dirty || Date.now() - lastOk > 5 * 60 * 1000) syncAllLogs();
     } catch(e) {}
   }
 });

@@ -91,6 +91,56 @@ async function getSessionUser(db, req) {
 }
 __name(getSessionUser, "getSessionUser");
 
+// Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
+const SCHEMA_VERSION = 3;
+
+// ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
+const LOG_TABLES = {
+  food:   { table: "food_log",     kind: "dated" },
+  weight: { table: "weight_log",   kind: "weight" },
+  shoes:  { table: "shoe_mileage", kind: "keyed" },
+  lifts:  { table: "lift_log",     kind: "dated" },
+};
+
+function logUpsertStmt(db, cfg, userId, e) {
+  const updatedAt = Number(e.updated_at);
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return null;
+  const deleted = e.deleted ? 1 : 0;
+  const payload = JSON.stringify(e.payload ?? {});
+  if (payload.length > 32768) return null;
+
+  if (cfg.kind === "dated") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || "") || typeof e.entry_id !== "string" || !e.entry_id || e.entry_id.length > 128) return null;
+    return db.prepare(`INSERT INTO ${cfg.table} (user_id, date, entry_id, payload_json, updated_at, deleted)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, date, entry_id) DO UPDATE SET
+        payload_json = excluded.payload_json, updated_at = excluded.updated_at, deleted = excluded.deleted
+      WHERE excluded.updated_at > ${cfg.table}.updated_at`)
+      .bind(userId, e.date, e.entry_id, payload, updatedAt, deleted);
+  }
+  if (cfg.kind === "weight") {
+    const lbs = Number(e.weight_lbs);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || "") || !Number.isFinite(lbs) || lbs <= 0 || lbs > 1000) return null;
+    return db.prepare(`INSERT INTO weight_log (user_id, date, weight_lbs, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        weight_lbs = excluded.weight_lbs, updated_at = excluded.updated_at
+      WHERE excluded.updated_at > weight_log.updated_at`)
+      .bind(userId, e.date, lbs, updatedAt);
+  }
+  if (cfg.kind === "keyed") {
+    if (typeof e.shoe_id !== "string" || !e.shoe_id || e.shoe_id.length > 128) return null;
+    return db.prepare(`INSERT INTO shoe_mileage (user_id, shoe_id, payload_json, updated_at, deleted)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, shoe_id) DO UPDATE SET
+        payload_json = excluded.payload_json, updated_at = excluded.updated_at, deleted = excluded.deleted
+      WHERE excluded.updated_at > shoe_mileage.updated_at`)
+      .bind(userId, e.shoe_id, payload, updatedAt, deleted);
+  }
+  return null;
+}
+__name(logUpsertStmt, "logUpsertStmt");
+
 // ── TrainingPeaks helpers ────────────────────────────────────────────────
 const TP_API_BASE = "https://tpapi.trainingpeaks.com";
 const TP_RUN_TYPES = new Set([3, 6, 13]); // Run, Race, Walk
@@ -162,7 +212,7 @@ var worker_default = {
       // Key details only for an authenticated session — public callers get a bare health check
       const statusUser = await getSessionUser(env.DB, req).catch(() => null);
       const body = statusUser
-        ? { ok: true, hasKey: !!env.ANTHROPIC_KEY }
+        ? { ok: true, hasKey: !!env.ANTHROPIC_KEY, schemaVersion: SCHEMA_VERSION }
         : { ok: true };
       return new Response(JSON.stringify(body), { headers: CORS });
     }
@@ -420,6 +470,43 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         return new Response(JSON.stringify(data), { status: r.ok ? 200 : r.status, headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Log sync: GET pulls rows since cursor, POST upserts (LWW on updated_at) ──
+    if (u.pathname.startsWith("/api/log/")) {
+      const cfg = LOG_TABLES[u.pathname.slice("/api/log/".length)];
+      if (!cfg) return new Response(JSON.stringify({ error: "Unknown log" }), { status: 404, headers: CORS });
+      const logUser = await getSessionUser(env.DB, req);
+      if (!logUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+
+      if (req.method === "GET") {
+        try {
+          const since = Number(u.searchParams.get("since") || 0) || 0;
+          const rows = (await env.DB.prepare(
+            `SELECT * FROM ${cfg.table} WHERE user_id = ? AND updated_at > ? ORDER BY updated_at ASC LIMIT 4000`
+          ).bind(logUser.id, since).all()).results.map(r => {
+            if (r.payload_json !== undefined) { try { r.payload = JSON.parse(r.payload_json); } catch(_) { r.payload = null; } delete r.payload_json; }
+            return r;
+          });
+          return new Response(JSON.stringify({ ok: true, now: Date.now(), rows }), { headers: CORS });
+        } catch (e) {
+          return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+        }
+      }
+
+      if (req.method === "POST") {
+        try {
+          const { entries } = await req.json();
+          if (!Array.isArray(entries) || entries.length > 500) {
+            return new Response(JSON.stringify({ ok: false, error: "entries must be an array of ≤500" }), { status: 400, headers: CORS });
+          }
+          const stmts = entries.map(e => logUpsertStmt(env.DB, cfg, logUser.id, e)).filter(Boolean);
+          if (stmts.length) await env.DB.batch(stmts);
+          return new Response(JSON.stringify({ ok: true, applied: stmts.length, skipped: entries.length - stmts.length, now: Date.now() }), { headers: CORS });
+        } catch (e) {
+          return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+        }
       }
     }
 

@@ -1323,6 +1323,22 @@ PROMISE ERROR:
       </div>
     </div>
 
+    <!-- ── CLOUD SYNC ── -->
+    <div class="settings-section">
+      <div class="settings-section-title">☁️ Cloud Sync</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:10px">
+        Food, weight, shoes, and lifts sync to the server automatically so every device sees the same data.
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Status</div>
+          <div class="settings-row-sub" id="syncStatusLine">—</div>
+        </div>
+        <button class="btn-green" style="width:auto;padding:8px 14px" onclick="syncAllLogs()">Sync now</button>
+      </div>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="forceBackfillSync()">⬆️ Force full backfill (local → server)</button>
+    </div>
+
     <!-- ── NUTRITION DATABASES ── -->
     <div class="settings-section">
       <div class="settings-section-title">🗄️ Nutrition Databases</div>
