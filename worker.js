@@ -423,26 +423,6 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       }
     }
 
-    // ── Garmin OAuth proxy ──────────────────────────────────────────────
-    if (u.pathname === "/api/garmin/proxy" && req.method === "POST") {
-      const user = await getSessionUser(env.DB, req);
-      if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
-      try {
-        const { url, method: m, headers: h } = await req.json();
-        if (!url || !url.startsWith("https://connectapi.garmin.com/")) {
-          return new Response(JSON.stringify({ error: "Invalid Garmin URL" }), { status: 400, headers: CORS });
-        }
-        const r = await fetch(url, { method: m || "POST", headers: h || {} });
-        const text = await r.text();
-        return new Response(text, {
-          status: r.status,
-          headers: { "content-type": "text/plain", "access-control-allow-origin": "*" }
-        });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
-      }
-    }
-
     // ── TrainingPeaks: connect (store cookie, exchange for token) ───────
     if (u.pathname === "/api/tp/auth" && req.method === "POST") {
       const tpAuthUser = await getSessionUser(env.DB, req);

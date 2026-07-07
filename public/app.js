@@ -3632,11 +3632,6 @@ function logAIFood() {
 // ── Settings ──
 function openSettings() {
   document.getElementById('settingsModal').classList.add('open');
-  const creds = getStorage('garminCreds', null);
-  if (creds) {
-    document.getElementById('garminKey').value    = creds.key    || '';
-    document.getElementById('garminSecret').value = creds.secret || '';
-  }
   const goals = getStorage('userGoals', {});
   if (goals.weight) document.getElementById('settingWeight').value     = goals.weight;
   if (goals.goal)   document.getElementById('settingGoalWeight').value = goals.goal;
@@ -3656,7 +3651,6 @@ function openSettings() {
   // Reset auto-calc result
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
-  updateGarminSettingsUI();
   updateTPSettingsUI();
 }
 function closeSettings() {
@@ -3900,251 +3894,13 @@ function autoCalcTDEE() {
     </div>`;
 }
 
-// ── Garmin OAuth 1.0a ──
-// Garmin uses OAuth 1.0a. Since this runs client-side we do the request-token
-// step via a CORS proxy, then redirect the user to Garmin's auth page.
-// On return the verifier comes back in the URL and we exchange for access token.
-
-const GARMIN_BASE      = 'https://connectapi.garmin.com';
-const GARMIN_REQ_URL   = GARMIN_BASE + '/oauth-service/oauth/request_token';
-const GARMIN_AUTH_URL  = 'https://connect.garmin.com/oauthConfirm';
-const GARMIN_ACCESS_URL= GARMIN_BASE + '/oauth-service/oauth/access_token';
-const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/activities';
-// Garmin requests proxied through our backend to avoid third-party CORS proxy
-async function garminProxy(url, method, headers) {
-  const res = await fetch('/api/garmin/proxy', {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
-  });
-  return res;
-}
-
-function b64(str) { return btoa(unescape(encodeURIComponent(str))); }
-function rfc3986(str) { return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
-
-function generateNonce() {
-  return Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
-}
-
-function oauthHeader(method, url, params, consumerKey, consumerSecret, tokenKey='', tokenSecret='') {
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const nonce = generateNonce();
-  const base = {
-    oauth_consumer_key: consumerKey,
-    oauth_nonce: nonce,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: ts,
-    oauth_token: tokenKey,
-    oauth_version: '1.0',
-    ...params
-  };
-  if (!tokenKey) delete base.oauth_token;
-
-  const sortedKeys = Object.keys(base).sort();
-  const paramStr = sortedKeys.map(k => `${rfc3986(k)}=${rfc3986(base[k])}`).join('&');
-  const sigBase = `${method}&${rfc3986(url)}&${rfc3986(paramStr)}`;
-  const sigKey  = `${rfc3986(consumerSecret)}&${rfc3986(tokenSecret)}`;
-
-  // HMAC-SHA1 via Web Crypto
-  return { sigBase, sigKey, nonce, ts, base };
-}
-
-async function hmacSha1(key, data) {
-  const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(data));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
-
-async function buildAuthHeader(method, url, extraParams, consumerKey, consumerSecret, tokenKey='', tokenSecret='') {
-  const { sigBase, sigKey, nonce, ts, base } = oauthHeader(method, url, extraParams, consumerKey, consumerSecret, tokenKey, tokenSecret);
-  const sig = await hmacSha1(sigKey, sigBase);
-  const headerParams = { ...base, oauth_signature: sig };
-  if (!tokenKey) delete headerParams.oauth_token;
-  const hdr = 'OAuth ' + Object.keys(headerParams).sort()
-    .map(k => `${rfc3986(k)}="${rfc3986(headerParams[k])}"`)
-    .join(', ');
-  return hdr;
-}
-
-async function startGarminOAuth() {
-  const key    = document.getElementById('garminKey').value.trim();
-  const secret = document.getElementById('garminSecret').value.trim();
-  if (!key || !secret) { showToast('⚠️ Enter your Consumer Key and Secret first'); return; }
-
-  setStorage('garminCreds', { key, secret });
-  showToast('🔄 Requesting token from Garmin…');
-
-  try {
-    const callbackUrl = encodeURIComponent(window.location.href.split('?')[0]);
-    const authHeader = await buildAuthHeader('POST', GARMIN_REQ_URL, { oauth_callback: callbackUrl }, key, secret);
-
-    const res = await garminProxy(GARMIN_REQ_URL, 'POST', {
-      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
-    });
-    const text = await res.text();
-    const params = Object.fromEntries(new URLSearchParams(text));
-
-    if (!params.oauth_token) throw new Error('No request token received. Check your Consumer Key/Secret.');
-
-    setStorage('garminReqToken', params);
-    // Redirect to Garmin authorize page
-    window.location.href = `${GARMIN_AUTH_URL}?oauth_token=${params.oauth_token}`;
-
-  } catch (err) {
-    showToast('❌ ' + err.message);
-  }
-}
-
-async function handleOAuthCallback() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const verifier  = urlParams.get('oauth_verifier');
-  const token     = urlParams.get('oauth_token');
-  if (!verifier || !token) return;
-
-  // Clean URL
-  window.history.replaceState({}, '', window.location.pathname);
-
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthTitle').textContent = 'Completing authorization…';
-  document.getElementById('oauthMsg').textContent = 'Exchanging tokens with Garmin. This takes just a moment.';
-
-  const creds    = getStorage('garminCreds', {});
-  const reqToken = getStorage('garminReqToken', {});
-
-  try {
-    const authHeader = await buildAuthHeader(
-      'POST', GARMIN_ACCESS_URL,
-      { oauth_verifier: verifier },
-      creds.key, creds.secret,
-      reqToken.oauth_token, reqToken.oauth_token_secret
-    );
-    const res = await garminProxy(GARMIN_ACCESS_URL, 'POST', {
-      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
-    });
-    const text = await res.text();
-    const accessParams = Object.fromEntries(new URLSearchParams(text));
-
-    if (!accessParams.oauth_token) throw new Error('Token exchange failed. Try connecting again.');
-
-    setStorage('garminToken', {
-      token: accessParams.oauth_token,
-      secret: accessParams.oauth_token_secret,
-      displayName: accessParams.display_name || 'Garmin User'
-    });
-
-    document.getElementById('oauthIcon').textContent = '✅';
-    document.getElementById('oauthTitle').textContent = 'Connected!';
-    document.getElementById('oauthMsg').textContent = `Successfully connected as ${accessParams.display_name || 'your Garmin account'}. Fetching today\'s activities…`;
-
-    setTimeout(() => {
-      document.getElementById('oauthModal').classList.remove('open');
-      updateGarminSettingsUI();
-      fetchGarminToday();
-    }, 2000);
-
-  } catch (err) {
-    document.getElementById('oauthIcon').textContent = '❌';
-    document.getElementById('oauthTitle').textContent = 'Connection failed';
-    document.getElementById('oauthMsg').textContent = err.message;
-  }
-}
-
-function updateGarminSettingsUI() {
-  const tok = getStorage('garminToken', null);
-  const statusEl  = document.getElementById('garminConnectStatus');
-  const setupEl   = document.getElementById('garminSetupSteps');
-  const panelEl   = document.getElementById('garminConnectedPanel');
-  if (tok) {
-    statusEl.className = 'connect-status connected';
-    statusEl.textContent = '🟢 Connected';
-    setupEl.style.display  = 'none';
-    panelEl.style.display  = 'block';
-    document.getElementById('garminUsername').textContent = tok.displayName || 'Garmin User';
-  } else {
-    statusEl.className = 'connect-status disconnected';
-    statusEl.textContent = '⚪ Not connected';
-    setupEl.style.display  = 'block';
-    panelEl.style.display  = 'none';
-  }
-}
-
-function toggleAutoAdjust(btn) {
-  btn.classList.toggle('on');
-  setStorage('garminAutoAdjust', btn.classList.contains('on'));
-}
-
-function disconnectGarmin() {
-  if (!confirm('Disconnect your Garmin account?')) return;
-  localStorage.removeItem('garminToken');
-  localStorage.removeItem('garminCreds');
-  localStorage.removeItem('garminReqToken');
-  updateGarminSettingsUI();
-  document.getElementById('garminCard').style.display = 'none';
-  showToast('Garmin disconnected');
-}
-
-// ── Fetch today's Garmin activities ──
-async function fetchGarminToday() {
-  const tok   = getStorage('garminToken', null);
-  const creds = getStorage('garminCreds', null);
-  if (!tok || !creds) return;
-
-  document.getElementById('garminCard').style.display = 'block';
-  document.getElementById('garminActivitySub').textContent = 'Syncing…';
-
-  const today = nowEST();
-  const startLocal = dateToKey(today);
-  const apiUrl = `${GARMIN_API_BASE}?startDate=${startLocal}&limit=10`;
-
-  try {
-    const authHeader = await buildAuthHeader(
-      'GET', GARMIN_API_BASE,
-      { startDate: startLocal, limit: '10' },
-      creds.key, creds.secret,
-      tok.token, tok.secret
-    );
-    const res = await garminProxy(apiUrl, 'GET', {
-      'Authorization': authHeader, 'Accept': 'application/json'
-    });
-    if (!res.ok) throw new Error(`Garmin API error ${res.status}`);
-    const activities = await res.json();
-
-    // Sum up runs / cardio for today
-    let totalCalories = 0, totalDistance = 0, totalDuration = 0, activityCount = 0;
-    const runTypes = ['running','trail_running','treadmill_running','track_running'];
-
-    (Array.isArray(activities) ? activities : []).forEach(a => {
-      const type = (a.activityType?.typeKey || '').toLowerCase();
-      if (runTypes.some(r => type.includes(r))) {
-        totalCalories += a.calories || 0;
-        totalDistance += a.distance || 0;
-        totalDuration += a.duration || 0;
-        activityCount++;
-      }
-    });
-
-    renderGarminCard(totalCalories, totalDistance, totalDuration, activityCount);
-    if (getStorage('garminAutoAdjust', true)) {
-      adjustMacrosForBurn(Math.round(totalCalories * 0.75)); // net burn only
-    }
-    setStorage('garminToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
-
-  } catch (err) {
-    document.getElementById('garminActivitySub').textContent = '⚠️ Sync failed — ' + err.message;
-  }
-}
-
-function renderGarminCard(calories, distance, duration, count, source='garmin') {
+function renderGarminCard(calories, distance, duration, count) {
   const km    = (distance / 1000).toFixed(1);
   const miles = (distance / 1609.34).toFixed(1);
   const mins  = Math.round(duration / 60);
   const hrs   = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
-  const srcLabel = source === 'tp' ? 'TrainingPeaks' : 'Garmin Connect';
-  const srcEmoji = source === 'tp' ? '⛰️' : '🔵';
+  const srcLabel = 'TrainingPeaks';
+  const srcEmoji = '⛰️';
 
   document.getElementById('garminActivityTitle').textContent = count > 0 ? `${count} run${count>1?'s':''} today` : 'No runs today';
   document.getElementById('garminActivitySub').textContent   = count > 0
@@ -4185,7 +3941,7 @@ function renderGarminCard(calories, distance, duration, count, source='garmin') 
 }
 
 function openTodayShoeAssign() {
-  const cached = getStorage('tpToday', null) || getStorage('garminToday', null);
+  const cached = getStorage('tpToday', null);
   if (!cached || !cached.distance) { showToast('⚠️ No run data — sync TrainingPeaks first'); return; }
   promptShoeAssignment({
     date:       todayKey(),
@@ -4283,7 +4039,7 @@ async function fetchTPToday() {
       throw new Error(data.error || ('API ' + res.status));
     }
 
-    renderGarminCard(data.calories, data.distance, data.duration, data.count, 'tp');
+    renderGarminCard(data.calories, data.distance, data.duration, data.count);
     // Device-reported workout calories are gross expenditure (include BMR during
     // the run). Our TDEE already covers BMR for the full day, so we only add the
     // NET incremental burn: ~75% of gross is the standard correction.
@@ -4340,9 +4096,7 @@ async function disconnectTrainingPeaks() {
   localStorage.removeItem('tpConnected');
   localStorage.removeItem('tpToday');
   updateTPSettingsUI();
-  // Hide garmin card only if garmin also not connected
-  const garminTok = getStorage('garminToken', null);
-  if (!garminTok) document.getElementById('garminCard').style.display = 'none';
+  document.getElementById('garminCard').style.display = 'none';
   renderRings();
   showToast('TrainingPeaks disconnected');
 }
@@ -4524,7 +4278,7 @@ function checkAdaptiveMacros() {
   renderRings();
 }
 
-// renderRings — checks adaptive macros, Garmin/TrainingPeaks adjustments, and ringMode
+// renderRings — checks adaptive macros, TrainingPeaks adjustments, and ringMode
 function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
@@ -4551,9 +4305,8 @@ function renderRings(overrideMacros) {
   safeCall(renderWhoopDayBadge, "whoopDayBadge");
   if (tSrc) {
     if (garminAdj || overrideMacros) {
-      const hasTP = !!getStorage('tpConnected', null);
-      tSrc.textContent = hasTP ? '⛰️ TrainingPeaks' : '🔵 Garmin';
-      tSrc.style.color = hasTP ? '#1064a3' : '#3b82f6';
+      tSrc.textContent = '⛰️ TrainingPeaks';
+      tSrc.style.color = '#1064a3';
     } else if (adaptive) {
       tSrc.textContent = '🧠 Adaptive';
       tSrc.style.color = '#8b5cf6';
@@ -5120,7 +4873,7 @@ function renderWeeklyBalance() {
     const isToday = key === todayStr;
     const isPast  = key <= todayStr;
 
-    // Burn calories from TrainingPeaks/Garmin burnLog or shoe run estimate
+    // Burn calories from TrainingPeaks burnLog or shoe run estimate
     let dayBurn = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
     if (!dayBurn) {
       const dayRuns = shoeRuns.filter(r => r.date === key);
@@ -5953,9 +5706,8 @@ const BACKUP_KEYS = [
   'macroLog', 'foodEntries', 'weightLog',
   'savedFoods', 'savedRecipes', 'liftLog', 'liftLog2',
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
-  'garminToday',
   'tpToday',
-  'garminAutoAdjust', 'tpAutoAdjust',
+  'tpAutoAdjust',
   'shoeGarage', 'shoeRuns',
 ];
 
@@ -6073,13 +5825,12 @@ function formatPace(minPerMile) {
 function renderShoeStravaCard() {
   const card = document.getElementById('shoeStravaCard');
   if (!card) return;
-  const cached   = getStorage('tpToday', null) || getStorage('garminToday', null);
-  const isTP     = !!getStorage('tpConnected', null);
-  const isGarmin = !!getStorage('garminToken', null);
-  if (!cached || (!isTP && !isGarmin)) { card.style.display = 'none'; return; }
+  const cached = getStorage('tpToday', null);
+  const isTP   = !!getStorage('tpConnected', null);
+  if (!cached || !isTP) { card.style.display = 'none'; return; }
 
   const miles  = ((cached.distance || 0) / 1609.34).toFixed(2);
-  const source = isTP ? '⛰️ Synced from TrainingPeaks' : '🔵 Synced from Garmin';
+  const source = '⛰️ Synced from TrainingPeaks';
 
   document.getElementById('shoeStravaMiles').textContent = parseFloat(miles) > 0 ? `${miles} mi` : '0 mi';
   document.getElementById('shoeStravaSub').textContent   = source;
@@ -9163,20 +8914,14 @@ document.addEventListener('visibilitychange', () => {
     // Show daily check-in if not done yet today (handles mobile resume / tab switch)
     _checkinGuardFired = false; // reset guard so it can fire again if needed
     try { maybeShowWelcomeModal(); } catch(e) {}
-    // Re-check TrainingPeaks/Garmin on resume — catches runs finished while app was in background
+    // Re-check TrainingPeaks on resume — catches runs finished while app was in background
     try {
       const tpConn = getStorage('tpConnected', null);
-      const garminTok = getStorage('garminToken', null);
       if (tpConn) {
         const sc = getStorage('tpToday', null);
         const age = sc ? Date.now() - sc.fetched : Infinity;
         const stale = !sc || (sc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
         if (stale) fetchTPToday();
-      } else if (garminTok) {
-        const gc = getStorage('garminToday', null);
-        const age = gc ? Date.now() - gc.fetched : Infinity;
-        const stale = !gc || (gc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
-        if (stale) fetchGarminToday();
       }
     } catch(e) {}
   }
@@ -9189,15 +8934,13 @@ document.addEventListener('visibilitychange', () => {
   if (btn) { btn.classList.add('active'); selectedTimeSlot = currentSlot; }
 })();
 
-// Handle OAuth callbacks (Garmin)
-handleOAuthCallback();
 
-// Auto-load activity data if connected (TrainingPeaks takes priority if both connected)
+// Auto-load activity data if TrainingPeaks is connected
 (function() {
-  // One-time cleanup of the retired Strava integration's storage
-  ['stravaToken','stravaToday','stravaAutoAdjust','stravaAdjustedMacros'].forEach(k => localStorage.removeItem(k));
-  const tpConn    = getStorage('tpConnected', null);
-  const garminTok = getStorage('garminToken', null);
+  // One-time cleanup of the retired Strava and Garmin integrations' storage
+  ['stravaToken','stravaToday','stravaAutoAdjust','stravaAdjustedMacros',
+   'garminToken','garminCreds','garminReqToken','garminToday','garminAutoAdjust'].forEach(k => localStorage.removeItem(k));
+  const tpConn = getStorage('tpConnected', null);
 
   function shouldUseCached(cached) {
     if (!cached) return false;
@@ -9212,19 +8955,10 @@ handleOAuthCallback();
     document.getElementById('garminCard').style.display = 'block';
     const cached = getStorage('tpToday', null);
     if (shouldUseCached(cached)) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'tp');
+      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0);
       if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
     } else {
       fetchTPToday();
-    }
-  } else if (garminTok) {
-    document.getElementById('garminCard').style.display = 'block';
-    const cached = getStorage('garminToday', null);
-    if (shouldUseCached(cached)) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'garmin');
-      if (getStorage('garminAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
-    } else {
-      fetchGarminToday();
     }
   }
 })();
