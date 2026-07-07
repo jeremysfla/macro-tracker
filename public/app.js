@@ -249,7 +249,7 @@ function initGoogleSignIn() {
 // ── End Auth ──
 
 let MACROS = { calories: 1500, protein: 165, carbs: 86, fat: 55 };
-let TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — Strava adds run calories on top
+let TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — TrainingPeaks adds run calories on top
 const MACRO_COLORS = { calories: '#f59e0b', protein: '#4ade80', carbs: '#60a5fa', fat: '#f87171' };
 
 const PROGRAM = {
@@ -3657,7 +3657,7 @@ function openSettings() {
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
   updateGarminSettingsUI();
-  updateStravaSettingsUI();
+  updateTPSettingsUI();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
@@ -3754,7 +3754,7 @@ function updateMacroTargetsRow() {
     } else if (deficit > 0) {
       tipTime = ' · ~' + (Math.round(((cw-gw)*3500)/(deficit*7)*10)/10) + ' wks at this deficit';
     }
-        el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. Strava auto-adds carbs &amp; cals on run days.'
+        el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. TrainingPeaks auto-adds carbs &amp; cals on run days.'
   }
 }
 
@@ -4143,8 +4143,8 @@ function renderGarminCard(calories, distance, duration, count, source='garmin') 
   const miles = (distance / 1609.34).toFixed(1);
   const mins  = Math.round(duration / 60);
   const hrs   = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
-  const srcLabel = source === 'strava' ? 'Strava' : 'Garmin Connect';
-  const srcEmoji = source === 'strava' ? '🟠' : '🔵';
+  const srcLabel = source === 'tp' ? 'TrainingPeaks' : 'Garmin Connect';
+  const srcEmoji = source === 'tp' ? '⛰️' : '🔵';
 
   document.getElementById('garminActivityTitle').textContent = count > 0 ? `${count} run${count>1?'s':''} today` : 'No runs today';
   document.getElementById('garminActivitySub').textContent   = count > 0
@@ -4185,8 +4185,8 @@ function renderGarminCard(calories, distance, duration, count, source='garmin') 
 }
 
 function openTodayShoeAssign() {
-  const cached = getStorage('stravaToday', null) || getStorage('garminToday', null);
-  if (!cached || !cached.distance) { showToast('⚠️ No run data — sync Strava first'); return; }
+  const cached = getStorage('tpToday', null) || getStorage('garminToday', null);
+  if (!cached || !cached.distance) { showToast('⚠️ No run data — sync TrainingPeaks first'); return; }
   promptShoeAssignment({
     date:       todayKey(),
     miles:      cached.distance / 1609.34,
@@ -4238,176 +4238,89 @@ function adjustMacrosForBurn(burnCalories) {
   renderWeeklyBalance();
 }
 
-// ── Strava OAuth 2.0 (server-side) ──
-const STRAVA_API_BASE   = 'https://www.strava.com/api/v3';
+// ── TrainingPeaks (cookie auth, proxied through the worker) ──
 
-function startStravaOAuth() {
-  // Server handles the redirect to Strava with credentials
-  window.location.href = '/api/strava/auth';
-}
-
-function handleStravaCallback() {
-  // Server redirects back with token in hash fragment: #strava_token={...}
-  const hash = window.location.hash;
-  if (!hash.startsWith('#strava_token=')) return;
-
-  // Clean URL immediately
-  window.history.replaceState({}, '', window.location.pathname);
-
-  let tokenData;
+async function connectTrainingPeaks() {
+  const input = document.getElementById('tpCookieInput');
+  const cookie = (input.value || '').trim();
+  if (!cookie) { showToast('⚠️ Paste your Production_tpAuth cookie value first'); return; }
+  showToast('Connecting to TrainingPeaks…');
   try {
-    tokenData = JSON.parse(decodeURIComponent(hash.replace('#strava_token=', '')));
-  } catch (e) {
-    showToast('⚠️ Failed to parse Strava token');
-    return;
-  }
-
-  setStorage('stravaToken', tokenData);
-
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthIcon').textContent  = '✅';
-  document.getElementById('oauthTitle').textContent = 'Strava Connected!';
-  const name = `${tokenData.athlete?.firstname || ''} ${tokenData.athlete?.lastname || ''}`.trim() || 'Strava User';
-  document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
-
-  setTimeout(() => {
-    document.getElementById('oauthModal').classList.remove('open');
-    updateStravaSettingsUI();
-    fetchStravaToday();
-  }, 2000);
-}
-
-async function refreshStravaTokenIfNeeded() {
-  const tok = getStorage('stravaToken', null);
-  if (!tok) return null;
-
-  // Token still valid
-  if (Date.now() / 1000 < tok.expiresAt - 300) return tok.accessToken;
-
-  // Refresh via server-side proxy (keeps client_secret server-side)
-  try {
-    const res = await fetch('/api/strava/refresh', {
+    const res = await fetch('/api/tp/auth', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: tok.refreshToken })
+      headers: authHeaders(),
+      body: JSON.stringify({ cookie })
     });
     const data = await res.json();
-    if (!data.accessToken) {
-      console.warn('Strava refresh response:', data);
-      showToast('⚠️ Strava token refresh failed — try reconnecting in Settings');
-      return tok.accessToken;
-    }
-    const updated = { ...tok, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt };
-    setStorage('stravaToken', updated);
-    return data.accessToken;
-  } catch(e) {
-    console.warn('Strava refresh error:', e);
-    return tok.accessToken;
+    if (!res.ok || !data.ok) { showToast('⚠️ ' + (data.error || 'TrainingPeaks connection failed')); return; }
+    input.value = '';
+    setStorage('tpConnected', { athlete: data.athlete, connectedAt: Date.now() });
+    updateTPSettingsUI();
+    showToast('✅ Connected as ' + (data.athlete?.name || 'athlete'));
+    fetchTPToday();
+  } catch (e) {
+    showToast('⚠️ TrainingPeaks error: ' + e.message);
   }
 }
 
-async function fetchStravaToday() {
-  const accessToken = await refreshStravaTokenIfNeeded();
-  if (!accessToken) return;
+async function fetchTPToday() {
+  if (!getStorage('tpConnected', null)) return;
 
   document.getElementById('garminCard').style.display = 'block';
-  document.getElementById('garminActivitySub').textContent = 'Syncing from Strava…';
-
-  // Get today's date in EST, then build UTC unix timestamps for midnight EST = 05:00 UTC
-  const estDate = todayKey(); // YYYY-MM-DD in EST
-  const startOfDay = Math.floor(new Date(estDate + 'T05:00:00Z').getTime() / 1000); // midnight EST = 05:00 UTC
-  const endOfDay   = Math.floor(new Date(estDate + 'T04:59:59Z').getTime() / 1000) + 86400; // 23:59:59 EST
+  document.getElementById('garminActivitySub').textContent = 'Syncing from TrainingPeaks…';
 
   try {
-    const res = await fetch(
-      `${STRAVA_API_BASE}/athlete/activities?after=${startOfDay}&before=${endOfDay}&per_page=30`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
+    const res = await fetch('/api/tp/today?date=' + todayKey(), { headers: authHeaders() });
+    const data = await res.json();
 
-    if (res.status === 401) {
-      // Token truly expired and refresh failed — ask user to reconnect
-      document.getElementById('garminActivitySub').textContent = '⚠️ Strava session expired — reconnect in Settings';
-      setStorage('stravaToken', null);
-      return;
-    }
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      throw new Error(`Strava API ${res.status}: ${errText.slice(0,120)}`);
-    }
-
-    const activities = await res.json();
-
-    const runTypes = ['Run','VirtualRun','TrailRun','Treadmill','Walk','Hike'];
-    const todayRuns = activities.filter(a => {
-      const type = a.sport_type || a.type || '';
-      return runTypes.some(t => type.toLowerCase().includes(t.toLowerCase()));
-    });
-
-    let totalCalories = 0, totalDistance = 0, totalDuration = 0, count = todayRuns.length;
-
-    // Fetch detail for each run in parallel (calories not in list endpoint)
-    const details = await Promise.all(todayRuns.map(async (a) => {
-      let cal = 0;
-      try {
-        const detailRes = await fetch(
-          `${STRAVA_API_BASE}/activities/${a.id}`,
-          { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          cal = detail.calories || 0;
-        }
-      } catch(e) {
-        cal = a.kilojoules ? Math.round(a.kilojoules / 4.184) : 0;
+    if (!res.ok || !data.ok) {
+      if (data.error === 'cookie_expired' || data.error === 'not_connected') {
+        document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks session expired — reconnect in Settings';
+        setStorage('tpConnected', null);
+        updateTPSettingsUI();
+        return;
       }
-      return { cal, distance: a.distance || 0, duration: a.moving_time || 0 };
-    }));
-    for (const d of details) {
-      totalCalories += d.cal;
-      totalDistance += d.distance;
-      totalDuration += d.duration;
+      throw new Error(data.error || ('API ' + res.status));
     }
 
-    renderGarminCard(totalCalories, totalDistance, totalDuration, count, 'strava');
-    // Strava's calories field = gross expenditure (includes BMR during run).
-    // Our TDEE already includes BMR for the full day, so we only add the NET
-    // incremental burn: ~75% of gross is the standard correction.
-    const netBurn = Math.round(totalCalories * 0.75);
-    if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(netBurn);
-    setStorage('stravaToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
+    renderGarminCard(data.calories, data.distance, data.duration, data.count, 'tp');
+    // Device-reported workout calories are gross expenditure (include BMR during
+    // the run). Our TDEE already covers BMR for the full day, so we only add the
+    // NET incremental burn: ~75% of gross is the standard correction.
+    const netBurn = Math.round((data.calories || 0) * 0.75);
+    if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
+    setStorage('tpToday', { calories: data.calories, distance: data.distance, duration: data.duration, fetched: Date.now() });
     renderShoeStravaCard();
 
     // Prompt shoe assignment after run syncs
-    if (todayRuns.length > 0 && totalDistance > 0) {
+    if (data.count > 0 && data.distance > 0) {
       onStravaRunSynced({
         date:       todayKey(),
-        miles:      totalDistance / 1609.34,
-        duration:   totalDuration,
-        calories:   totalCalories,
-        activityId: String(todayRuns[0].id),
+        miles:      data.distance / 1609.34,
+        duration:   data.duration,
+        calories:   data.calories,
+        activityId: data.workouts && data.workouts[0] ? String(data.workouts[0].id) : null,
       });
     }
   } catch (err) {
-    document.getElementById('garminActivitySub').textContent = '⚠️ Strava sync failed — ' + err.message;
+    document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks sync failed — ' + err.message;
   }
 }
 
-function updateStravaSettingsUI() {
-  const tok = getStorage('stravaToken', null);
-  const statusEl = document.getElementById('stravaConnectStatus');
-  const setupEl  = document.getElementById('stravaSetupSteps');
-  const panelEl  = document.getElementById('stravaConnectedPanel');
+function updateTPSettingsUI() {
+  const conn = getStorage('tpConnected', null);
+  const statusEl = document.getElementById('tpConnectStatus');
+  const setupEl  = document.getElementById('tpSetupSteps');
+  const panelEl  = document.getElementById('tpConnectedPanel');
 
-  if (tok) {
+  if (conn) {
     statusEl.className   = 'connect-status connected';
     statusEl.textContent = '🟢 Connected';
     setupEl.style.display  = 'none';
     panelEl.style.display  = 'block';
     // Show the activity card immediately — data fills in after async fetch
     document.getElementById('garminCard').style.display = 'block';
-    const a = tok.athlete;
-    document.getElementById('stravaUsername').textContent =
-      a ? `${a.firstname || ''} ${a.lastname || ''}`.trim() : 'Strava User';
+    document.getElementById('tpUsername').textContent = conn.athlete?.name || 'Athlete';
   } else {
     statusEl.className   = 'connect-status disconnected';
     statusEl.textContent = '⚪ Not connected';
@@ -4416,22 +4329,22 @@ function updateStravaSettingsUI() {
   }
 }
 
-function toggleStravaAutoAdjust(btn) {
+function toggleTPAutoAdjust(btn) {
   btn.classList.toggle('on');
-  setStorage('stravaAutoAdjust', btn.classList.contains('on'));
+  setStorage('tpAutoAdjust', btn.classList.contains('on'));
 }
 
-function disconnectStrava() {
-  if (!confirm('Disconnect your Strava account?')) return;
-  localStorage.removeItem('stravaToken');
-  localStorage.removeItem('stravaToday');
-  localStorage.removeItem('stravaAdjustedMacros');
-  updateStravaSettingsUI();
+async function disconnectTrainingPeaks() {
+  if (!confirm('Disconnect TrainingPeaks?')) return;
+  try { await fetch('/api/tp/disconnect', { method: 'POST', headers: authHeaders() }); } catch(_) {}
+  localStorage.removeItem('tpConnected');
+  localStorage.removeItem('tpToday');
+  updateTPSettingsUI();
   // Hide garmin card only if garmin also not connected
   const garminTok = getStorage('garminToken', null);
   if (!garminTok) document.getElementById('garminCard').style.display = 'none';
   renderRings();
-  showToast('Strava disconnected');
+  showToast('TrainingPeaks disconnected');
 }
 
 // ── Weight Tracking & Trend ──
@@ -4611,7 +4524,7 @@ function checkAdaptiveMacros() {
   renderRings();
 }
 
-// renderRings — checks adaptive macros, Garmin/Strava adjustments, and ringMode
+// renderRings — checks adaptive macros, Garmin/TrainingPeaks adjustments, and ringMode
 function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
@@ -4638,9 +4551,9 @@ function renderRings(overrideMacros) {
   safeCall(renderWhoopDayBadge, "whoopDayBadge");
   if (tSrc) {
     if (garminAdj || overrideMacros) {
-      const hasStrava = !!getStorage('stravaToken', null);
-      tSrc.textContent = hasStrava ? '🟠 Strava' : '🔵 Garmin';
-      tSrc.style.color = hasStrava ? '#f97316' : '#3b82f6';
+      const hasTP = !!getStorage('tpConnected', null);
+      tSrc.textContent = hasTP ? '⛰️ TrainingPeaks' : '🔵 Garmin';
+      tSrc.style.color = hasTP ? '#1064a3' : '#3b82f6';
     } else if (adaptive) {
       tSrc.textContent = '🧠 Adaptive';
       tSrc.style.color = '#8b5cf6';
@@ -5207,7 +5120,7 @@ function renderWeeklyBalance() {
     const isToday = key === todayStr;
     const isPast  = key <= todayStr;
 
-    // Burn calories from Strava/Garmin burnLog or shoe run estimate
+    // Burn calories from TrainingPeaks/Garmin burnLog or shoe run estimate
     let dayBurn = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
     if (!dayBurn) {
       const dayRuns = shoeRuns.filter(r => r.date === key);
@@ -6041,8 +5954,8 @@ const BACKUP_KEYS = [
   'savedFoods', 'savedRecipes', 'liftLog', 'liftLog2',
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
   'garminToday',
-  'stravaToday',
-  'garminAutoAdjust', 'stravaAutoAdjust',
+  'tpToday',
+  'garminAutoAdjust', 'tpAutoAdjust',
   'shoeGarage', 'shoeRuns',
 ];
 
@@ -6160,13 +6073,13 @@ function formatPace(minPerMile) {
 function renderShoeStravaCard() {
   const card = document.getElementById('shoeStravaCard');
   if (!card) return;
-  const cached   = getStorage('stravaToday', null) || getStorage('garminToday', null);
-  const isStrava = !!getStorage('stravaToken', null);
+  const cached   = getStorage('tpToday', null) || getStorage('garminToday', null);
+  const isTP     = !!getStorage('tpConnected', null);
   const isGarmin = !!getStorage('garminToken', null);
-  if (!cached || (!isStrava && !isGarmin)) { card.style.display = 'none'; return; }
+  if (!cached || (!isTP && !isGarmin)) { card.style.display = 'none'; return; }
 
   const miles  = ((cached.distance || 0) / 1609.34).toFixed(2);
-  const source = isStrava ? '🟠 Synced from Strava' : '🔵 Synced from Garmin';
+  const source = isTP ? '⛰️ Synced from TrainingPeaks' : '🔵 Synced from Garmin';
 
   document.getElementById('shoeStravaMiles').textContent = parseFloat(miles) > 0 ? `${miles} mi` : '0 mi';
   document.getElementById('shoeStravaSub').textContent   = source;
@@ -9194,7 +9107,7 @@ function _initApp() {
     }
   } catch(e) {}
 
-  safeCall(updateStravaSettingsUI, 'updateStravaSettingsUI');
+  safeCall(updateTPSettingsUI, 'updateTPSettingsUI');
   safeCall(renderWeeklyBalance, 'renderWeeklyBalance');
   safeCall(renderStreakCard, 'renderStreakCard');
   safeCall(renderProteinPace, 'renderProteinPace');
@@ -9250,15 +9163,15 @@ document.addEventListener('visibilitychange', () => {
     // Show daily check-in if not done yet today (handles mobile resume / tab switch)
     _checkinGuardFired = false; // reset guard so it can fire again if needed
     try { maybeShowWelcomeModal(); } catch(e) {}
-    // Re-check Strava/Garmin on resume — catches runs finished while app was in background
+    // Re-check TrainingPeaks/Garmin on resume — catches runs finished while app was in background
     try {
-      const stravaTok = getStorage('stravaToken', null);
+      const tpConn = getStorage('tpConnected', null);
       const garminTok = getStorage('garminToken', null);
-      if (stravaTok) {
-        const sc = getStorage('stravaToday', null);
+      if (tpConn) {
+        const sc = getStorage('tpToday', null);
         const age = sc ? Date.now() - sc.fetched : Infinity;
         const stale = !sc || (sc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
-        if (stale) fetchStravaToday();
+        if (stale) fetchTPToday();
       } else if (garminTok) {
         const gc = getStorage('garminToday', null);
         const age = gc ? Date.now() - gc.fetched : Infinity;
@@ -9276,13 +9189,14 @@ document.addEventListener('visibilitychange', () => {
   if (btn) { btn.classList.add('active'); selectedTimeSlot = currentSlot; }
 })();
 
-// Handle OAuth callbacks — check Garmin first, then Strava
+// Handle OAuth callbacks (Garmin)
 handleOAuthCallback();
-handleStravaCallback();
 
-// Auto-load activity data if connected (Strava takes priority if both connected)
+// Auto-load activity data if connected (TrainingPeaks takes priority if both connected)
 (function() {
-  const stravaTok = getStorage('stravaToken', null);
+  // One-time cleanup of the retired Strava integration's storage
+  ['stravaToken','stravaToday','stravaAutoAdjust','stravaAdjustedMacros'].forEach(k => localStorage.removeItem(k));
+  const tpConn    = getStorage('tpConnected', null);
   const garminTok = getStorage('garminToken', null);
 
   function shouldUseCached(cached) {
@@ -9294,14 +9208,14 @@ handleStravaCallback();
     return age < 5 * 60 * 1000;
   }
 
-  if (stravaTok) {
+  if (tpConn) {
     document.getElementById('garminCard').style.display = 'block';
-    const cached = getStorage('stravaToday', null);
+    const cached = getStorage('tpToday', null);
     if (shouldUseCached(cached)) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'strava');
-      if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
+      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'tp');
+      if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
     } else {
-      fetchStravaToday();
+      fetchTPToday();
     }
   } else if (garminTok) {
     document.getElementById('garminCard').style.display = 'block';
@@ -10184,7 +10098,7 @@ function triggerAppImprovement() {
 ${summary}
 
 App tabs: Today, Recipes, Trends, Shoes, Workout, Program, History, AI.
-Features: food logging, barcode scanning, macro tracking, weight logging, shoe mileage, workout logging, lift PRs, recipe builder, run tracking, Strava integration, AI coaching, event countdowns.
+Features: food logging, barcode scanning, macro tracking, weight logging, shoe mileage, workout logging, lift PRs, recipe builder, run tracking, TrainingPeaks integration, AI coaching, event countdowns.
 
 Please analyze:
 1. Which features I use most vs least — should underused ones be removed, simplified, or made more prominent?

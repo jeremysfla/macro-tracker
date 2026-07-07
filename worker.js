@@ -91,6 +91,38 @@ async function getSessionUser(db, req) {
 }
 __name(getSessionUser, "getSessionUser");
 
+// ── TrainingPeaks helpers ────────────────────────────────────────────────
+const TP_API_BASE = "https://tpapi.trainingpeaks.com";
+const TP_RUN_TYPES = new Set([3, 6, 13]); // Run, Race, Walk
+
+async function tpExchangeCookie(cookie) {
+  const r = await fetch(`${TP_API_BASE}/users/v3/token`, {
+    headers: { "Cookie": `Production_tpAuth=${cookie}`, "Accept": "application/json" }
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  const t = d?.token;
+  if (!t?.access_token) return null;
+  return { accessToken: t.access_token, expiresAt: Date.now() + (t.expires_in || 3600) * 1000 };
+}
+__name(tpExchangeCookie, "tpExchangeCookie");
+
+// Returns { token, athleteId, athleteName } or { error: "not_connected" | "cookie_expired" }
+async function tpGetAccessToken(env) {
+  let row = null;
+  try { row = await env.DB.prepare("SELECT * FROM tp_auth WHERE id = 1").first(); } catch(_) {}
+  if (!row) return { error: "not_connected" };
+  if (row.access_token && new Date(row.token_expires_at).getTime() - 60000 > Date.now()) {
+    return { token: row.access_token, athleteId: row.athlete_id, athleteName: row.athlete_name };
+  }
+  const tok = await tpExchangeCookie(row.cookie);
+  if (!tok) return { error: "cookie_expired" };
+  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, updated_at = datetime('now') WHERE id = 1")
+    .bind(tok.accessToken, new Date(tok.expiresAt).toISOString()).run();
+  return { token: tok.accessToken, athleteId: row.athlete_id, athleteName: row.athlete_name };
+}
+__name(tpGetAccessToken, "tpGetAccessToken");
+
 // ── Google token verification ───────────────────────────────────────────
 async function verifyGoogleToken(idToken, env) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
@@ -411,78 +443,109 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       }
     }
 
-    // ── Strava: redirect to auth page ───────────────────────────────────
-    if (u.pathname === "/api/strava/auth" && req.method === "GET") {
-      const clientId = env.STRAVA_CLIENT_ID;
-      if (!clientId) return new Response(JSON.stringify({ error: "Strava not configured on server" }), { status: 500, headers: CORS });
-      const redirectUri = encodeURIComponent(`${u.origin}/api/strava/callback`);
-      const scope = "read,activity:read";
-      const stravaUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&approval_prompt=auto`;
-      return Response.redirect(stravaUrl, 302);
-    }
-
-    // ── Strava: OAuth callback ──────────────────────────────────────────
-    if (u.pathname === "/api/strava/callback" && req.method === "GET") {
-      const code = u.searchParams.get("code");
-      if (!code) {
-        return new Response("<h2>Strava authorization denied</h2><script>setTimeout(()=>window.close(),2000)</script>", {
-          headers: { "content-type": "text/html" }
-        });
-      }
+    // ── TrainingPeaks: connect (store cookie, exchange for token) ───────
+    if (u.pathname === "/api/tp/auth" && req.method === "POST") {
+      const tpAuthUser = await getSessionUser(env.DB, req);
+      if (!tpAuthUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
-        const tokenRes = await fetch("https://www.strava.com/oauth/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client_id: env.STRAVA_CLIENT_ID,
-            client_secret: env.STRAVA_CLIENT_SECRET,
-            code,
-            grant_type: "authorization_code",
-          })
+        const { cookie } = await req.json();
+        const trimmed = (cookie || "").trim();
+        if (!trimmed) return new Response(JSON.stringify({ ok: false, error: "Missing cookie" }), { status: 400, headers: CORS });
+
+        const tok = await tpExchangeCookie(trimmed);
+        if (!tok) return new Response(JSON.stringify({ ok: false, error: "Cookie rejected by TrainingPeaks — copy a fresh Production_tpAuth value" }), { status: 401, headers: CORS });
+
+        const userRes = await fetch(`${TP_API_BASE}/users/v3/user`, {
+          headers: { "Authorization": `Bearer ${tok.accessToken}`, "Accept": "application/json" }
         });
-        const data = await tokenRes.json();
-        if (!data.access_token) throw new Error(data.message || "Token exchange failed");
-        const tokenPayload = encodeURIComponent(JSON.stringify({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresAt: data.expires_at,
-          athlete: data.athlete,
-        }));
-        return Response.redirect(`${u.origin}/#strava_token=${tokenPayload}`, 302);
+        if (!userRes.ok) return new Response(JSON.stringify({ ok: false, error: "Could not load TrainingPeaks profile" }), { status: 502, headers: CORS });
+        const userData = (await userRes.json());
+        const tpUser = userData.user || userData;
+        const athleteId = tpUser.athletes?.[0]?.athleteId || tpUser.personId;
+        const athleteName = `${tpUser.firstName || ""} ${tpUser.lastName || ""}`.trim() || tpUser.email || "Athlete";
+        if (!athleteId) return new Response(JSON.stringify({ ok: false, error: "No athlete ID on this TrainingPeaks account" }), { status: 502, headers: CORS });
+
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS tp_auth (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          cookie TEXT NOT NULL,
+          access_token TEXT,
+          token_expires_at TEXT,
+          athlete_id INTEGER,
+          athlete_name TEXT,
+          updated_at TEXT DEFAULT (datetime('now'))
+        )`).run();
+        await env.DB.prepare(`INSERT INTO tp_auth (id, cookie, access_token, token_expires_at, athlete_id, athlete_name, updated_at)
+          VALUES (1, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET cookie=excluded.cookie, access_token=excluded.access_token,
+            token_expires_at=excluded.token_expires_at, athlete_id=excluded.athlete_id,
+            athlete_name=excluded.athlete_name, updated_at=datetime('now')`)
+          .bind(trimmed, tok.accessToken, new Date(tok.expiresAt).toISOString(), athleteId, athleteName).run();
+
+        return new Response(JSON.stringify({ ok: true, athlete: { id: athleteId, name: athleteName } }), { headers: CORS });
       } catch (e) {
-        const safeMsg = String(e.message || "").replace(/[<>&"']/g, c => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;", "'":"&#39;" }[c]));
-        return new Response(`<h2>Strava connection failed</h2><p>${safeMsg}</p><script>setTimeout(()=>window.location='${u.origin}',3000)</script>`, {
-          headers: { "content-type": "text/html" }
-        });
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
     }
 
-    // ── Strava: token refresh ───────────────────────────────────────────
-    if (u.pathname === "/api/strava/refresh" && req.method === "POST") {
-      const stravaUser = await getSessionUser(env.DB, req);
-      if (!stravaUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+    // ── TrainingPeaks: connection status ─────────────────────────────────
+    if (u.pathname === "/api/tp/status" && req.method === "GET") {
+      const tpStatusUser = await getSessionUser(env.DB, req);
+      if (!tpStatusUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
-        const { refreshToken } = await req.json();
-        if (!refreshToken) return new Response(JSON.stringify({ error: "Missing refreshToken" }), { status: 400, headers: CORS });
-        const tokenRes = await fetch("https://www.strava.com/oauth/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client_id: env.STRAVA_CLIENT_ID,
-            client_secret: env.STRAVA_CLIENT_SECRET,
-            refresh_token: refreshToken,
-            grant_type: "refresh_token",
-          })
-        });
-        const data = await tokenRes.json();
-        if (!data.access_token) return new Response(JSON.stringify({ error: data.message || "Refresh failed" }), { status: 400, headers: CORS });
-        return new Response(JSON.stringify({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresAt: data.expires_at,
-        }), { headers: CORS });
+        const auth = await tpGetAccessToken(env);
+        if (auth.error) return new Response(JSON.stringify({ ok: true, connected: false, error: auth.error }), { headers: CORS });
+        return new Response(JSON.stringify({ ok: true, connected: true, athlete: { id: auth.athleteId, name: auth.athleteName } }), { headers: CORS });
       } catch (e) {
-        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: CORS });
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── TrainingPeaks: disconnect ─────────────────────────────────────────
+    if (u.pathname === "/api/tp/disconnect" && req.method === "POST") {
+      const tpDiscUser = await getSessionUser(env.DB, req);
+      if (!tpDiscUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try { await env.DB.prepare("DELETE FROM tp_auth WHERE id = 1").run(); } catch(_) {}
+      return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+    }
+
+    // ── TrainingPeaks: today's completed runs ─────────────────────────────
+    if (u.pathname === "/api/tp/today" && req.method === "GET") {
+      const tpUser = await getSessionUser(env.DB, req);
+      if (!tpUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const date = u.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return new Response(JSON.stringify({ ok: false, error: "Bad date" }), { status: 400, headers: CORS });
+
+        const auth = await tpGetAccessToken(env);
+        if (auth.error) return new Response(JSON.stringify({ ok: false, error: auth.error }), { status: auth.error === "not_connected" ? 400 : 401, headers: CORS });
+
+        const wRes = await fetch(`${TP_API_BASE}/fitness/v6/athletes/${auth.athleteId}/workouts/${date}/${date}`, {
+          headers: { "Authorization": `Bearer ${auth.token}`, "Accept": "application/json" }
+        });
+        if (wRes.status === 401) {
+          // Token went stale mid-flight — force a re-exchange next call
+          try { await env.DB.prepare("UPDATE tp_auth SET access_token = NULL WHERE id = 1").run(); } catch(_) {}
+          return new Response(JSON.stringify({ ok: false, error: "cookie_expired" }), { status: 401, headers: CORS });
+        }
+        if (!wRes.ok) return new Response(JSON.stringify({ ok: false, error: `TrainingPeaks API ${wRes.status}` }), { status: 502, headers: CORS });
+
+        const all = await wRes.json();
+        // Completed run-type workouts only: Run(3), Race(6), Walk(13); totalTime is hours
+        const runs = (Array.isArray(all) ? all : []).filter(w =>
+          TP_RUN_TYPES.has(w.workoutTypeValueId) && (w.totalTime || w.calories || w.distance));
+
+        let calories = 0, distance = 0, duration = 0;
+        const workouts = runs.map(w => {
+          const cal = Math.round(w.calories || 0);
+          const dist = Math.round(w.distance || 0);
+          const dur = Math.round((w.totalTime || 0) * 3600);
+          calories += cal; distance += dist; duration += dur;
+          return { id: w.workoutId, title: w.title || "", type: w.workoutTypeValueId, calories: cal, distance: dist, duration: dur, tss: w.tssActual || null };
+        });
+
+        return new Response(JSON.stringify({ ok: true, date, count: workouts.length, calories, distance, duration, workouts }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
     }
 
