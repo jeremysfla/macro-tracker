@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0f1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Macro" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 <title>Jeremymacro</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -181,6 +187,13 @@ PROMISE ERROR:
     </div>
   </div>
   <!-- Daily Greeting Tile -->
+  <!-- PWA install banner (item 9) -->
+  <div id="installBanner" style="display:none;align-items:center;gap:10px;background:#0c2a24;border:1px solid #134e4a;border-radius:12px;padding:10px 14px;margin-bottom:12px">
+    <span style="font-size:16px">📲</span>
+    <span id="installBannerText" style="flex:1;font-size:12px;color:var(--text)"></span>
+    <button id="installBannerBtn" class="btn-green" style="width:auto;padding:6px 12px;font-size:11px">Install</button>
+    <button onclick="dismissInstallBanner()" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer">✕</button>
+  </div>
   <div class="greeting-tile" id="greetingTile">
     <div class="greeting-header">
       <div>
@@ -191,6 +204,18 @@ PROMISE ERROR:
         <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
         <button onclick="toggleGreetingTile()" title="Minimize" class="greeting-minimize-btn">▲</button>
       </div>
+    </div>
+    <!-- TP expired banner (item 10) -->
+    <div id="tpExpiredBannerBrief" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
+      ⚠️ TrainingPeaks disconnected — tap to reconnect
+    </div>
+    <!-- Coach note (item 6) — long-press to regenerate -->
+    <div class="greeting-section" id="greetingCoachSection" style="display:none">
+      <div class="greeting-section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>🎯 Coach</span>
+        <span style="font-size:9px;color:var(--text3);font-weight:600" id="coachContextLabel">context: 14d</span>
+      </div>
+      <div id="coachNoteBody" style="font-size:12.5px;line-height:1.6;color:var(--text)"></div>
     </div>
     <!-- Calendar Section -->
     <div class="greeting-section" id="greetingCalSection">
@@ -280,15 +305,23 @@ PROMISE ERROR:
         </div>
         <!-- WHOOP day badge -->
         <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px">
+        <!-- Quick-add favorites carousel (item 8) -->
+        <div id="favChipsWrap" style="display:none;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">⚡ Quick add</div>
+          <div class="quick-foods-scroll" id="favChips"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
           <button class="btn-scan" onclick="openScanner()">
             <span style="font-size:16px">&#x1F4F7;</span> Scan
           </button>
-          <button class="btn-scan" onclick="openPhotoAI()" style="background:var(--purple-soft);border-color:#4c1d95;color:#a78bfa">
+          <button class="btn-scan" id="photoLogBtn" onclick="openPhotoAI()" style="background:var(--purple-soft);border-color:#4c1d95;color:#a78bfa">
             <span style="font-size:16px">🤖</span> Photo
           </button>
           <button class="btn-scan" onclick="openAISearch()" style="background:#2d1f05;border-color:#3d2e00;color:#f59e0b">
             <span style="font-size:16px">🔍</span> Search
+          </button>
+          <button class="btn-scan" id="voiceLogBtn" onclick="startVoiceLog()" style="background:#0c2a24;border-color:#134e4a;color:#2dd4bf">
+            <span style="font-size:16px">🎤</span> Voice
           </button>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px">
@@ -442,7 +475,7 @@ PROMISE ERROR:
         <div style="font-size:13px;color:var(--text);font-weight:600;line-height:1.6" id="workoutNutritionMsg"></div>
       </div>
 
-      <!-- 11. Strava / Garmin activity card -->
+      <!-- 11. TrainingPeaks activity card -->
       <div id="garminCard" style="display:none" class="garmin-card">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
           <div class="garmin-logo">🏃</div>
@@ -450,11 +483,14 @@ PROMISE ERROR:
             <div style="font-size:14px;font-weight:700;color:var(--text)" id="garminActivityTitle">Today's Activity</div>
             <div style="font-size:11px;color:var(--text2);margin-top:1px" id="garminActivitySub">Syncing…</div>
           </div>
-          <button onclick="getStorage('stravaToken',null)?fetchStravaToday():fetchGarminToday()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)" title="Refresh">🔄</button>
+          <button onclick="fetchTPToday()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)" title="Refresh">🔄</button>
         </div>
         <div class="garmin-activity-row" id="garminStatsRow"></div>
         <div id="garminMacroBanner" class="macro-adj-banner" style="display:none">
           <span>🎯</span><span id="garminMacroText"></span>
+        </div>
+        <div id="fuelingBanner" class="macro-adj-banner" style="display:none;cursor:pointer;background:#0c2a3d;border-color:#1d4ed8" onclick="dismissFuelingBanner()" title="Tap to dismiss">
+          <span>🍝</span><span id="fuelingBannerText"></span>
         </div>
         <div id="todayShoeRow" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #1e3a5f;align-items:center;justify-content:space-between">
           <div style="font-size:12px;color:#60a5fa;font-weight:600" id="todayShoeLabel">👟 Which shoes did you wear?</div>
@@ -565,6 +601,33 @@ PROMISE ERROR:
 
     <!-- WORKOUT PAGE -->
     <div id="page-lift" class="page">
+      <!-- TP expired banner (item 10) -->
+      <div id="tpExpiredBannerLift" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
+        ⚠️ TrainingPeaks disconnected — activity sync is paused. Tap to reconnect in Settings.
+      </div>
+      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
+      <div class="card" id="trainingLoadCard" style="display:none">
+        <div class="card-label" style="color:#60a5fa">Training Load</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;gap:18px">
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
+            </div>
+          </div>
+        </div>
+        <div id="tlSparkline" style="margin-bottom:6px"></div>
+        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
+      </div>
+
       <!-- Live workout timer bar -->
       <div class="workout-timer-bar" id="workoutTimerBar">
         <div>
@@ -798,6 +861,39 @@ PROMISE ERROR:
 
       <!-- TRENDS TAB -->
       <div id="historyTab-trends" style="display:none">
+        <!-- Item 5: server-side insights -->
+        <div id="insightsSection" style="display:none">
+          <div class="card" id="insightsSummaryCard" style="display:none">
+            <div class="card-label" style="color:#a78bfa">🤖 This Week</div>
+            <div id="insightsSummary" style="font-size:13px;line-height:1.65;color:var(--text)"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">⚖️ Weight Trend</div>
+            <div id="insWeight"></div>
+            <div id="insWeightNote" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🔥 Weekly Deficit vs Weight Change</div>
+            <div id="insDeficit"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: avg daily deficit (TDEE − consumed) · labels: weight change that week</div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">😴 Sleep → Next-Day Energy & Mood</div>
+            <div id="insSleep"></div>
+            <div id="insSleepNote" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🏃 Weekly Training Load</div>
+            <div id="insLoad"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: weekly TSS · line: CTL (fitness)</div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🥩 Protein Adherence — Last 90 Days</div>
+            <div id="insProtein"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">🟩 ≥90% of target · 🟨 70–90% · 🟥 &lt;70% · ⬜ no log</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="section-title" style="margin-bottom:6px">📈 Monthly Trends</div>
           <div class="chart-tab-row" id="trendChartTabs">
@@ -860,7 +956,7 @@ PROMISE ERROR:
         <button onclick="openAddShoeModal()" style="margin-top:14px;padding:10px 20px;background:#f97316;color:#fff;border:none;border-radius:14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(249,115,22,0.4)">+ Add New Shoe</button>
       </div>
 
-      <!-- Today's miles from Strava — simple display only -->
+      <!-- Today's miles from TrainingPeaks — simple display only -->
       <div id="shoeStravaCard" style="display:none;background:var(--surface);border:1.5px solid #1e3a5f;border-radius:16px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">
         <div style="font-size:28px">🏃</div>
         <div>
@@ -882,7 +978,7 @@ PROMISE ERROR:
         <div id="shoeEmptyState" style="display:none;text-align:center;padding:32px 20px;color:var(--text3)">
           <div style="font-size:48px;margin-bottom:12px">👟</div>
           <div style="font-size:15px;font-weight:700;color:var(--text2);margin-bottom:6px">No shoes yet</div>
-          <div style="font-size:12px;line-height:1.7">Add your first pair, then after each<br>Strava run you'll be asked which shoes you wore.</div>
+          <div style="font-size:12px;line-height:1.7">Add your first pair, then after each<br>synced run you'll be asked which shoes you wore.</div>
         </div>
       </div>
     </div>
@@ -979,6 +1075,25 @@ PROMISE ERROR:
 </div>
 
 <!-- Weight Check-in Modal -->
+<!-- Voice quick-log confirm sheet (item 2) -->
+<div class="modal-overlay" id="quickLogModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🎤 Confirm Items</div>
+    <div class="modal-sub" id="quickLogTranscript" style="font-style:italic"></div>
+    <div id="quickLogLoading" style="display:none;text-align:center;padding:20px;color:var(--text2);font-size:13px">
+      🤖 Parsing your meal…
+    </div>
+    <div id="quickLogList" style="max-height:50vh;overflow-y:auto"></div>
+    <div id="quickLogActions" style="display:none">
+      <button class="btn-green" id="quickLogConfirmBtn" onclick="confirmQuickLog()">✅ Log items</button>
+      <button class="btn-outline" id="quickLogPinBtn" onclick="toggleFavPin()" style="display:none">📌 Pin</button>
+      <button class="btn-outline" onclick="closeQuickLogModal()">Cancel</button>
+    </div>
+    <button class="btn-outline" id="quickLogCancelOnly" onclick="closeQuickLogModal()" style="margin-top:6px">Close</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="weightModal">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
@@ -1246,7 +1361,7 @@ PROMISE ERROR:
       <div class="s-card" style="margin-bottom:12px">
         <div class="s-label" style="color:#f59e0b">Maintenance Calories (TDEE)</div>
         <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px">
-          Daily burn at rest + activity. <strong style="color:var(--text2)">Your baseline TDEE: 2,208 kcal</strong> (Mifflin-St Jeor × 1.375, lightly active — exercise NOT included, Strava handles that).
+          Daily burn at rest + activity. <strong style="color:var(--text2)">Your baseline TDEE: 2,208 kcal</strong> (Mifflin-St Jeor × 1.375, lightly active — exercise NOT included, TrainingPeaks handles that).
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <input type="number" id="settingTDEE" class="s-input s-input-sm" placeholder="2208" style="font-size:18px;font-weight:800;text-align:center;flex:1" />
@@ -1262,7 +1377,7 @@ PROMISE ERROR:
       <div style="font-size:11px;font-weight:800;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Daily Macro Targets <span style="color:var(--text3);font-weight:400">(with deficit)</span></div>
       <div style="background:var(--blue-soft);border:1px solid #1e3a5f;border-radius:12px;padding:10px 12px;font-size:11px;color:#93c5fd;line-height:1.7;margin-bottom:10px">
         💡 <strong>Your base targets (no exercise):</strong> 1,500 kcal · 165g protein · 86g carbs · 55g fat<br>
-        ~708 kcal/day deficit → ~1.1–1.5 lbs/week loss. Strava auto-adds calories &amp; carbs on run days on top of this.
+        ~708 kcal/day deficit → ~1.1–1.5 lbs/week loss. TrainingPeaks auto-adds calories &amp; carbs on run days on top of this.
       </div>
       <div class="macro-grid">
         <div class="macro-cell">
@@ -1289,33 +1404,89 @@ PROMISE ERROR:
       <button class="btn-green" onclick="saveGoalSettings()">💾 Save Goals &amp; Macros</button>
     </div>
 
-    <!-- ── STRAVA ── -->
+    <!-- ── TRAININGPEAKS ── -->
     <div class="settings-section">
-      <div class="settings-section-title">🟠 Strava</div>
-      <div id="stravaConnectStatus" class="connect-status disconnected">⚪ Not connected</div>
+      <div class="settings-section-title">⛰️ TrainingPeaks</div>
+      <div id="tpConnectStatus" class="connect-status disconnected">⚪ Not connected</div>
 
-      <div id="stravaSetupSteps">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7">
-          Connect your Strava account to auto-pull run calories and adjust daily macros.
+      <div id="tpSetupSteps">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.7">
+          Pulls today's runs from TrainingPeaks and adjusts daily macros.<br>
+          1. Log in at <b>app.trainingpeaks.com</b> in your browser<br>
+          2. Press <b>F12</b> → <b>Application</b> tab → <b>Cookies</b> → app.trainingpeaks.com<br>
+          3. Copy the value of <b>Production_tpAuth</b> and paste it below
         </div>
-        <button class="btn-green" style="background:#fc4c02;box-shadow:0 4px 14px rgba(252,76,2,0.3)" onclick="startStravaOAuth()">🟠 Connect to Strava</button>
+        <input type="password" id="tpCookieInput" placeholder="Paste Production_tpAuth cookie value" autocomplete="off" style="width:100%;margin-bottom:10px" />
+        <button class="btn-green" style="background:#1064a3;box-shadow:0 4px 14px rgba(16,100,163,0.3)" onclick="connectTrainingPeaks()">⛰️ Connect TrainingPeaks</button>
       </div>
 
-      <div id="stravaConnectedPanel" style="display:none">
+      <div id="tpConnectedPanel" style="display:none">
         <div class="settings-row">
           <div>
             <div class="settings-row-label">Auto-adjust macros</div>
             <div class="settings-row-sub">Adds calories &amp; carbs based on run burn</div>
           </div>
-          <button class="toggle on" id="stravaAutoAdjustToggle" onclick="toggleStravaAutoAdjust(this)"></button>
+          <button class="toggle on" id="tpAutoAdjustToggle" onclick="toggleTPAutoAdjust(this)"></button>
         </div>
         <div class="settings-row">
           <div>
             <div class="settings-row-label">Connected as</div>
-            <div class="settings-row-sub" id="stravaUsername">—</div>
+            <div class="settings-row-sub" id="tpUsername">—</div>
+            <div class="settings-row-sub" id="tpLifecycleLine" style="margin-top:2px">—</div>
           </div>
         </div>
-        <button class="btn-red" style="margin-top:10px" onclick="disconnectStrava()">Disconnect Strava</button>
+        <button class="btn-red" style="margin-top:10px" onclick="disconnectTrainingPeaks()">Disconnect TrainingPeaks</button>
+      </div>
+    </div>
+
+    <!-- ── NOTIFICATIONS (item 9) ── -->
+    <div class="settings-section" id="notifSection" style="display:none">
+      <div class="settings-section-title">🔔 Notifications</div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Push on this device</div>
+          <div class="settings-row-sub" id="pushStatusLine">Off</div>
+        </div>
+        <button class="toggle" id="pushToggle" onclick="togglePush(this)"></button>
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Morning weigh-in reminder</div>
+          <div class="settings-row-sub">7:00 local, every day</div>
+        </div>
+        <button class="toggle" id="remWeighinToggle" onclick="toggleReminder('morning_weighin', this)"></button>
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Evening log check</div>
+          <div class="settings-row-sub">8:30pm, only if protein &lt;80% or calories &lt;60% of target</div>
+        </div>
+        <button class="toggle" id="remEveningToggle" onclick="toggleReminder('evening_log', this)"></button>
+      </div>
+      <div id="pushDeviceList" style="margin-top:8px"></div>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="sendTestPush()">🔔 Send test notification</button>
+    </div>
+
+    <!-- ── CLOUD SYNC ── -->
+    <div class="settings-section">
+      <div class="settings-section-title">☁️ Cloud Sync</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:10px">
+        Food, weight, shoes, and lifts sync to the server automatically so every device sees the same data.
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Status</div>
+          <div class="settings-row-sub" id="syncStatusLine">—</div>
+        </div>
+        <button class="btn-green" style="width:auto;padding:8px 14px" onclick="syncAllLogs()">Sync now</button>
+      </div>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="forceBackfillSync()">⬆️ Force full backfill (local → server)</button>
+      <div class="settings-row" style="margin-top:10px">
+        <div>
+          <div class="settings-row-label">🗄️ Backups <span id="backupDot" style="font-size:10px">⚪</span></div>
+          <div class="settings-row-sub" id="backupStatusLine">—</div>
+        </div>
+        <button class="btn-green" style="width:auto;padding:8px 14px;background:#334155" onclick="runBackupNow()">Back up now</button>
       </div>
     </div>
 
@@ -1327,56 +1498,6 @@ PROMISE ERROR:
         ✅ USDA FoodData Central (SR28 + Branded) — free, no key needed<br>
         ✅ UPC ItemDB — free, broad product coverage<br>
         📸 Photo AI label scan — Claude vision
-      </div>
-    </div>
-
-    <!-- ── GARMIN ── -->
-    <div class="settings-section">
-      <div class="settings-section-title">🏃 Garmin Connect</div>
-      <div id="garminConnectStatus" class="connect-status disconnected">⚪ Not connected</div>
-      <div id="garminSetupSteps">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">
-          Connect Garmin to auto-pull run calories. Requires a free Garmin Developer account.
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">1</div>
-          <div class="oauth-step-text">Visit <a href="https://developer.garmin.com/gc-developer-program/overview/" target="_blank">developer.garmin.com</a> → join free Developer Program</div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">2</div>
-          <div class="oauth-step-text">Create app → type <strong>Web</strong> → set OAuth Callback URL to this app's URL → copy <strong>Consumer Key</strong> &amp; <strong>Secret</strong></div>
-        </div>
-        <div class="oauth-step">
-          <div class="step-num">3</div>
-          <div class="oauth-step-text">Paste below and tap Connect</div>
-        </div>
-        <div style="margin-top:14px">
-          <div class="key-input-group">
-            <div class="key-input-label">Consumer Key</div>
-            <input type="text" id="garminKey" class="s-input" placeholder="Paste your Consumer Key…" />
-          </div>
-          <div class="key-input-group">
-            <div class="key-input-label">Consumer Secret</div>
-            <input type="password" id="garminSecret" class="s-input" placeholder="Paste your Consumer Secret…" />
-          </div>
-          <button class="btn-green" style="margin-top:10px" onclick="startGarminOAuth()">🔗 Connect to Garmin</button>
-        </div>
-      </div>
-      <div id="garminConnectedPanel" style="display:none">
-        <div class="settings-row">
-          <div>
-            <div class="settings-row-label">Auto-adjust macros</div>
-            <div class="settings-row-sub">Adds calories &amp; carbs based on run burn</div>
-          </div>
-          <button class="toggle on" id="autoAdjustToggle" onclick="toggleAutoAdjust(this)"></button>
-        </div>
-        <div class="settings-row">
-          <div>
-            <div class="settings-row-label">Connected as</div>
-            <div class="settings-row-sub" id="garminUsername">—</div>
-          </div>
-        </div>
-        <button class="btn-red" style="margin-top:10px" onclick="disconnectGarmin()">Disconnect Garmin</button>
       </div>
     </div>
 

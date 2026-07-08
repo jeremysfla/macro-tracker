@@ -1,5 +1,19 @@
 
 
+// ── Feature flags (Tier 1 items 2–5) — flip to false to disable without redeploying the rest ──
+const FLAGS = {
+  voiceLog:     true,   // item 2: voice food entry
+  photoLog:     true,   // item 2: photo food entry (pre-existing flow, now flag-gated)
+  trainingLoad: true,   // item 3: CTL/ATL/TSB
+  fueling:      true,   // item 4: planned-workout fueling
+  trends:       true,   // item 5: insights tab
+  briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
+  backups:      true,   // item 7: nightly D1 → R2 backups tile
+  quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
+  pwa:          true,   // item 9: PWA install + web push
+  tpAutoRefresh:true,   // item 10: TP cookie auto-refresh + expiry banner
+};
+
 // ── Auth & Onboarding ──
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
 let _authToken = null;   // long-lived session token (NOT the Google ID token)
@@ -175,6 +189,8 @@ async function checkAuth() {
 
   // Always hit /api/user — if localStorage was wiped (iOS Safari ITP),
   // the HttpOnly session cookie still gets sent automatically by the browser.
+  // The server validates the Bearer token AND falls back to the cookie, so a
+  // stale localStorage token can't lock us out while the cookie is still good.
   try {
     const headers = _authToken ? { 'authorization': 'Bearer ' + _authToken } : {};
     const res = await fetch('/api/user', { headers, credentials: 'same-origin' });
@@ -196,6 +212,18 @@ async function checkAuth() {
         }
         return;
       }
+    } else if (res.status !== 401) {
+      // Server hiccup (5xx, D1 blip) — NOT an auth failure. Never log the user
+      // out for this; load the app with cached data and let it retry later.
+      if (_authToken) {
+        console.warn('[auth] /api/user returned', res.status, '— loading app with cached session');
+        showScreen('app');
+        _initApp();
+        return;
+      }
+      showScreen('login');
+      initGoogleSignIn();
+      return;
     }
   } catch (e) {
     if (_authToken) {
@@ -206,7 +234,7 @@ async function checkAuth() {
     }
   }
 
-  // No valid session from either localStorage or cookie
+  // Explicit 401 — server rejected both the Bearer token and the cookie
   localStorage.removeItem('authToken');
   _authToken = null;
   showScreen('login');
@@ -235,7 +263,7 @@ function initGoogleSignIn() {
 // ── End Auth ──
 
 let MACROS = { calories: 1500, protein: 165, carbs: 86, fat: 55 };
-let TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — Strava adds run calories on top
+let TDEE   = 2208; // Mifflin-St Jeor × 1.375 (lightly active, no exercise) — TrainingPeaks adds run calories on top
 const MACRO_COLORS = { calories: '#f59e0b', protein: '#4ade80', carbs: '#60a5fa', fat: '#f87171' };
 
 const PROGRAM = {
@@ -442,12 +470,712 @@ function getStorage(key, def) {
 function setStorage(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    try { _syncOnWrite(key); } catch(_) {}
     return true;
   } catch(e) {
     console.error('setStorage failed for key:', key, e);
     return false;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// D1 LOG SYNC (Tier 1, item 1) — server-authoritative food/weight/shoes/lifts.
+// localStorage stays the offline cache; every entry carries _id (uuid) and
+// _u (unix ms). Merge is last-write-wins on _u/updated_at. A shadow copy of
+// the last-synced state ('_syncShadow_*') detects local changes + deletions.
+// Tombstones are only emitted for recent dates so the 90-day prune sweep
+// never deletes server history.
+// ═══════════════════════════════════════════════════════════════════════
+const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts'];
+const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts' };
+const SYNC_MERGE_DAYS = 90;      // only merge server rows this recent into local cache
+const SYNC_TOMBSTONE_DAYS = 30;  // only report deletions this recent (older = prune, not delete)
+let _syncApplying = false;       // guard: writes made by the sync engine itself
+const _syncTimers = {};
+
+function _syncUuid() {
+  try { return crypto.randomUUID(); } catch(_) {
+    return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+}
+
+function _syncOnWrite(key) {
+  if (_syncApplying) return;
+  const table = SYNC_KEY_MAP[key];
+  if (!table || !_authToken) return;
+  clearTimeout(_syncTimers[table]);
+  _syncTimers[table] = setTimeout(() => syncLogTable(table), 2000);
+}
+
+function _syncCutoffKey(days) {
+  const d = new Date(Date.now() - days * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+// Raw write that never re-triggers the sync scheduler
+function _syncSet(key, val) {
+  const was = _syncApplying; _syncApplying = true;
+  try { setStorage(key, val); } finally { _syncApplying = was; }
+}
+
+// ── Per-table serializers: local diff vs shadow → rows to push ──────────
+function _syncFoodRows() {
+  const all = getStorage('foodEntries', {});
+  const shadow = getStorage('_syncShadow_food', {});
+  const tombCutoff = _syncCutoffKey(SYNC_TOMBSTONE_DAYS);
+  const rows = []; let mutated = false;
+  for (const [date, arr] of Object.entries(all)) {
+    if (!Array.isArray(arr) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    for (const e of arr) {
+      if (!e._id) { e._id = _syncUuid(); mutated = true; }
+      const h = JSON.stringify({ ...e, _u: 0 });
+      const sh = shadow[date]?.[e._id];
+      if (!sh || sh.h !== h) {
+        e._u = Date.now(); mutated = true;
+        rows.push({ date, entry_id: e._id, payload: e, updated_at: e._u, deleted: 0 });
+      }
+    }
+    // Entries in shadow but gone locally → recent ones are real deletions
+    const localIds = new Set(arr.map(e => e._id));
+    for (const id of Object.keys(shadow[date] || {})) {
+      if (!localIds.has(id) && date >= tombCutoff) {
+        rows.push({ date, entry_id: id, payload: {}, updated_at: Date.now(), deleted: 1 });
+      }
+    }
+  }
+  // Whole days deleted locally
+  for (const date of Object.keys(shadow)) {
+    if (!all[date] && date >= tombCutoff) {
+      for (const id of Object.keys(shadow[date])) {
+        rows.push({ date, entry_id: id, payload: {}, updated_at: Date.now(), deleted: 1 });
+      }
+    }
+  }
+  if (mutated) _syncSet('foodEntries', all);
+  return rows;
+}
+
+function _syncWeightRows() {
+  const log = getStorage('weightLog', {});
+  const shadow = getStorage('_syncShadow_weight', {});
+  const rows = [];
+  for (const [date, lbs] of Object.entries(log)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(Number(lbs) > 0)) continue;
+    if (shadow[date] !== lbs) rows.push({ date, weight_lbs: Number(lbs), updated_at: Date.now() });
+  }
+  return rows;
+}
+
+function _syncShoeRows() {
+  const shoes = getStorage('shoeGarage', []);
+  const runs = getStorage('shoeRuns', []);
+  const shadow = getStorage('_syncShadow_shoes', {});
+  const rows = []; let mutShoes = false, mutRuns = false;
+  for (const s of shoes) {
+    if (!s.id) { s.id = _syncUuid(); mutShoes = true; }
+    const rowId = 'shoe:' + s.id, h = JSON.stringify({ ...s, _u: 0 });
+    if (shadow[rowId]?.h !== h) {
+      s._u = Date.now(); mutShoes = true;
+      rows.push({ shoe_id: rowId, payload: { kind: 'shoe', data: s }, updated_at: s._u, deleted: 0 });
+    }
+  }
+  for (const r of runs) {
+    if (!r._id) { r._id = _syncUuid(); mutRuns = true; }
+    const rowId = 'run:' + r._id, h = JSON.stringify({ ...r, _u: 0 });
+    if (shadow[rowId]?.h !== h) {
+      r._u = Date.now(); mutRuns = true;
+      rows.push({ shoe_id: rowId, payload: { kind: 'run', data: r }, updated_at: r._u, deleted: 0 });
+    }
+  }
+  const liveIds = new Set([...shoes.map(s => 'shoe:' + s.id), ...runs.map(r => 'run:' + r._id)]);
+  for (const rowId of Object.keys(shadow)) {
+    if (!liveIds.has(rowId)) rows.push({ shoe_id: rowId, payload: {}, updated_at: Date.now(), deleted: 1 });
+  }
+  if (mutShoes) _syncSet('shoeGarage', shoes);
+  if (mutRuns) _syncSet('shoeRuns', runs);
+  return rows;
+}
+
+function _syncLiftRows() {
+  const log = getStorage('liftLog2', {});
+  const shadow = getStorage('_syncShadow_lifts', {});
+  const tombCutoff = _syncCutoffKey(SYNC_TOMBSTONE_DAYS);
+  const rows = []; let mutated = false;
+  for (const [key, val] of Object.entries(log)) {
+    if (!val || typeof val !== 'object') continue;
+    const date = (val.date && /^\d{4}-\d{2}-\d{2}$/.test(val.date)) ? val.date : key.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const h = JSON.stringify({ ...val, _u: 0 });
+    if (shadow[key]?.h !== h) {
+      val._u = Date.now(); mutated = true;
+      rows.push({ date, entry_id: key, payload: val, updated_at: val._u, deleted: 0 });
+    }
+  }
+  for (const [key, sh] of Object.entries(shadow)) {
+    if (!log[key] && sh.d >= tombCutoff) {
+      rows.push({ date: sh.d, entry_id: key, payload: {}, updated_at: Date.now(), deleted: 1 });
+    }
+  }
+  if (mutated) _syncSet('liftLog2', log);
+  return rows;
+}
+
+// ── Per-table mergers: server rows → local (LWW, recent window only) ────
+function _syncApplyFood(rows) {
+  const all = getStorage('foodEntries', {});
+  const mergeCutoff = _syncCutoffKey(SYNC_MERGE_DAYS);
+  let changed = false;
+  for (const r of rows) {
+    if (!r.date || r.date < mergeCutoff) continue;
+    const arr = all[r.date] || (all[r.date] = []);
+    const idx = arr.findIndex(e => e._id === r.entry_id);
+    const localU = idx >= 0 ? (arr[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { arr.splice(idx, 1); changed = true; } }
+    else if (r.payload) {
+      const entry = { ...r.payload, _id: r.entry_id, _u: r.updated_at };
+      if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+      changed = true;
+    }
+    if (all[r.date] && all[r.date].length === 0) delete all[r.date];
+  }
+  if (changed) {
+    _syncSet('foodEntries', all);
+    try { renderFoodLog(); renderRings(); } catch(_) {}
+  }
+}
+
+function _syncApplyWeight(rows) {
+  const log = getStorage('weightLog', {});
+  const shadow = getStorage('_syncShadow_weight', {});
+  let changed = false;
+  for (const r of rows) {
+    // Local unsynced edit (differs from shadow) wins until pushed
+    const localDirty = log[r.date] !== undefined && log[r.date] !== shadow[r.date];
+    if (!localDirty && log[r.date] !== r.weight_lbs) { log[r.date] = r.weight_lbs; changed = true; }
+  }
+  if (changed) _syncSet('weightLog', log);
+}
+
+function _syncApplyShoes(rows) {
+  const shoes = getStorage('shoeGarage', []);
+  const runs = getStorage('shoeRuns', []);
+  let changed = false;
+  for (const r of rows) {
+    const [kind, id] = [r.shoe_id.slice(0, r.shoe_id.indexOf(':')), r.shoe_id.slice(r.shoe_id.indexOf(':') + 1)];
+    const list = kind === 'shoe' ? shoes : kind === 'run' ? runs : null;
+    if (!list) continue;
+    const idKey = kind === 'shoe' ? 'id' : '_id';
+    const idx = list.findIndex(x => x[idKey] === id);
+    const localU = idx >= 0 ? (list[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { list.splice(idx, 1); changed = true; } }
+    else if (r.payload?.data) {
+      const item = { ...r.payload.data, [idKey]: id, _u: r.updated_at };
+      if (idx >= 0) list[idx] = item; else list.push(item);
+      changed = true;
+    }
+  }
+  if (changed) { _syncSet('shoeGarage', shoes); _syncSet('shoeRuns', runs); }
+}
+
+function _syncApplyLifts(rows) {
+  const log = getStorage('liftLog2', {});
+  const mergeCutoff = _syncCutoffKey(SYNC_MERGE_DAYS);
+  let changed = false;
+  for (const r of rows) {
+    if (!r.date || r.date < mergeCutoff) continue;
+    const localU = log[r.entry_id]?._u || 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (log[r.entry_id]) { delete log[r.entry_id]; changed = true; } }
+    else if (r.payload) { log[r.entry_id] = { ...r.payload, _u: r.updated_at }; changed = true; }
+  }
+  if (changed) _syncSet('liftLog2', log);
+}
+
+// ── Shadow rebuild after a successful sync ──────────────────────────────
+function _syncRebuildShadow(table) {
+  if (table === 'food') {
+    const all = getStorage('foodEntries', {}), sh = {};
+    for (const [date, arr] of Object.entries(all)) {
+      if (!Array.isArray(arr)) continue;
+      sh[date] = {};
+      for (const e of arr) if (e._id) sh[date][e._id] = { h: JSON.stringify({ ...e, _u: 0 }) };
+    }
+    _syncSet('_syncShadow_food', sh);
+  } else if (table === 'weight') {
+    _syncSet('_syncShadow_weight', { ...getStorage('weightLog', {}) });
+  } else if (table === 'shoes') {
+    const sh = {};
+    for (const s of getStorage('shoeGarage', [])) if (s.id) sh['shoe:' + s.id] = { h: JSON.stringify({ ...s, _u: 0 }) };
+    for (const r of getStorage('shoeRuns', [])) if (r._id) sh['run:' + r._id] = { h: JSON.stringify({ ...r, _u: 0 }) };
+    _syncSet('_syncShadow_shoes', sh);
+  } else if (table === 'lifts') {
+    const sh = {};
+    for (const [key, val] of Object.entries(getStorage('liftLog2', {}))) {
+      if (!val || typeof val !== 'object') continue;
+      const date = (val.date && /^\d{4}-\d{2}-\d{2}$/.test(val.date)) ? val.date : key.slice(0, 10);
+      sh[key] = { h: JSON.stringify({ ...val, _u: 0 }), d: date };
+    }
+    _syncSet('_syncShadow_lifts', sh);
+  }
+}
+
+const _SYNC_IMPL = {
+  food:   { toRows: _syncFoodRows,   apply: _syncApplyFood },
+  weight: { toRows: _syncWeightRows, apply: _syncApplyWeight },
+  shoes:  { toRows: _syncShoeRows,   apply: _syncApplyShoes },
+  lifts:  { toRows: _syncLiftRows,   apply: _syncApplyLifts },
+};
+
+// ── Core sync: pull-merge, then push local diff, then settle shadow ─────
+async function syncLogTable(table) {
+  if (!_authToken) return false;
+  const impl = _SYNC_IMPL[table];
+  try {
+    const since = getStorage('_syncPull_' + table, 0);
+    const res = await fetch('/api/log/' + table + '?since=' + since, { headers: authHeaders() });
+    if (res.status === 401) return false;           // session problem — checkAuth owns that
+    if (!res.ok) throw new Error('pull ' + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'pull failed');
+    _syncApplying = true;
+    try { impl.apply(data.rows || []); } finally { _syncApplying = false; }
+
+    const rows = impl.toRows();
+    for (let i = 0; i < rows.length; i += 400) {
+      const pr = await fetch('/api/log/' + table, {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ entries: rows.slice(i, i + 400) })
+      });
+      if (!pr.ok) throw new Error('push ' + pr.status);
+    }
+    _syncRebuildShadow(table);
+    _syncSet('_syncPull_' + table, data.now);
+    _syncSet('_syncDirty_' + table, 0);
+    _syncSet('_syncLastOk', Date.now());
+    return true;
+  } catch (e) {
+    _syncSet('_syncDirty_' + table, 1);
+    console.warn('[sync]', table, e.message);
+    return false;
+  }
+}
+
+async function syncAllLogs() {
+  for (const t of SYNC_TABLES) await syncLogTable(t);
+  try { updateSyncStatusUI(); } catch(_) {}
+}
+
+// Settings: force-push everything local → server (safety backfill)
+async function forceBackfillSync() {
+  showToast('☁️ Backfilling all local data to server…');
+  for (const t of SYNC_TABLES) {
+    _syncSet('_syncShadow_' + t, {});   // empty shadow = everything looks new
+  }
+  await syncAllLogs();
+  const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
+  showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── TP lifecycle banners (Tier 2, item 10) ───────────────────────────────
+async function checkTPLifecycle() {
+  if (!FLAGS.tpAutoRefresh || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/tp/status', { headers: authHeaders() });
+    const d = await res.json();
+    const expired = d.status === 'expired' || d.error === 'cookie_expired';
+    setStorage('tpLifecycle', { status: expired ? 'expired' : d.status || 'active', last_refreshed_at: d.last_refreshed_at || null, expired_at: d.expired_at || null, checked: Date.now() });
+    renderTPBanners();
+  } catch(_) {}
+}
+
+function renderTPBanners() {
+  const lc = getStorage('tpLifecycle', null);
+  const expired = FLAGS.tpAutoRefresh && lc?.status === 'expired';
+  for (const id of ['tpExpiredBannerLift', 'tpExpiredBannerBrief']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = expired ? 'block' : 'none';
+  }
+  const line = document.getElementById('tpLifecycleLine');
+  if (line && lc) {
+    line.textContent = lc.status === 'expired'
+      ? `⚠️ Expired ${lc.expired_at ? Math.max(1, Math.round((Date.now() - lc.expired_at) / 86400000)) + ' day(s) ago' : ''} — paste a fresh cookie above`
+      : lc.last_refreshed_at ? `Token refreshed ${new Date(lc.last_refreshed_at).toLocaleString()}` : 'Active';
+    line.style.color = lc.status === 'expired' ? '#fbbf24' : '';
+  }
+}
+
+// ── PWA + Web Push (Tier 2, item 9) ──────────────────────────────────────
+let _swReg = null;
+let _deferredInstallPrompt = null;
+
+function initPWA() {
+  if (!FLAGS.pwa || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    _swReg = reg;
+    // New version ready → offer reload
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          showToast('⬆️ Update ready', () => location.reload());
+        }
+      });
+    });
+  }).catch(e => console.warn('[pwa] sw register failed:', e.message));
+
+  // Install affordances
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    maybeShowInstallBanner('chromium');
+  });
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS && !standalone) maybeShowInstallBanner('ios');
+
+  // Keep server tz current (used for local-time reminders)
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && getStorage('tzSynced', '') !== tz) {
+      fetch('/api/user/tz', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ tz }) })
+        .then(() => setStorage('tzSynced', tz)).catch(() => {});
+    }
+  } catch(_) {}
+}
+
+function maybeShowInstallBanner(kind) {
+  const dismissed = getStorage('installBannerDismissed', 0);
+  if (Date.now() - dismissed < 30 * 86400000) return;
+  const el = document.getElementById('installBanner');
+  if (!el) return;
+  el.style.display = 'flex';
+  document.getElementById('installBannerText').textContent = kind === 'ios'
+    ? 'Install: tap Share → "Add to Home Screen"'
+    : 'Install Macro Tracker on your home screen';
+  const btn = document.getElementById('installBannerBtn');
+  btn.style.display = kind === 'ios' ? 'none' : 'inline-block';
+  btn.onclick = async () => {
+    if (_deferredInstallPrompt) {
+      _deferredInstallPrompt.prompt();
+      await _deferredInstallPrompt.userChoice;
+      _deferredInstallPrompt = null;
+    }
+    dismissInstallBanner();
+  };
+}
+function dismissInstallBanner() {
+  setStorage('installBannerDismissed', Date.now());
+  const el = document.getElementById('installBanner');
+  if (el) el.style.display = 'none';
+}
+
+// ── Push subscription management ──
+function _vapidToBytes(b64u) {
+  const pad = '='.repeat((4 - b64u.length % 4) % 4);
+  const raw = atob((b64u + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function updatePushSettingsUI() {
+  if (!FLAGS.pwa) return;
+  const section = document.getElementById('notifSection');
+  if (!section) return;
+  section.style.display = 'block';
+  const toggle = document.getElementById('pushToggle');
+  const line = document.getElementById('pushStatusLine');
+
+  let subscribed = false;
+  try {
+    const reg = _swReg || await navigator.serviceWorker?.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    subscribed = !!sub;
+  } catch(_) {}
+  toggle.classList.toggle('on', subscribed);
+  line.textContent = subscribed ? 'On — this device receives reminders'
+    : (Notification?.permission === 'denied' ? 'Blocked in browser settings' : 'Off');
+
+  // Reminder toggles from prefs
+  try {
+    const res = await fetch('/api/prefs', { headers: authHeaders() });
+    const d = await res.json();
+    const rem = d.prefs?.reminders || {};
+    document.getElementById('remWeighinToggle').classList.toggle('on', !!rem.morning_weighin?.on);
+    document.getElementById('remEveningToggle').classList.toggle('on', !!rem.evening_log?.on);
+  } catch(_) {}
+
+  // Device list
+  try {
+    const res = await fetch('/api/push/subscriptions', { headers: authHeaders() });
+    const d = await res.json();
+    const list = document.getElementById('pushDeviceList');
+    list.innerHTML = (d.subscriptions || []).map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px">
+        <div>
+          <div style="font-size:12px;font-weight:600">${esc(s.device_label || 'Device')}</div>
+          <div style="font-size:10px;color:var(--text3)">${s.last_used_at ? 'last push ' + new Date(s.last_used_at).toLocaleDateString() : 'never used'}</div>
+        </div>
+        <button onclick="removePushDevice('${esc(s.endpoint).replace(/'/g, '')}')" style="background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer">Remove</button>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+async function togglePush(btn) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('⚠️ Push not supported here' + (/iphone|ipad/i.test(navigator.userAgent) ? ' — install to Home Screen first' : ''));
+    return;
+  }
+  const reg = _swReg || await navigator.serviceWorker.getRegistration() || await navigator.serviceWorker.register('/sw.js');
+  const existing = await reg.pushManager.getSubscription();
+
+  if (existing) {
+    try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch(_) {}
+    await existing.unsubscribe();
+    showToast('🔕 Push disabled on this device');
+    updatePushSettingsUI();
+    return;
+  }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { showToast('⚠️ Notification permission denied'); updatePushSettingsUI(); return; }
+  try {
+    const vres = await fetch('/api/push/vapid', { headers: authHeaders() });
+    const { key } = await vres.json();
+    if (!key) throw new Error('no VAPID key on server');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _vapidToBytes(key) });
+    const j = sub.toJSON();
+    const label = /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone' : /android/i.test(navigator.userAgent) ? 'Android' : 'Desktop';
+    await fetch('/api/push/subscribe', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys, device_label: label + ' · ' + (navigator.platform || '') })
+    });
+    showToast('🔔 Push enabled — try the test button');
+  } catch (e) {
+    showToast('⚠️ Subscribe failed: ' + e.message);
+  }
+  updatePushSettingsUI();
+}
+
+async function removePushDevice(endpoint) {
+  try {
+    await fetch('/api/push/unsubscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ endpoint }) });
+    const reg = _swReg || await navigator.serviceWorker?.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub && sub.endpoint === endpoint) await sub.unsubscribe();
+  } catch(_) {}
+  updatePushSettingsUI();
+}
+
+async function toggleReminder(kind, btn) {
+  btn.classList.toggle('on');
+  const on = btn.classList.contains('on');
+  const defaults = { morning_weighin: '07:00', evening_log: '20:30' };
+  try {
+    const res = await fetch('/api/prefs', { headers: authHeaders() });
+    const d = await res.json();
+    const reminders = d.prefs?.reminders || {};
+    reminders[kind] = { on, time: reminders[kind]?.time || defaults[kind] };
+    await fetch('/api/prefs', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ reminders }) });
+    showToast(on ? '✅ Reminder on' : 'Reminder off');
+  } catch (e) { showToast('⚠️ Could not save: ' + e.message); btn.classList.toggle('on'); }
+}
+
+async function sendTestPush() {
+  try {
+    const res = await fetch('/api/push/test', { method: 'POST', headers: authHeaders() });
+    const d = await res.json();
+    showToast(d.sent ? `🔔 Sent to ${d.sent} device${d.sent > 1 ? 's' : ''}` : '⚠️ No devices subscribed — enable push first');
+  } catch (e) { showToast('⚠️ ' + e.message); }
+}
+
+// ── Quick-add favorites + meal-aware copy (Tier 2, item 8) ───────────────
+let _favList = [];
+
+async function renderFavChips(forceFetch) {
+  if (!FLAGS.quickAdd) return;
+  const wrap = document.getElementById('favChipsWrap'), row = document.getElementById('favChips');
+  if (!wrap || !row) return;
+
+  const cache = getStorage('favCache', null);
+  const fresh = cache && Date.now() - cache.fetched < 24 * 3600 * 1000;
+  if (cache?.favorites?.length) { _favList = cache.favorites; _paintFavChips(); }
+  if (fresh && !forceFetch) return;
+  try {
+    const res = await fetch('/api/log/favorites', { headers: authHeaders() });
+    const d = await res.json();
+    if (d.ok) {
+      _favList = d.favorites || [];
+      setStorage('favCache', { favorites: _favList, fetched: Date.now() });
+      _paintFavChips();
+    }
+  } catch (_) {}
+}
+
+function _paintFavChips() {
+  const wrap = document.getElementById('favChipsWrap'), row = document.getElementById('favChips');
+  if (!_favList.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  row.innerHTML = _favList.slice(0, 20).map((f, i) => `
+    <div class="quick-food-chip" data-fi="${i}" onclick="favQuickLog(${i})">
+      <div class="qfc-name">${f.pinned ? '📌 ' : ''}${esc(f.name)}</div>
+      <div class="qfc-cal">${f.calories} kcal · ${Math.round(f.protein)}g pro</div>
+    </div>`).join('');
+  // Long-press: edit sheet (with pin toggle) instead of instant log
+  row.querySelectorAll('.quick-food-chip').forEach(chip => {
+    let t = null, fired = false;
+    const start = () => { fired = false; t = setTimeout(() => { fired = true; favOpenEdit(parseInt(chip.dataset.fi)); }, 550); };
+    const cancel = () => { if (t) clearTimeout(t); t = null; };
+    chip.addEventListener('touchstart', start, { passive: true });
+    chip.addEventListener('touchend', e => { cancel(); if (fired) { e.preventDefault(); } });
+    chip.addEventListener('touchmove', cancel);
+    chip.addEventListener('mousedown', start);
+    chip.addEventListener('mouseup', cancel);
+    chip.addEventListener('mouseleave', cancel);
+    chip.addEventListener('click', e => { if (fired) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  });
+}
+
+function favQuickLog(i) {
+  const f = _favList[i];
+  if (!f) return;
+  addFoodEntry({ name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, icon: f.icon || '⚡' });
+}
+
+// Long-press → the quick-log confirm sheet with one editable item + pin toggle
+let _quickLogPinKey = null;
+function favOpenEdit(i) {
+  const f = _favList[i];
+  if (!f) return;
+  _quickLogItems = [{ name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, quality: 'full' }];
+  _quickLogPinKey = f.key;
+  document.getElementById('quickLogTranscript').textContent = 'Edit before logging';
+  document.getElementById('quickLogLoading').style.display = 'none';
+  document.getElementById('quickLogModal').classList.add('open');
+  renderQuickLogSheet();
+  const pinBtn = document.getElementById('quickLogPinBtn');
+  if (pinBtn) {
+    pinBtn.style.display = 'block';
+    pinBtn.textContent = f.pinned ? '📌 Unpin from quick add' : '📌 Pin to front of quick add';
+  }
+}
+
+async function toggleFavPin() {
+  if (!_quickLogPinKey) return;
+  const fav = _favList.find(f => f.key === _quickLogPinKey);
+  const cache = getStorage('favCache', { favorites: _favList, fetched: 0 });
+  let pinned = (getStorage('favPinned', null)) || _favList.filter(f => f.pinned).map(f => f.key);
+  if (pinned.includes(_quickLogPinKey)) pinned = pinned.filter(k => k !== _quickLogPinKey);
+  else if (pinned.length < 5) pinned.push(_quickLogPinKey);
+  else { showToast('⚠️ Max 5 pinned — unpin something first'); return; }
+  setStorage('favPinned', pinned);
+  if (fav) fav.pinned = pinned.includes(_quickLogPinKey);
+  _favList.sort((x, y) => (y.pinned - x.pinned) || (y.score - x.score));
+  setStorage('favCache', { favorites: _favList, fetched: cache.fetched });
+  _paintFavChips();
+  try { await fetch('/api/prefs', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ pinned_foods: pinned }) }); } catch(_) {}
+  closeQuickLogModal();
+  showToast(fav?.pinned ? '📌 Pinned' : 'Unpinned');
+}
+
+// Meal window helpers: breakfast <10am, lunch 10–3, dinner >3pm
+function currentMealWindow() {
+  const h = nowEST().getHours();
+  return h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner';
+}
+function entryMealWindow(e) {
+  const m = String(e.time || '').match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]) % 12;
+  if (/pm/i.test(m[3])) h += 12;
+  return h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner';
+}
+// Most recent prior day (≤7 back) with entries in the current meal window
+function findMealCopySource() {
+  const all = getStorage('foodEntries', {});
+  const meal = currentMealWindow();
+  for (let back = 1; back <= 7; back++) {
+    const d = new Date(getSelectedDateKey() + 'T12:00:00');
+    d.setDate(d.getDate() - back);
+    const key = dateToKey(d);
+    const entries = (all[key] || []).filter(e => entryMealWindow(e) === meal);
+    if (entries.length) return { key, entries, back, meal };
+  }
+  return null;
+}
+
+// ── Coach note (Tier 2, item 6) ──────────────────────────────────────────
+async function renderCoachNote(force) {
+  if (!FLAGS.briefCoach) return;
+  const section = document.getElementById('greetingCoachSection');
+  const body = document.getElementById('coachNoteBody');
+  if (!section || !body) return;
+  if (force) { section.style.display = 'block'; body.innerHTML = '<span style="color:var(--text3)">Regenerating…</span>'; }
+  try {
+    const res = await fetch('/api/brief/coach' + (force ? '?force=1' : ''), { headers: authHeaders() });
+    const d = await res.json();
+    if (!res.ok || !d.ok || !d.note) { if (!force) section.style.display = 'none'; return; }
+    const chip = { keep_going: ['🟢 keep going', '#22c55e'], adjust: ['🟠 adjust', '#f59e0b'], recover: ['🔴 recover', '#ef4444'] }[d.verdict] || ['', 'var(--text2)'];
+    section.style.display = 'block';
+    body.innerHTML = `${esc(d.note)} <span style="font-size:10px;font-weight:700;color:${chip[1]};white-space:nowrap">${chip[0]}</span>`;
+  } catch (e) { if (!force) section.style.display = 'none'; }
+}
+
+// Long-press the coach section (600ms) to force a regeneration
+function initCoachLongPress() {
+  const el = document.getElementById('greetingCoachSection');
+  if (!el || el._lpBound) return;
+  el._lpBound = true;
+  let t = null;
+  const start = () => { t = setTimeout(() => { t = null; renderCoachNote(true); }, 600); };
+  const cancel = () => { if (t) clearTimeout(t); t = null; };
+  el.addEventListener('touchstart', start, { passive: true });
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchmove', cancel);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+}
+
+// ── Backups tile (Tier 2, item 7) ────────────────────────────────────────
+async function updateBackupStatusUI() {
+  if (!FLAGS.backups) return;
+  const dot = document.getElementById('backupDot'), line = document.getElementById('backupStatusLine');
+  if (!dot || !line) return;
+  try {
+    const res = await fetch('/api/backup/status', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok || !d.last) { dot.textContent = '🔴'; line.textContent = 'No backup yet — tap "Back up now"'; return; }
+    const ageH = (Date.now() - d.last) / 3600000;
+    dot.textContent = ageH < 36 ? '🟢' : ageH < 72 ? '🟠' : '🔴';
+    const mb = (d.total_bytes / 1048576).toFixed(2);
+    line.textContent = `Last: ${new Date(d.last).toLocaleString()} · ${mb} MB · nightly 8:15 UTC`;
+  } catch (e) { dot.textContent = '⚪'; line.textContent = 'Status unavailable'; }
+}
+
+async function runBackupNow() {
+  showToast('🗄️ Running backup…');
+  try {
+    const res = await fetch('/api/backup/run', { method: 'POST', headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'backup failed');
+    const total = Object.values(d.manifest.tables).reduce((s, t) => s + (t.rows || 0), 0);
+    showToast(`✅ Backed up ${total.toLocaleString()} rows across ${Object.keys(d.manifest.tables).length} tables`);
+    updateBackupStatusUI();
+  } catch (e) { showToast('⚠️ Backup failed: ' + e.message); }
+}
+
+function updateSyncStatusUI() {
+  const el = document.getElementById('syncStatusLine');
+  if (!el) return;
+  const last = getStorage('_syncLastOk', 0);
+  const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
+  el.textContent = !last ? 'Never synced'
+    : dirty.length ? `⚠️ Pending: ${dirty.join(', ')} — retries automatically`
+    : `Last synced ${new Date(last).toLocaleTimeString()}`;
+}
+// ═══ End D1 log sync ═══
 
 // ── SVG Ring ──
 let ringMode = 'consumed'; // 'consumed' | 'remaining'
@@ -1519,8 +2247,8 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
-  if (name === 'lift') renderWorkoutPage();
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
@@ -1584,6 +2312,7 @@ function addFoodEntry(food) {
   entries.push(entry);
   setFoodEntries(entries);
   logInteraction('food_logged', food.name);
+  try { scheduleCheckinSync(3000); } catch(_) {}
   scheduleRender(renderRings);
   scheduleRender(renderFoodLog);
   scheduleRender(renderProteinPace);
@@ -3492,12 +4221,31 @@ function closePhotoModal() {
 function triggerCamera() { document.getElementById('cameraInput').click(); }
 function triggerGallery() { document.getElementById('galleryInput').click(); }
 
+// Downscale to ≤1024px max edge, JPEG q0.85 — keeps uploads small (worker caps ~2MB)
+function downscalePhoto(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const maxEdge = 1024;
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      if (scale >= 1 && dataUrl.startsWith('data:image/jpeg')) return resolve(dataUrl);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 function handlePhotoInput(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
+  reader.onload = async e => {
+    const dataUrl = await downscalePhoto(e.target.result);
     photoBase64 = dataUrl.split(',')[1];
     // Persist to sessionStorage so Android camera modal-collapse can restore it
     try { sessionStorage.setItem('pendingPhotoDataUrl', dataUrl); } catch(e) {}
@@ -3615,14 +4363,516 @@ function logAIFood() {
   showToast(`✅ ${p.name} logged!`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// TRAINING LOAD (Tier 1, item 3) — CTL/ATL/TSB card on the Workout tab.
+// Server computes from TrainingPeaks TSS; this renders and caches 30 min.
+// ═══════════════════════════════════════════════════════════════════════
+async function renderTrainingLoad() {
+  if (!FLAGS.trainingLoad) return;
+  const card = document.getElementById('trainingLoadCard');
+  if (!card) return;
+  if (!getStorage('tpConnected', null)) { card.style.display = 'none'; return; }
+
+  const cache = getStorage('trainingLoadCache', null);
+  let rows = (cache && Date.now() - cache.fetched < 30 * 60 * 1000) ? cache.rows : null;
+  if (!rows) {
+    try {
+      const res = await fetch('/api/training/load?days=90', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('API ' + res.status));
+      rows = data.rows || [];
+      setStorage('trainingLoadCache', { rows, fetched: Date.now() });
+    } catch (e) {
+      console.warn('[training-load]', e.message);
+      card.style.display = 'none';
+      return;
+    }
+  }
+  if (!rows.length) { card.style.display = 'none'; return; }
+
+  const last = rows[rows.length - 1];
+  card.style.display = 'block';
+  document.getElementById('tlCtl').textContent = Math.round(last.ctl);
+  document.getElementById('tlAtl').textContent = Math.round(last.atl);
+  const tsbEl = document.getElementById('tlTsb');
+  const tsb = Math.round(last.tsb);
+  const tsbColor = tsb > 5 ? '#22c55e' : tsb >= -10 ? 'var(--text)' : tsb >= -20 ? '#f59e0b' : '#ef4444';
+  tsbEl.textContent = (tsb > 0 ? '+' : '') + tsb;
+  tsbEl.style.color = tsbColor;
+
+  const interp = tsb > 5 ? '🟢 Fresh — good day for quality'
+    : tsb >= -10 ? '⚪ Building — hold the plan'
+    : tsb >= -20 ? '🟠 Fatigued — consider an easy day'
+    : '🔴 Very fatigued — back off';
+  const interpEl = document.getElementById('tlInterpretation');
+  interpEl.textContent = interp;
+  interpEl.style.color = tsbColor;
+
+  // Sparkline: CTL (solid) + ATL (faint) over the last 42 days
+  const win = rows.slice(-42);
+  const W = 300, H = 44;
+  const vals = win.flatMap(r => [r.ctl, r.atl]);
+  const max = Math.max(...vals, 1), min = Math.min(...vals, 0);
+  const pt = (v, i) => `${(i / Math.max(win.length - 1, 1) * W).toFixed(1)},${(H - 4 - (v - min) / (max - min || 1) * (H - 8)).toFixed(1)}`;
+  document.getElementById('tlSparkline').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px">
+      <polyline points="${win.map((r, i) => pt(r.atl, i)).join(' ')}" fill="none" stroke="#a78bfa" stroke-width="1.5" opacity="0.45"/>
+      <polyline points="${win.map((r, i) => pt(r.ctl, i)).join(' ')}" fill="none" stroke="#3b82f6" stroke-width="2"/>
+    </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PLANNED-WORKOUT FUELING (Tier 1, item 4) — if tomorrow's TP plan is a
+// long/hard session, bump tonight's carb + calorie targets from 4pm.
+// ═══════════════════════════════════════════════════════════════════════
+function tomorrowKey() {
+  const d = new Date(todayKey() + 'T12:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchTPPlanned() {
+  if (!FLAGS.fueling || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/tp/planned?date=' + tomorrowKey(), { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok || !data.ok) return;
+    const planned = data.planned || [];
+    const dur = planned.reduce((s, p) => s + (p.duration_min || 0), 0);
+    const tss = planned.reduce((s, p) => s + (p.tss_planned || 0), 0);
+    const race = planned.some(p => p.type === 'Race');
+    const main = planned.slice().sort((a, b) => (b.duration_min || 0) - (a.duration_min || 0))[0];
+    const desc = main ? (main.distance_mi ? `${main.distance_mi}mi ${main.type.toLowerCase()}` : `${Math.round(main.duration_min || 0)}min ${main.type.toLowerCase()}`) : '';
+
+    let bump = null;
+    if (race) bump = { extraCarbs: 100, extraCals: 400, label: `Race day tomorrow (${desc}) → +100g carbs tonight` };
+    else if (dur >= 75 || tss >= 90) bump = { extraCarbs: 60, extraCals: 240, label: `Tomorrow: ${desc} → +60g carbs tonight` };
+
+    setStorage('fuelingBump', bump ? { date: todayKey(), ...bump } : null);
+    renderFuelingBanner();
+    scheduleRender(renderRings);
+    updateMacroTargetsRow();
+  } catch (e) { console.warn('[fueling]', e.message); }
+}
+
+// Active bump (or null): right day, not dismissed, evening window 4pm–midnight
+function getFuelingBump() {
+  if (!FLAGS.fueling) return null;
+  const b = getStorage('fuelingBump', null);
+  if (!b || b.date !== todayKey()) return null;
+  if (getStorage('fuelingDismiss_' + todayKey(), false)) return null;
+  if (nowEST().getHours() < 16) return null;
+  return b;
+}
+
+function applyFuelingBump(m) {
+  const b = getFuelingBump();
+  if (!b || !m) return m;
+  return { ...m, calories: m.calories + b.extraCals, carbs: m.carbs + b.extraCarbs, _fueling: true };
+}
+
+function renderFuelingBanner() {
+  const banner = document.getElementById('fuelingBanner');
+  if (!banner) return;
+  const b = getFuelingBump();
+  if (!b) { banner.style.display = 'none'; return; }
+  document.getElementById('fuelingBannerText').textContent = b.label + ' (tap to dismiss)';
+  banner.style.display = 'flex';
+}
+
+function dismissFuelingBanner() {
+  setStorage('fuelingDismiss_' + todayKey(), true);
+  renderFuelingBanner();
+  scheduleRender(renderRings);
+  updateMacroTargetsRow();
+  showToast('Fueling suggestion dismissed for today');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INSIGHTS / TRENDS (Tier 1, item 5) — five correlation charts rendered as
+// inline SVG from one /api/trends payload, plus a cached weekly AI summary.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Tiny SVG helpers — cheaper than a chart dependency
+function _insLine(pts, color, w = 2, dash = '') {
+  if (pts.length < 2) return '';
+  return `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+}
+function _insMovAvg(vals, n) {
+  return vals.map((_, i) => {
+    const s = vals.slice(Math.max(0, i - n + 1), i + 1);
+    return s.reduce((a, b) => a + b, 0) / s.length;
+  });
+}
+function _insFit(pts) { // least-squares [slope, intercept]
+  const n = pts.length;
+  if (n < 2) return [0, pts[0]?.[1] || 0];
+  const sx = pts.reduce((s, p) => s + p[0], 0), sy = pts.reduce((s, p) => s + p[1], 0);
+  const sxx = pts.reduce((s, p) => s + p[0] * p[0], 0), sxy = pts.reduce((s, p) => s + p[0] * p[1], 0);
+  const den = n * sxx - sx * sx;
+  if (!den) return [0, sy / n];
+  const m = (n * sxy - sx * sy) / den;
+  return [m, (sy - m * sx) / n];
+}
+function _insEmpty(msg) {
+  return `<div style="padding:24px 0;text-align:center;color:var(--text3);font-size:12px">${msg}</div>`;
+}
+
+async function renderInsights() {
+  if (!FLAGS.trends) return;
+  const section = document.getElementById('insightsSection');
+  if (!section) return;
+  section.style.display = 'block';
+
+  let data = null;
+  const cache = getStorage('trendsCache', null);
+  if (cache && Date.now() - cache.fetched < 10 * 60 * 1000) data = cache.data;
+  if (!data) {
+    try {
+      const res = await fetch('/api/trends?days=180', { headers: authHeaders() });
+      data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('API ' + res.status));
+      setStorage('trendsCache', { data, fetched: Date.now() });
+    } catch (e) {
+      document.getElementById('insWeight').innerHTML = _insEmpty('Could not load trends — ' + esc(e.message));
+      return;
+    }
+  }
+
+  _insRenderWeight(data);
+  _insRenderDeficit(data);
+  _insRenderSleep(data);
+  _insRenderLoad(data);
+  _insRenderProtein(data);
+
+  // Weekly AI summary (server-cached per ISO week)
+  try {
+    const res = await fetch('/api/trends/summary', { headers: authHeaders() });
+    const s = await res.json();
+    if (s.ok && s.summary) {
+      document.getElementById('insightsSummaryCard').style.display = 'block';
+      document.getElementById('insightsSummary').textContent = s.summary;
+    }
+  } catch (_) {}
+}
+
+function _insRenderWeight(data) {
+  const el = document.getElementById('insWeight'), note = document.getElementById('insWeightNote');
+  const w = data.weights || [];
+  if (w.length < 3) { el.innerHTML = _insEmpty('Log a few weigh-ins to see your trend'); note.textContent = ''; return; }
+  const W = 320, H = 140, P = 8;
+  const t0 = new Date(w[0].date).getTime(), t1 = new Date(w[w.length - 1].date).getTime();
+  const lbs = w.map(x => x.lbs);
+  const ma7 = _insMovAvg(lbs, 7), ma28 = _insMovAvg(lbs, 28);
+  const gw = data.profile?.goal_weight;
+  const lo = Math.min(...lbs, gw || Infinity) - 1, hi = Math.max(...lbs) + 1;
+  const X = d => P + (new Date(d).getTime() - t0) / Math.max(t1 - t0, 1) * (W - 2 * P);
+  const Y = v => H - P - (v - lo) / (hi - lo || 1) * (H - 2 * P);
+
+  // Dashed plan line: from first weigh-in toward goal weight at goal date
+  let target = '';
+  if (gw && data.profile.goal_date) {
+    const gt = new Date(data.profile.goal_date).getTime();
+    const endV = lbs[0] + (gw - lbs[0]) * Math.min(1, (t1 - t0) / Math.max(gt - t0, 1));
+    target = _insLine([[X(w[0].date), Y(lbs[0])], [X(w[w.length - 1].date), Y(endV)]], '#64748b', 1.5, '4,4');
+  }
+  const dots = w.map(x => `<circle cx="${X(x.date).toFixed(1)}" cy="${Y(x.lbs).toFixed(1)}" r="2" fill="#f59e0b" opacity="0.55"/>`).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    ${target}${dots}
+    ${_insLine(w.map((x, i) => [X(x.date), Y(ma7[i])]), '#22c55e', 2)}
+    ${_insLine(w.map((x, i) => [X(x.date), Y(ma28[i])]), '#3b82f6', 1.5)}
+  </svg>`;
+
+  // Rate of change: fit over the last 28 days vs what the plan needs
+  const cut = t1 - 28 * 86400000;
+  const recent = w.filter(x => new Date(x.date).getTime() >= cut).map(x => [(new Date(x.date).getTime() - cut) / 86400000, x.lbs]);
+  const [slope] = _insFit(recent);
+  const perWeek = slope * 7;
+  let planned = null;
+  if (gw && data.profile.goal_date) {
+    const daysLeft = (new Date(data.profile.goal_date) - Date.now()) / 86400000;
+    if (daysLeft > 0) planned = (gw - lbs[lbs.length - 1]) / daysLeft * 7;
+  }
+  note.textContent = `Last 4 weeks: ${perWeek > 0 ? '+' : ''}${perWeek.toFixed(2)} lbs/week` +
+    (planned !== null ? ` · plan needs ${planned.toFixed(2)} lbs/week to hit ${gw} lbs by ${data.profile.goal_date}` : '') +
+    ' · 🟢 7-day avg · 🔵 28-day avg · ▫ plan';
+}
+
+function _insWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Monday
+  return d.toISOString().slice(0, 10);
+}
+
+function _insRenderDeficit(data) {
+  const el = document.getElementById('insDeficit');
+  const tdee = data.profile?.tdee || TDEE;
+  // Daily calories: food_log totals as the base, check-in rows override
+  const calByDate = {};
+  for (const f of data.food || []) if (f.calories > 0) calByDate[f.date] = f.calories;
+  for (const c of data.checkins || []) if (c.calories_consumed > 0) calByDate[c.date] = c.calories_consumed;
+  const wByDate = {};
+  for (const w of data.weights || []) wByDate[w.date] = w.lbs;
+  const byWeek = {};
+  for (const [date, cals] of Object.entries(calByDate)) {
+    const wk = _insWeekKey(date);
+    (byWeek[wk] = byWeek[wk] || { cals: [], weights: [] }).cals.push(cals);
+    if (wByDate[date] > 0) byWeek[wk].weights.push(wByDate[date]);
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-10);
+  if (weeks.length < 2) { el.innerHTML = _insEmpty('Need a couple of weeks of logged food'); return; }
+  const rows = weeks.map(wk => {
+    const b = byWeek[wk];
+    return { wk, deficit: tdee - b.cals.reduce((a, x) => a + x, 0) / b.cals.length,
+             wavg: b.weights.length ? b.weights.reduce((a, x) => a + x, 0) / b.weights.length : null };
+  });
+  const W = 320, H = 130, P = 8, bw = (W - 2 * P) / rows.length;
+  const maxD = Math.max(...rows.map(r => Math.abs(r.deficit)), 300);
+  const zero = H / 2;
+  const bars = rows.map((r, i) => {
+    const h = Math.abs(r.deficit) / maxD * (H / 2 - P);
+    const y = r.deficit >= 0 ? zero - h : zero;
+    const dw = (r.wavg !== null && i > 0 && rows[i - 1].wavg !== null) ? r.wavg - rows[i - 1].wavg : null;
+    return `<rect x="${(P + i * bw + 2).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="2" fill="${r.deficit >= 0 ? '#22c55e' : '#ef4444'}" opacity="0.8"/>` +
+      `<text x="${(P + i * bw + bw / 2).toFixed(1)}" y="${(r.deficit >= 0 ? zero + 12 : zero - 5).toFixed(1)}" text-anchor="middle" font-size="8" fill="#94a3b8">${Math.round(r.deficit)}</text>` +
+      (dw !== null ? `<text x="${(P + i * bw + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" font-size="8" fill="${dw <= 0 ? '#22c55e' : '#f59e0b'}">${dw > 0 ? '+' : ''}${dw.toFixed(1)}</text>` : '');
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><line x1="${P}" y1="${zero}" x2="${W - P}" y2="${zero}" stroke="#334155" stroke-width="1"/>${bars}</svg>`;
+}
+
+function _insRenderSleep(data) {
+  const el = document.getElementById('insSleep'), note = document.getElementById('insSleepNote');
+  const byDate = {};
+  for (const c of data.checkins || []) byDate[c.date] = c;
+  const pairs = [];
+  for (const c of data.checkins || []) {
+    if (!(c.sleep_hrs > 0)) continue;
+    const next = new Date(c.date + 'T12:00:00Z'); next.setUTCDate(next.getUTCDate() + 1);
+    const n = byDate[next.toISOString().slice(0, 10)];
+    if (n && (n.energy > 0 || n.mood > 0)) pairs.push({ sleep: c.sleep_hrs, energy: n.energy || null, mood: n.mood || null });
+  }
+  if (pairs.length < 8) { el.innerHTML = _insEmpty('Need more sleep + mood/energy check-ins to correlate'); note.textContent = ''; return; }
+
+  const panel = (key, color, label, ox) => {
+    const pts = pairs.filter(p => p[key] > 0).map(p => [p.sleep, p[key]]);
+    if (pts.length < 5) return '';
+    const W2 = 150, H2 = 110, P2 = 14;
+    const xs = pts.map(p => p[0]);
+    const xlo = Math.min(...xs) - 0.3, xhi = Math.max(...xs) + 0.3;
+    const X = v => ox + P2 + (v - xlo) / (xhi - xlo || 1) * (W2 - 2 * P2);
+    const Y = v => H2 - P2 - (v - 1) / 4 * (H2 - 2 * P2);
+    const [m, b] = _insFit(pts);
+    return pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.5" fill="${color}" opacity="0.5"/>`).join('') +
+      _insLine([[X(xlo), Y(m * xlo + b)], [X(xhi), Y(m * xhi + b)]], color, 1.5) +
+      `<text x="${ox + W2 / 2}" y="10" text-anchor="middle" font-size="9" font-weight="700" fill="${color}">${label}</text>`;
+  };
+  el.innerHTML = `<svg viewBox="0 0 320 115" style="width:100%;height:auto">${panel('energy', '#f59e0b', 'ENERGY', 0)}${panel('mood', '#a78bfa', 'MOOD', 165)}</svg>`;
+
+  // Personal threshold: the split point with the biggest next-day energy gap
+  let best = null;
+  for (let s = 5.5; s <= 8.5; s += 0.5) {
+    const below = pairs.filter(p => p.energy > 0 && p.sleep < s).map(p => p.energy);
+    const above = pairs.filter(p => p.energy > 0 && p.sleep >= s).map(p => p.energy);
+    if (below.length >= 4 && above.length >= 4) {
+      const gap = above.reduce((a, v) => a + v, 0) / above.length - below.reduce((a, v) => a + v, 0) / below.length;
+      if (!best || gap > best.gap) best = { s, gap };
+    }
+  }
+  note.textContent = best && best.gap > 0.3
+    ? `Your energy drops noticeably when sleep falls below ~${best.s} h (${best.gap.toFixed(1)} points lower next day)`
+    : 'No strong sleep threshold detected yet — keep logging';
+}
+
+function _insRenderLoad(data) {
+  const el = document.getElementById('insLoad');
+  const load = data.load || [];
+  if (load.length < 7) { el.innerHTML = _insEmpty('Connect TrainingPeaks and train — load appears here'); return; }
+  const byWeek = {};
+  for (const r of load) {
+    const wk = _insWeekKey(r.date);
+    (byWeek[wk] = byWeek[wk] || { tss: 0, ctl: 0 }).tss += r.tss;
+    byWeek[wk].ctl = r.ctl; // last value in the week
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-12);
+  const W = 320, H = 130, P = 8, bw = (W - 2 * P) / weeks.length;
+  const maxT = Math.max(...weeks.map(w => byWeek[w].tss), 100);
+  const maxC = Math.max(...weeks.map(w => byWeek[w].ctl), 10);
+  const bars = weeks.map((w, i) =>
+    `<rect x="${(P + i * bw + 2).toFixed(1)}" y="${(H - P - byWeek[w].tss / maxT * (H - 2 * P)).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(byWeek[w].tss / maxT * (H - 2 * P), 1).toFixed(1)}" rx="2" fill="#3b82f6" opacity="0.55"/>`).join('');
+  const ctlPts = weeks.map((w, i) => [P + i * bw + bw / 2, H - P - byWeek[w].ctl / maxC * (H - 2 * P)]);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}${_insLine(ctlPts, '#f59e0b', 2)}</svg>`;
+}
+
+function _insRenderProtein(data) {
+  const el = document.getElementById('insProtein');
+  const target = data.profile?.protein || MACROS.protein;
+  const byDate = {};
+  for (const f of data.food || []) if (f.protein > 0) byDate[f.date] = f.protein;
+  for (const c of data.checkins || []) if (c.protein_g > 0) byDate[c.date] = c.protein_g;
+  const cell = 20, gap = 3, weeks = 13;
+  const today = new Date(todayKey() + 'T12:00:00Z');
+  const start = new Date(today); start.setUTCDate(start.getUTCDate() - (weeks * 7 - 1) - ((today.getUTCDay() + 6) % 7));
+  let cells = '';
+  for (let i = 0; ; i++) {
+    const d = new Date(start.getTime() + i * 86400000);
+    if (d > today) break;
+    const key = d.toISOString().slice(0, 10);
+    const col = Math.floor(i / 7), row = i % 7;
+    const g = byDate[key];
+    const pct = g ? g / target : null;
+    const fill = pct === null ? '#1e293b' : pct >= 0.9 ? '#22c55e' : pct >= 0.7 ? '#f59e0b' : '#ef4444';
+    cells += `<rect x="${col * (cell + gap)}" y="${row * (cell + gap)}" width="${cell}" height="${cell}" rx="4" fill="${fill}" opacity="${pct === null ? 0.45 : 0.9}"><title>${key}: ${g ? Math.round(g) + 'g (' + Math.round(pct * 100) + '%)' : 'no log'}</title></rect>`;
+  }
+  const W = weeks * (cell + gap), H = 7 * (cell + gap);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${cells}</svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// VOICE FOOD LOG (Tier 1, item 2) — mic → transcript → Claude parse →
+// editable multi-item confirm sheet → addFoodEntry per item.
+// ═══════════════════════════════════════════════════════════════════════
+let _voiceRec = null;
+let _quickLogItems = [];
+
+function _resetVoiceBtn() {
+  const btn = document.getElementById('voiceLogBtn');
+  if (btn) btn.innerHTML = '<span style="font-size:16px">🎤</span> Voice';
+}
+
+function startVoiceLog() {
+  if (!FLAGS.voiceLog) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('⚠️ Voice input not supported in this browser — try Photo or Search'); return; }
+  if (_voiceRec) { try { _voiceRec.stop(); } catch(_) {} _voiceRec = null; _resetVoiceBtn(); return; }
+  try {
+    const rec = new SR();
+    _voiceRec = rec;
+    rec.lang = 'en-US';
+    rec.continuous = false;       // iOS Safari: single utterance
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    const btn = document.getElementById('voiceLogBtn');
+    if (btn) btn.innerHTML = '<span style="font-size:16px">🔴</span> Listening…';
+    rec.onresult = ev => {
+      const transcript = ev.results?.[0]?.[0]?.transcript || '';
+      if (transcript.trim()) parseVoiceFood(transcript.trim());
+      else showToast('⚠️ Didn\'t catch that — try again');
+    };
+    rec.onerror = ev => {
+      showToast(ev.error === 'not-allowed' ? '⚠️ Mic permission denied — enable in browser settings' : '⚠️ Mic error: ' + ev.error);
+    };
+    rec.onend = () => { _voiceRec = null; _resetVoiceBtn(); };
+    rec.start();
+  } catch (e) {
+    _voiceRec = null; _resetVoiceBtn();
+    showToast('⚠️ Could not start mic: ' + e.message);
+  }
+}
+
+async function parseVoiceFood(transcript) {
+  const modal = document.getElementById('quickLogModal');
+  document.getElementById('quickLogTranscript').textContent = '“' + transcript + '”';
+  document.getElementById('quickLogLoading').style.display = 'block';
+  document.getElementById('quickLogList').innerHTML = '';
+  document.getElementById('quickLogActions').style.display = 'none';
+  document.getElementById('quickLogCancelOnly').style.display = 'block';
+  modal.classList.add('open');
+
+  const prompt = `You are a registered dietitian. Convert this spoken meal description into structured food entries.
+
+Description: "${transcript}"
+
+Rules:
+- Split into distinct food items
+- Use USDA FoodData Central reference values
+- If the speaker gave explicit quantities ("three eggs", "two slices"), quality is "full"; if portions are implied, "partial"; if you guessed, "estimated"
+- Round calories to whole numbers, macros to 0.1g
+
+Return ONLY valid JSON, no markdown:
+{"entries":[{"name":"food name","grams":120,"calories":210,"protein_g":18,"carbs_g":1,"fat_g":15,"quality":"full"}]}`;
+
+  try {
+    const resp = await callClaudeAPI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const raw = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const s = clean.indexOf('{'), e = clean.lastIndexOf('}');
+    const parsed = JSON.parse(clean.slice(s, e + 1));
+    const entries = (parsed.entries || []).map(x => ({
+      name:     String(x.name || 'Food').slice(0, 80),
+      calories: Math.max(0, Math.round(x.calories || 0)),
+      protein:  Math.max(0, Math.round((x.protein_g ?? x.protein ?? 0) * 10) / 10),
+      carbs:    Math.max(0, Math.round((x.carbs_g ?? x.carbs ?? 0) * 10) / 10),
+      fat:      Math.max(0, Math.round((x.fat_g ?? x.fat ?? 0) * 10) / 10),
+      quality:  ['full', 'partial', 'estimated'].includes(x.quality) ? x.quality : 'estimated',
+    }));
+    if (!entries.length) throw new Error('no items recognized');
+    _quickLogItems = entries;
+    renderQuickLogSheet();
+  } catch (err) {
+    document.getElementById('quickLogLoading').style.display = 'none';
+    document.getElementById('quickLogList').innerHTML =
+      `<div style="color:var(--red);font-size:13px;padding:14px;text-align:center">Couldn't parse that — ${esc(err.message)}.<br>Try again or use manual entry.</div>`;
+  }
+}
+
+function renderQuickLogSheet() {
+  document.getElementById('quickLogLoading').style.display = 'none';
+  const list = document.getElementById('quickLogList');
+  const qBadge = q => q === 'full' ? '<span style="color:#22c55e">● exact</span>'
+    : q === 'partial' ? '<span style="color:#f59e0b">● partial</span>'
+    : '<span style="color:#a78bfa">● estimated</span>';
+  list.innerHTML = _quickLogItems.map((it, i) => `
+    <div class="quicklog-item" data-idx="${i}" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <input type="text" value="${esc(it.name)}" oninput="_quickLogItems[${i}].name=this.value" style="flex:1;font-size:13px;font-weight:600" />
+        <span style="font-size:10px;white-space:nowrap">${qBadge(it.quality)}</span>
+        <button onclick="removeQuickLogItem(${i})" style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+        ${[['calories','kcal','#f59e0b'],['protein','P g','#22c55e'],['carbs','C g','#3b82f6'],['fat','F g','#ef4444']].map(([k,l,c]) => `
+          <div style="text-align:center">
+            <input type="number" inputmode="decimal" value="${it[k]}" oninput="_quickLogItems[${i}].${k}=parseFloat(this.value)||0"
+              style="width:100%;text-align:center;font-size:13px;font-weight:700;color:${c};padding:6px 2px" />
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:2px">${l}</div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+  const actions = document.getElementById('quickLogActions');
+  actions.style.display = _quickLogItems.length ? 'block' : 'none';
+  document.getElementById('quickLogCancelOnly').style.display = _quickLogItems.length ? 'none' : 'block';
+  document.getElementById('quickLogConfirmBtn').textContent =
+    `✅ Log ${_quickLogItems.length} item${_quickLogItems.length === 1 ? '' : 's'}`;
+}
+
+function removeQuickLogItem(i) {
+  _quickLogItems.splice(i, 1);
+  if (_quickLogItems.length) renderQuickLogSheet();
+  else closeQuickLogModal();
+}
+
+function confirmQuickLog() {
+  const items = _quickLogItems.slice();
+  closeQuickLogModal();
+  for (const it of items) {
+    addFoodEntry({ name: it.name, calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat, icon: '🎤' });
+  }
+}
+
+function closeQuickLogModal() {
+  document.getElementById('quickLogModal').classList.remove('open');
+  _quickLogItems = [];
+  _quickLogPinKey = null;
+  const pinBtn = document.getElementById('quickLogPinBtn');
+  if (pinBtn) pinBtn.style.display = 'none';
+}
+
 // ── Settings ──
 function openSettings() {
   document.getElementById('settingsModal').classList.add('open');
-  const creds = getStorage('garminCreds', null);
-  if (creds) {
-    document.getElementById('garminKey').value    = creds.key    || '';
-    document.getElementById('garminSecret').value = creds.secret || '';
-  }
   const goals = getStorage('userGoals', {});
   if (goals.weight) document.getElementById('settingWeight').value     = goals.weight;
   if (goals.goal)   document.getElementById('settingGoalWeight').value = goals.goal;
@@ -3642,8 +4892,11 @@ function openSettings() {
   // Reset auto-calc result
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
-  updateGarminSettingsUI();
-  updateStravaSettingsUI();
+  updateTPSettingsUI();
+  updateSyncStatusUI();
+  updateBackupStatusUI();
+  updatePushSettingsUI();
+  checkTPLifecycle();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
@@ -3704,7 +4957,7 @@ function updateMacroTargetsRow() {
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const adaptive   = getStorage('adaptiveMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const m = garminAdj || adaptive || userMacros || MACROS;
+  const m = applyFuelingBump(garminAdj || adaptive || userMacros || MACROS);
 
   const tdee   = getStorage('userTDEE', null) || TDEE;
   const goals  = getStorage('userGoals', {});
@@ -3740,7 +4993,7 @@ function updateMacroTargetsRow() {
     } else if (deficit > 0) {
       tipTime = ' · ~' + (Math.round(((cw-gw)*3500)/(deficit*7)*10)/10) + ' wks at this deficit';
     }
-        el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. Strava auto-adds carbs &amp; cals on run days.'
+        el('macroTipBox').innerHTML = '💡 <span style="color:#4ade80">' + src2 + '.</span> Goal: ' + cw + ' → ' + gw + ' lbs' + tipTime + '. TrainingPeaks auto-adds carbs &amp; cals on run days.'
   }
 }
 
@@ -3886,251 +5139,13 @@ function autoCalcTDEE() {
     </div>`;
 }
 
-// ── Garmin OAuth 1.0a ──
-// Garmin uses OAuth 1.0a. Since this runs client-side we do the request-token
-// step via a CORS proxy, then redirect the user to Garmin's auth page.
-// On return the verifier comes back in the URL and we exchange for access token.
-
-const GARMIN_BASE      = 'https://connectapi.garmin.com';
-const GARMIN_REQ_URL   = GARMIN_BASE + '/oauth-service/oauth/request_token';
-const GARMIN_AUTH_URL  = 'https://connect.garmin.com/oauthConfirm';
-const GARMIN_ACCESS_URL= GARMIN_BASE + '/oauth-service/oauth/access_token';
-const GARMIN_API_BASE  = GARMIN_BASE + '/activitylist-service/activities/search/activities';
-// Garmin requests proxied through our backend to avoid third-party CORS proxy
-async function garminProxy(url, method, headers) {
-  const res = await fetch('/api/garmin/proxy', {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ url, method: method || 'POST', headers: headers || {} })
-  });
-  return res;
-}
-
-function b64(str) { return btoa(unescape(encodeURIComponent(str))); }
-function rfc3986(str) { return encodeURIComponent(str).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()); }
-
-function generateNonce() {
-  return Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
-}
-
-function oauthHeader(method, url, params, consumerKey, consumerSecret, tokenKey='', tokenSecret='') {
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const nonce = generateNonce();
-  const base = {
-    oauth_consumer_key: consumerKey,
-    oauth_nonce: nonce,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: ts,
-    oauth_token: tokenKey,
-    oauth_version: '1.0',
-    ...params
-  };
-  if (!tokenKey) delete base.oauth_token;
-
-  const sortedKeys = Object.keys(base).sort();
-  const paramStr = sortedKeys.map(k => `${rfc3986(k)}=${rfc3986(base[k])}`).join('&');
-  const sigBase = `${method}&${rfc3986(url)}&${rfc3986(paramStr)}`;
-  const sigKey  = `${rfc3986(consumerSecret)}&${rfc3986(tokenSecret)}`;
-
-  // HMAC-SHA1 via Web Crypto
-  return { sigBase, sigKey, nonce, ts, base };
-}
-
-async function hmacSha1(key, data) {
-  const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(data));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)));
-}
-
-async function buildAuthHeader(method, url, extraParams, consumerKey, consumerSecret, tokenKey='', tokenSecret='') {
-  const { sigBase, sigKey, nonce, ts, base } = oauthHeader(method, url, extraParams, consumerKey, consumerSecret, tokenKey, tokenSecret);
-  const sig = await hmacSha1(sigKey, sigBase);
-  const headerParams = { ...base, oauth_signature: sig };
-  if (!tokenKey) delete headerParams.oauth_token;
-  const hdr = 'OAuth ' + Object.keys(headerParams).sort()
-    .map(k => `${rfc3986(k)}="${rfc3986(headerParams[k])}"`)
-    .join(', ');
-  return hdr;
-}
-
-async function startGarminOAuth() {
-  const key    = document.getElementById('garminKey').value.trim();
-  const secret = document.getElementById('garminSecret').value.trim();
-  if (!key || !secret) { showToast('⚠️ Enter your Consumer Key and Secret first'); return; }
-
-  setStorage('garminCreds', { key, secret });
-  showToast('🔄 Requesting token from Garmin…');
-
-  try {
-    const callbackUrl = encodeURIComponent(window.location.href.split('?')[0]);
-    const authHeader = await buildAuthHeader('POST', GARMIN_REQ_URL, { oauth_callback: callbackUrl }, key, secret);
-
-    const res = await garminProxy(GARMIN_REQ_URL, 'POST', {
-      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
-    });
-    const text = await res.text();
-    const params = Object.fromEntries(new URLSearchParams(text));
-
-    if (!params.oauth_token) throw new Error('No request token received. Check your Consumer Key/Secret.');
-
-    setStorage('garminReqToken', params);
-    // Redirect to Garmin authorize page
-    window.location.href = `${GARMIN_AUTH_URL}?oauth_token=${params.oauth_token}`;
-
-  } catch (err) {
-    showToast('❌ ' + err.message);
-  }
-}
-
-async function handleOAuthCallback() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const verifier  = urlParams.get('oauth_verifier');
-  const token     = urlParams.get('oauth_token');
-  if (!verifier || !token) return;
-
-  // Clean URL
-  window.history.replaceState({}, '', window.location.pathname);
-
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthTitle').textContent = 'Completing authorization…';
-  document.getElementById('oauthMsg').textContent = 'Exchanging tokens with Garmin. This takes just a moment.';
-
-  const creds    = getStorage('garminCreds', {});
-  const reqToken = getStorage('garminReqToken', {});
-
-  try {
-    const authHeader = await buildAuthHeader(
-      'POST', GARMIN_ACCESS_URL,
-      { oauth_verifier: verifier },
-      creds.key, creds.secret,
-      reqToken.oauth_token, reqToken.oauth_token_secret
-    );
-    const res = await garminProxy(GARMIN_ACCESS_URL, 'POST', {
-      'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded'
-    });
-    const text = await res.text();
-    const accessParams = Object.fromEntries(new URLSearchParams(text));
-
-    if (!accessParams.oauth_token) throw new Error('Token exchange failed. Try connecting again.');
-
-    setStorage('garminToken', {
-      token: accessParams.oauth_token,
-      secret: accessParams.oauth_token_secret,
-      displayName: accessParams.display_name || 'Garmin User'
-    });
-
-    document.getElementById('oauthIcon').textContent = '✅';
-    document.getElementById('oauthTitle').textContent = 'Connected!';
-    document.getElementById('oauthMsg').textContent = `Successfully connected as ${accessParams.display_name || 'your Garmin account'}. Fetching today\'s activities…`;
-
-    setTimeout(() => {
-      document.getElementById('oauthModal').classList.remove('open');
-      updateGarminSettingsUI();
-      fetchGarminToday();
-    }, 2000);
-
-  } catch (err) {
-    document.getElementById('oauthIcon').textContent = '❌';
-    document.getElementById('oauthTitle').textContent = 'Connection failed';
-    document.getElementById('oauthMsg').textContent = err.message;
-  }
-}
-
-function updateGarminSettingsUI() {
-  const tok = getStorage('garminToken', null);
-  const statusEl  = document.getElementById('garminConnectStatus');
-  const setupEl   = document.getElementById('garminSetupSteps');
-  const panelEl   = document.getElementById('garminConnectedPanel');
-  if (tok) {
-    statusEl.className = 'connect-status connected';
-    statusEl.textContent = '🟢 Connected';
-    setupEl.style.display  = 'none';
-    panelEl.style.display  = 'block';
-    document.getElementById('garminUsername').textContent = tok.displayName || 'Garmin User';
-  } else {
-    statusEl.className = 'connect-status disconnected';
-    statusEl.textContent = '⚪ Not connected';
-    setupEl.style.display  = 'block';
-    panelEl.style.display  = 'none';
-  }
-}
-
-function toggleAutoAdjust(btn) {
-  btn.classList.toggle('on');
-  setStorage('garminAutoAdjust', btn.classList.contains('on'));
-}
-
-function disconnectGarmin() {
-  if (!confirm('Disconnect your Garmin account?')) return;
-  localStorage.removeItem('garminToken');
-  localStorage.removeItem('garminCreds');
-  localStorage.removeItem('garminReqToken');
-  updateGarminSettingsUI();
-  document.getElementById('garminCard').style.display = 'none';
-  showToast('Garmin disconnected');
-}
-
-// ── Fetch today's Garmin activities ──
-async function fetchGarminToday() {
-  const tok   = getStorage('garminToken', null);
-  const creds = getStorage('garminCreds', null);
-  if (!tok || !creds) return;
-
-  document.getElementById('garminCard').style.display = 'block';
-  document.getElementById('garminActivitySub').textContent = 'Syncing…';
-
-  const today = nowEST();
-  const startLocal = dateToKey(today);
-  const apiUrl = `${GARMIN_API_BASE}?startDate=${startLocal}&limit=10`;
-
-  try {
-    const authHeader = await buildAuthHeader(
-      'GET', GARMIN_API_BASE,
-      { startDate: startLocal, limit: '10' },
-      creds.key, creds.secret,
-      tok.token, tok.secret
-    );
-    const res = await garminProxy(apiUrl, 'GET', {
-      'Authorization': authHeader, 'Accept': 'application/json'
-    });
-    if (!res.ok) throw new Error(`Garmin API error ${res.status}`);
-    const activities = await res.json();
-
-    // Sum up runs / cardio for today
-    let totalCalories = 0, totalDistance = 0, totalDuration = 0, activityCount = 0;
-    const runTypes = ['running','trail_running','treadmill_running','track_running'];
-
-    (Array.isArray(activities) ? activities : []).forEach(a => {
-      const type = (a.activityType?.typeKey || '').toLowerCase();
-      if (runTypes.some(r => type.includes(r))) {
-        totalCalories += a.calories || 0;
-        totalDistance += a.distance || 0;
-        totalDuration += a.duration || 0;
-        activityCount++;
-      }
-    });
-
-    renderGarminCard(totalCalories, totalDistance, totalDuration, activityCount);
-    if (getStorage('garminAutoAdjust', true)) {
-      adjustMacrosForBurn(Math.round(totalCalories * 0.75)); // net burn only
-    }
-    setStorage('garminToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
-
-  } catch (err) {
-    document.getElementById('garminActivitySub').textContent = '⚠️ Sync failed — ' + err.message;
-  }
-}
-
-function renderGarminCard(calories, distance, duration, count, source='garmin') {
+function renderGarminCard(calories, distance, duration, count) {
   const km    = (distance / 1000).toFixed(1);
   const miles = (distance / 1609.34).toFixed(1);
   const mins  = Math.round(duration / 60);
   const hrs   = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
-  const srcLabel = source === 'strava' ? 'Strava' : 'Garmin Connect';
-  const srcEmoji = source === 'strava' ? '🟠' : '🔵';
+  const srcLabel = 'TrainingPeaks';
+  const srcEmoji = '⛰️';
 
   document.getElementById('garminActivityTitle').textContent = count > 0 ? `${count} run${count>1?'s':''} today` : 'No runs today';
   document.getElementById('garminActivitySub').textContent   = count > 0
@@ -4171,8 +5186,8 @@ function renderGarminCard(calories, distance, duration, count, source='garmin') 
 }
 
 function openTodayShoeAssign() {
-  const cached = getStorage('stravaToday', null) || getStorage('garminToday', null);
-  if (!cached || !cached.distance) { showToast('⚠️ No run data — sync Strava first'); return; }
+  const cached = getStorage('tpToday', null);
+  if (!cached || !cached.distance) { showToast('⚠️ No run data — sync TrainingPeaks first'); return; }
   promptShoeAssignment({
     date:       todayKey(),
     miles:      cached.distance / 1609.34,
@@ -4224,176 +5239,100 @@ function adjustMacrosForBurn(burnCalories) {
   renderWeeklyBalance();
 }
 
-// ── Strava OAuth 2.0 (server-side) ──
-const STRAVA_API_BASE   = 'https://www.strava.com/api/v3';
+// ── TrainingPeaks (cookie auth, proxied through the worker) ──
 
-function startStravaOAuth() {
-  // Server handles the redirect to Strava with credentials
-  window.location.href = '/api/strava/auth';
-}
-
-function handleStravaCallback() {
-  // Server redirects back with token in hash fragment: #strava_token={...}
-  const hash = window.location.hash;
-  if (!hash.startsWith('#strava_token=')) return;
-
-  // Clean URL immediately
-  window.history.replaceState({}, '', window.location.pathname);
-
-  let tokenData;
+async function connectTrainingPeaks() {
+  const input = document.getElementById('tpCookieInput');
+  const cookie = (input.value || '').trim();
+  if (!cookie) { showToast('⚠️ Paste your Production_tpAuth cookie value first'); return; }
+  showToast('Connecting to TrainingPeaks…');
   try {
-    tokenData = JSON.parse(decodeURIComponent(hash.replace('#strava_token=', '')));
-  } catch (e) {
-    showToast('⚠️ Failed to parse Strava token');
-    return;
-  }
-
-  setStorage('stravaToken', tokenData);
-
-  document.getElementById('oauthModal').classList.add('open');
-  document.getElementById('oauthIcon').textContent  = '✅';
-  document.getElementById('oauthTitle').textContent = 'Strava Connected!';
-  const name = `${tokenData.athlete?.firstname || ''} ${tokenData.athlete?.lastname || ''}`.trim() || 'Strava User';
-  document.getElementById('oauthMsg').textContent   = `Connected as ${name}. Fetching today's activities…`;
-
-  setTimeout(() => {
-    document.getElementById('oauthModal').classList.remove('open');
-    updateStravaSettingsUI();
-    fetchStravaToday();
-  }, 2000);
-}
-
-async function refreshStravaTokenIfNeeded() {
-  const tok = getStorage('stravaToken', null);
-  if (!tok) return null;
-
-  // Token still valid
-  if (Date.now() / 1000 < tok.expiresAt - 300) return tok.accessToken;
-
-  // Refresh via server-side proxy (keeps client_secret server-side)
-  try {
-    const res = await fetch('/api/strava/refresh', {
+    const res = await fetch('/api/tp/auth', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: tok.refreshToken })
+      headers: authHeaders(),
+      body: JSON.stringify({ cookie })
     });
     const data = await res.json();
-    if (!data.accessToken) {
-      console.warn('Strava refresh response:', data);
-      showToast('⚠️ Strava token refresh failed — try reconnecting in Settings');
-      return tok.accessToken;
-    }
-    const updated = { ...tok, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt };
-    setStorage('stravaToken', updated);
-    return data.accessToken;
-  } catch(e) {
-    console.warn('Strava refresh error:', e);
-    return tok.accessToken;
+    if (!res.ok || !data.ok) { showToast('⚠️ ' + (data.error || 'TrainingPeaks connection failed')); return; }
+    input.value = '';
+    setStorage('tpConnected', { athlete: data.athlete, connectedAt: Date.now() });
+    setStorage('tpLifecycle', { status: 'active', last_refreshed_at: Date.now(), checked: Date.now() });
+    renderTPBanners();
+    updateTPSettingsUI();
+    showToast('✅ Connected as ' + (data.athlete?.name || 'athlete'));
+    fetchTPToday();
+  } catch (e) {
+    showToast('⚠️ TrainingPeaks error: ' + e.message);
   }
 }
 
-async function fetchStravaToday() {
-  const accessToken = await refreshStravaTokenIfNeeded();
-  if (!accessToken) return;
+async function fetchTPToday() {
+  if (!getStorage('tpConnected', null)) return;
 
   document.getElementById('garminCard').style.display = 'block';
-  document.getElementById('garminActivitySub').textContent = 'Syncing from Strava…';
-
-  // Get today's date in EST, then build UTC unix timestamps for midnight EST = 05:00 UTC
-  const estDate = todayKey(); // YYYY-MM-DD in EST
-  const startOfDay = Math.floor(new Date(estDate + 'T05:00:00Z').getTime() / 1000); // midnight EST = 05:00 UTC
-  const endOfDay   = Math.floor(new Date(estDate + 'T04:59:59Z').getTime() / 1000) + 86400; // 23:59:59 EST
+  document.getElementById('garminActivitySub').textContent = 'Syncing from TrainingPeaks…';
 
   try {
-    const res = await fetch(
-      `${STRAVA_API_BASE}/athlete/activities?after=${startOfDay}&before=${endOfDay}&per_page=30`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
-    );
+    const res = await fetch('/api/tp/today?date=' + todayKey(), { headers: authHeaders() });
+    const data = await res.json();
 
-    if (res.status === 401) {
-      // Token truly expired and refresh failed — ask user to reconnect
-      document.getElementById('garminActivitySub').textContent = '⚠️ Strava session expired — reconnect in Settings';
-      setStorage('stravaToken', null);
-      return;
-    }
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      throw new Error(`Strava API ${res.status}: ${errText.slice(0,120)}`);
-    }
-
-    const activities = await res.json();
-
-    const runTypes = ['Run','VirtualRun','TrailRun','Treadmill','Walk','Hike'];
-    const todayRuns = activities.filter(a => {
-      const type = a.sport_type || a.type || '';
-      return runTypes.some(t => type.toLowerCase().includes(t.toLowerCase()));
-    });
-
-    let totalCalories = 0, totalDistance = 0, totalDuration = 0, count = todayRuns.length;
-
-    // Fetch detail for each run in parallel (calories not in list endpoint)
-    const details = await Promise.all(todayRuns.map(async (a) => {
-      let cal = 0;
-      try {
-        const detailRes = await fetch(
-          `${STRAVA_API_BASE}/activities/${a.id}`,
-          { headers: { 'Authorization': `Bearer ${accessToken}` } }
-        );
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          cal = detail.calories || 0;
-        }
-      } catch(e) {
-        cal = a.kilojoules ? Math.round(a.kilojoules / 4.184) : 0;
+    if (!res.ok || !data.ok) {
+      if (data.error === 'cookie_expired') {
+        document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks session expired — reconnect in Settings';
+        setStorage('tpLifecycle', { status: 'expired', checked: Date.now() });
+        renderTPBanners();
+        return;
       }
-      return { cal, distance: a.distance || 0, duration: a.moving_time || 0 };
-    }));
-    for (const d of details) {
-      totalCalories += d.cal;
-      totalDistance += d.distance;
-      totalDuration += d.duration;
+      if (data.error === 'not_connected') {
+        document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks not connected — see Settings';
+        setStorage('tpConnected', null);
+        updateTPSettingsUI();
+        return;
+      }
+      throw new Error(data.error || ('API ' + res.status));
     }
 
-    renderGarminCard(totalCalories, totalDistance, totalDuration, count, 'strava');
-    // Strava's calories field = gross expenditure (includes BMR during run).
-    // Our TDEE already includes BMR for the full day, so we only add the NET
-    // incremental burn: ~75% of gross is the standard correction.
-    const netBurn = Math.round(totalCalories * 0.75);
-    if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(netBurn);
-    setStorage('stravaToday', { calories: totalCalories, distance: totalDistance, duration: totalDuration, fetched: Date.now() });
+    renderGarminCard(data.calories, data.distance, data.duration, data.count);
+    // Device-reported workout calories are gross expenditure (include BMR during
+    // the run). Our TDEE already covers BMR for the full day, so we only add the
+    // NET incremental burn: ~75% of gross is the standard correction.
+    const netBurn = Math.round((data.calories || 0) * 0.75);
+    if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
+    setStorage('tpToday', { calories: data.calories, distance: data.distance, duration: data.duration, fetched: Date.now() });
     renderShoeStravaCard();
+    // Items 3+4: server recomputes load in the background; refresh planned fueling now
+    setStorage('trainingLoadCache', null);
+    safeCall(fetchTPPlanned, 'fetchTPPlanned');
 
     // Prompt shoe assignment after run syncs
-    if (todayRuns.length > 0 && totalDistance > 0) {
+    if (data.count > 0 && data.distance > 0) {
       onStravaRunSynced({
         date:       todayKey(),
-        miles:      totalDistance / 1609.34,
-        duration:   totalDuration,
-        calories:   totalCalories,
-        activityId: String(todayRuns[0].id),
+        miles:      data.distance / 1609.34,
+        duration:   data.duration,
+        calories:   data.calories,
+        activityId: data.workouts && data.workouts[0] ? String(data.workouts[0].id) : null,
       });
     }
   } catch (err) {
-    document.getElementById('garminActivitySub').textContent = '⚠️ Strava sync failed — ' + err.message;
+    document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks sync failed — ' + err.message;
   }
 }
 
-function updateStravaSettingsUI() {
-  const tok = getStorage('stravaToken', null);
-  const statusEl = document.getElementById('stravaConnectStatus');
-  const setupEl  = document.getElementById('stravaSetupSteps');
-  const panelEl  = document.getElementById('stravaConnectedPanel');
+function updateTPSettingsUI() {
+  const conn = getStorage('tpConnected', null);
+  const statusEl = document.getElementById('tpConnectStatus');
+  const setupEl  = document.getElementById('tpSetupSteps');
+  const panelEl  = document.getElementById('tpConnectedPanel');
 
-  if (tok) {
+  if (conn) {
     statusEl.className   = 'connect-status connected';
     statusEl.textContent = '🟢 Connected';
     setupEl.style.display  = 'none';
     panelEl.style.display  = 'block';
     // Show the activity card immediately — data fills in after async fetch
     document.getElementById('garminCard').style.display = 'block';
-    const a = tok.athlete;
-    document.getElementById('stravaUsername').textContent =
-      a ? `${a.firstname || ''} ${a.lastname || ''}`.trim() : 'Strava User';
+    document.getElementById('tpUsername').textContent = conn.athlete?.name || 'Athlete';
   } else {
     statusEl.className   = 'connect-status disconnected';
     statusEl.textContent = '⚪ Not connected';
@@ -4402,22 +5341,20 @@ function updateStravaSettingsUI() {
   }
 }
 
-function toggleStravaAutoAdjust(btn) {
+function toggleTPAutoAdjust(btn) {
   btn.classList.toggle('on');
-  setStorage('stravaAutoAdjust', btn.classList.contains('on'));
+  setStorage('tpAutoAdjust', btn.classList.contains('on'));
 }
 
-function disconnectStrava() {
-  if (!confirm('Disconnect your Strava account?')) return;
-  localStorage.removeItem('stravaToken');
-  localStorage.removeItem('stravaToday');
-  localStorage.removeItem('stravaAdjustedMacros');
-  updateStravaSettingsUI();
-  // Hide garmin card only if garmin also not connected
-  const garminTok = getStorage('garminToken', null);
-  if (!garminTok) document.getElementById('garminCard').style.display = 'none';
+async function disconnectTrainingPeaks() {
+  if (!confirm('Disconnect TrainingPeaks?')) return;
+  try { await fetch('/api/tp/disconnect', { method: 'POST', headers: authHeaders() }); } catch(_) {}
+  localStorage.removeItem('tpConnected');
+  localStorage.removeItem('tpToday');
+  updateTPSettingsUI();
+  document.getElementById('garminCard').style.display = 'none';
   renderRings();
-  showToast('Strava disconnected');
+  showToast('TrainingPeaks disconnected');
 }
 
 // ── Weight Tracking & Trend ──
@@ -4597,12 +5534,12 @@ function checkAdaptiveMacros() {
   renderRings();
 }
 
-// renderRings — checks adaptive macros, Garmin/Strava adjustments, and ringMode
+// renderRings — checks adaptive macros, TrainingPeaks adjustments, and ringMode
 function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const targets    = overrideMacros || garminAdj || adaptive || userMacros || MACROS;
+  const targets    = applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS);
   const macroLog  = getStorage('macroLog', {});
   const dayData   = macroLog[getSelectedDateKey()] || { calories:0, protein:0, carbs:0, fat:0 };
   document.getElementById('ringsRow').innerHTML =
@@ -4624,9 +5561,8 @@ function renderRings(overrideMacros) {
   safeCall(renderWhoopDayBadge, "whoopDayBadge");
   if (tSrc) {
     if (garminAdj || overrideMacros) {
-      const hasStrava = !!getStorage('stravaToken', null);
-      tSrc.textContent = hasStrava ? '🟠 Strava' : '🔵 Garmin';
-      tSrc.style.color = hasStrava ? '#f97316' : '#3b82f6';
+      tSrc.textContent = '⛰️ TrainingPeaks';
+      tSrc.style.color = '#1064a3';
     } else if (adaptive) {
       tSrc.textContent = '🧠 Adaptive';
       tSrc.style.color = '#8b5cf6';
@@ -4674,6 +5610,15 @@ function renderWhoopDayBadge() {
 function checkCopyYesterday() {
   const btn = document.getElementById('copyYesterdayBtn');
   if (!btn) return;
+  if (FLAGS.quickAdd) {
+    const src = findMealCopySource();
+    if (src) {
+      btn.style.display = 'flex';
+      const when = src.back === 1 ? "yesterday's" : `${src.back} days ago:`;
+      btn.textContent = `📋 Copy ${when} ${src.meal} (${src.entries.length})`;
+      return;
+    }
+  }
   const all = getStorage('foodEntries', {});
   const yEntries = all[getYesterdayKey()] || [];
   btn.style.display = yEntries.length > 0 ? 'flex' : 'none';
@@ -4683,11 +5628,18 @@ function checkCopyYesterday() {
 }
 
 function copyYesterdayMeals() {
-  const all = getStorage('foodEntries', {});
-  const selDate = new Date(getSelectedDateKey() + 'T12:00:00');
-  selDate.setDate(selDate.getDate() - 1);
-  const prevKey = dateToKey(selDate);
-  const yEntries = all[prevKey] || [];
+  // Meal-aware source when quickAdd is on; whole-previous-day otherwise
+  let yEntries;
+  if (FLAGS.quickAdd) {
+    const src = findMealCopySource();
+    if (src) yEntries = src.entries;
+  }
+  if (!yEntries) {
+    const all = getStorage('foodEntries', {});
+    const selDate = new Date(getSelectedDateKey() + 'T12:00:00');
+    selDate.setDate(selDate.getDate() - 1);
+    yEntries = all[dateToKey(selDate)] || [];
+  }
   if (yEntries.length === 0) { showToast('No meals logged the previous day'); return; }
 
   // Store for the modal
@@ -4724,8 +5676,9 @@ function copySelectedYesterdayMeals() {
   const entries = window._copyYesterdayEntries || [];
   const selected = [...cbs].map(cb => {
     const idx = parseInt(cb.dataset.yi);
+    const { _id, _u, ...rest } = entries[idx];  // fresh sync identity for the copy
     return {
-      ...entries[idx],
+      ...rest,
       id:   Date.now() + Math.random(),
       time: nowEST().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone:'America/New_York' }),
     };
@@ -4763,6 +5716,10 @@ function initGreetingTile() {
 
   // Load quote
   loadDailyQuote();
+
+  // Coach note grounded in 14-day trends (item 6)
+  safeCall(renderCoachNote, 'renderCoachNote');
+  safeCall(initCoachLongPress, 'initCoachLongPress');
 
   // Try loading calendar + gmail with saved token
   const savedToken = localStorage.getItem('googleAccessToken');
@@ -5193,7 +6150,7 @@ function renderWeeklyBalance() {
     const isToday = key === todayStr;
     const isPast  = key <= todayStr;
 
-    // Burn calories from Strava/Garmin burnLog or shoe run estimate
+    // Burn calories from TrainingPeaks burnLog or shoe run estimate
     let dayBurn = (typeof burnLog[key] === 'number' ? burnLog[key] : 0);
     if (!dayBurn) {
       const dayRuns = shoeRuns.filter(r => r.date === key);
@@ -6026,9 +6983,8 @@ const BACKUP_KEYS = [
   'macroLog', 'foodEntries', 'weightLog',
   'savedFoods', 'savedRecipes', 'liftLog', 'liftLog2',
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
-  'garminToday',
-  'stravaToday',
-  'garminAutoAdjust', 'stravaAutoAdjust',
+  'tpToday',
+  'tpAutoAdjust',
   'shoeGarage', 'shoeRuns',
 ];
 
@@ -6146,13 +7102,12 @@ function formatPace(minPerMile) {
 function renderShoeStravaCard() {
   const card = document.getElementById('shoeStravaCard');
   if (!card) return;
-  const cached   = getStorage('stravaToday', null) || getStorage('garminToday', null);
-  const isStrava = !!getStorage('stravaToken', null);
-  const isGarmin = !!getStorage('garminToken', null);
-  if (!cached || (!isStrava && !isGarmin)) { card.style.display = 'none'; return; }
+  const cached = getStorage('tpToday', null);
+  const isTP   = !!getStorage('tpConnected', null);
+  if (!cached || !isTP) { card.style.display = 'none'; return; }
 
   const miles  = ((cached.distance || 0) / 1609.34).toFixed(2);
-  const source = isStrava ? '🟠 Synced from Strava' : '🔵 Synced from Garmin';
+  const source = '⛰️ Synced from TrainingPeaks';
 
   document.getElementById('shoeStravaMiles').textContent = parseFloat(miles) > 0 ? `${miles} mi` : '0 mi';
   document.getElementById('shoeStravaSub').textContent   = source;
@@ -6831,7 +7786,7 @@ function switchHistoryTab(tab) {
   if (tab === 'lift')   renderHistoryPage();
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
-  if (tab === 'trends') { renderTrendChart(); }
+  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); }
   if (tab === 'whoop')  renderWhoopDashboard();
 }
 
@@ -9098,6 +10053,14 @@ function pruneOldData() {
 function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
   safeCall(pruneOldData, 'pruneOldData');
+  safeCall(syncAllLogs, 'syncAllLogs');
+  safeCall(initPWA, 'initPWA');
+  safeCall(checkTPLifecycle, 'checkTPLifecycle');
+  // Feature-flag gating (items 2–5)
+  try {
+    if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';
+    if (!FLAGS.photoLog) document.getElementById('photoLogBtn').style.display = 'none';
+  } catch(_) {}
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 
@@ -9180,7 +10143,7 @@ function _initApp() {
     }
   } catch(e) {}
 
-  safeCall(updateStravaSettingsUI, 'updateStravaSettingsUI');
+  safeCall(updateTPSettingsUI, 'updateTPSettingsUI');
   safeCall(renderWeeklyBalance, 'renderWeeklyBalance');
   safeCall(renderStreakCard, 'renderStreakCard');
   safeCall(renderProteinPace, 'renderProteinPace');
@@ -9236,21 +10199,23 @@ document.addEventListener('visibilitychange', () => {
     // Show daily check-in if not done yet today (handles mobile resume / tab switch)
     _checkinGuardFired = false; // reset guard so it can fire again if needed
     try { maybeShowWelcomeModal(); } catch(e) {}
-    // Re-check Strava/Garmin on resume — catches runs finished while app was in background
+    // Re-check TrainingPeaks on resume — catches runs finished while app was in background
     try {
-      const stravaTok = getStorage('stravaToken', null);
-      const garminTok = getStorage('garminToken', null);
-      if (stravaTok) {
-        const sc = getStorage('stravaToday', null);
+      const tpConn = getStorage('tpConnected', null);
+      if (tpConn) {
+        const sc = getStorage('tpToday', null);
         const age = sc ? Date.now() - sc.fetched : Infinity;
         const stale = !sc || (sc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
-        if (stale) fetchStravaToday();
-      } else if (garminTok) {
-        const gc = getStorage('garminToday', null);
-        const age = gc ? Date.now() - gc.fetched : Infinity;
-        const stale = !gc || (gc.distance > 0 ? age > 30*60*1000 : age > 5*60*1000);
-        if (stale) fetchGarminToday();
+        if (stale) fetchTPToday();
       }
+    } catch(e) {}
+    // Log sync on resume: retry anything dirty, or refresh if it's been a while
+    try {
+      const dirty = SYNC_TABLES.some(t => getStorage('_syncDirty_' + t, 0));
+      const lastOk = getStorage('_syncLastOk', 0);
+      if (dirty || Date.now() - lastOk > 5 * 60 * 1000) syncAllLogs();
+      const fc = getStorage('favCache', null);
+      if (FLAGS.quickAdd && (!fc || Date.now() - fc.fetched > 24 * 3600 * 1000)) renderFavChips(true);
     } catch(e) {}
   }
 });
@@ -9262,14 +10227,13 @@ document.addEventListener('visibilitychange', () => {
   if (btn) { btn.classList.add('active'); selectedTimeSlot = currentSlot; }
 })();
 
-// Handle OAuth callbacks — check Garmin first, then Strava
-handleOAuthCallback();
-handleStravaCallback();
 
-// Auto-load activity data if connected (Strava takes priority if both connected)
+// Auto-load activity data if TrainingPeaks is connected
 (function() {
-  const stravaTok = getStorage('stravaToken', null);
-  const garminTok = getStorage('garminToken', null);
+  // One-time cleanup of the retired Strava and Garmin integrations' storage
+  ['stravaToken','stravaToday','stravaAutoAdjust','stravaAdjustedMacros',
+   'garminToken','garminCreds','garminReqToken','garminToday','garminAutoAdjust'].forEach(k => localStorage.removeItem(k));
+  const tpConn = getStorage('tpConnected', null);
 
   function shouldUseCached(cached) {
     if (!cached) return false;
@@ -9280,23 +10244,14 @@ handleStravaCallback();
     return age < 5 * 60 * 1000;
   }
 
-  if (stravaTok) {
+  if (tpConn) {
     document.getElementById('garminCard').style.display = 'block';
-    const cached = getStorage('stravaToday', null);
+    const cached = getStorage('tpToday', null);
     if (shouldUseCached(cached)) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'strava');
-      if (getStorage('stravaAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
+      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0);
+      if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
     } else {
-      fetchStravaToday();
-    }
-  } else if (garminTok) {
-    document.getElementById('garminCard').style.display = 'block';
-    const cached = getStorage('garminToday', null);
-    if (shouldUseCached(cached)) {
-      renderGarminCard(cached.calories, cached.distance, cached.duration, cached.distance > 0 ? 1 : 0, 'garmin');
-      if (getStorage('garminAutoAdjust', true)) adjustMacrosForBurn(Math.round((cached.calories || 0) * 0.75));
-    } else {
-      fetchGarminToday();
+      fetchTPToday();
     }
   }
 })();
@@ -10170,7 +11125,7 @@ function triggerAppImprovement() {
 ${summary}
 
 App tabs: Today, Recipes, Trends, Shoes, Workout, Program, History, AI.
-Features: food logging, barcode scanning, macro tracking, weight logging, shoe mileage, workout logging, lift PRs, recipe builder, run tracking, Strava integration, AI coaching, event countdowns.
+Features: food logging, barcode scanning, macro tracking, weight logging, shoe mileage, workout logging, lift PRs, recipe builder, run tracking, TrainingPeaks integration, AI coaching, event countdowns.
 
 Please analyze:
 1. Which features I use most vs least — should underused ones be removed, simplified, or made more prominent?
