@@ -1,5 +1,14 @@
 
 
+// ── Feature flags (Tier 1 items 2–5) — flip to false to disable without redeploying the rest ──
+const FLAGS = {
+  voiceLog:     true,   // item 2: voice food entry
+  photoLog:     true,   // item 2: photo food entry (pre-existing flow, now flag-gated)
+  trainingLoad: false,  // item 3: CTL/ATL/TSB
+  fueling:      false,  // item 4: planned-workout fueling
+  trends:       false,  // item 5: insights tab
+};
+
 // ── Auth & Onboarding ──
 const GOOGLE_CLIENT_ID = '480646952925-03r0p3jkdvfjdpnhlqbam4hnfjq0hp63.apps.googleusercontent.com';
 let _authToken = null;   // long-lived session token (NOT the Google ID token)
@@ -3818,12 +3827,31 @@ function closePhotoModal() {
 function triggerCamera() { document.getElementById('cameraInput').click(); }
 function triggerGallery() { document.getElementById('galleryInput').click(); }
 
+// Downscale to ≤1024px max edge, JPEG q0.85 — keeps uploads small (worker caps ~2MB)
+function downscalePhoto(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const maxEdge = 1024;
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      if (scale >= 1 && dataUrl.startsWith('data:image/jpeg')) return resolve(dataUrl);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 function handlePhotoInput(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
+  reader.onload = async e => {
+    const dataUrl = await downscalePhoto(e.target.result);
     photoBase64 = dataUrl.split(',')[1];
     // Persist to sessionStorage so Android camera modal-collapse can restore it
     try { sessionStorage.setItem('pendingPhotoDataUrl', dataUrl); } catch(e) {}
@@ -3939,6 +3967,146 @@ function logAIFood() {
   closePhotoModal();
   renderQuickRecs();
   showToast(`✅ ${p.name} logged!`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// VOICE FOOD LOG (Tier 1, item 2) — mic → transcript → Claude parse →
+// editable multi-item confirm sheet → addFoodEntry per item.
+// ═══════════════════════════════════════════════════════════════════════
+let _voiceRec = null;
+let _quickLogItems = [];
+
+function _resetVoiceBtn() {
+  const btn = document.getElementById('voiceLogBtn');
+  if (btn) btn.innerHTML = '<span style="font-size:16px">🎤</span> Voice';
+}
+
+function startVoiceLog() {
+  if (!FLAGS.voiceLog) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast('⚠️ Voice input not supported in this browser — try Photo or Search'); return; }
+  if (_voiceRec) { try { _voiceRec.stop(); } catch(_) {} _voiceRec = null; _resetVoiceBtn(); return; }
+  try {
+    const rec = new SR();
+    _voiceRec = rec;
+    rec.lang = 'en-US';
+    rec.continuous = false;       // iOS Safari: single utterance
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    const btn = document.getElementById('voiceLogBtn');
+    if (btn) btn.innerHTML = '<span style="font-size:16px">🔴</span> Listening…';
+    rec.onresult = ev => {
+      const transcript = ev.results?.[0]?.[0]?.transcript || '';
+      if (transcript.trim()) parseVoiceFood(transcript.trim());
+      else showToast('⚠️ Didn\'t catch that — try again');
+    };
+    rec.onerror = ev => {
+      showToast(ev.error === 'not-allowed' ? '⚠️ Mic permission denied — enable in browser settings' : '⚠️ Mic error: ' + ev.error);
+    };
+    rec.onend = () => { _voiceRec = null; _resetVoiceBtn(); };
+    rec.start();
+  } catch (e) {
+    _voiceRec = null; _resetVoiceBtn();
+    showToast('⚠️ Could not start mic: ' + e.message);
+  }
+}
+
+async function parseVoiceFood(transcript) {
+  const modal = document.getElementById('quickLogModal');
+  document.getElementById('quickLogTranscript').textContent = '“' + transcript + '”';
+  document.getElementById('quickLogLoading').style.display = 'block';
+  document.getElementById('quickLogList').innerHTML = '';
+  document.getElementById('quickLogActions').style.display = 'none';
+  document.getElementById('quickLogCancelOnly').style.display = 'block';
+  modal.classList.add('open');
+
+  const prompt = `You are a registered dietitian. Convert this spoken meal description into structured food entries.
+
+Description: "${transcript}"
+
+Rules:
+- Split into distinct food items
+- Use USDA FoodData Central reference values
+- If the speaker gave explicit quantities ("three eggs", "two slices"), quality is "full"; if portions are implied, "partial"; if you guessed, "estimated"
+- Round calories to whole numbers, macros to 0.1g
+
+Return ONLY valid JSON, no markdown:
+{"entries":[{"name":"food name","grams":120,"calories":210,"protein_g":18,"carbs_g":1,"fat_g":15,"quality":"full"}]}`;
+
+  try {
+    const resp = await callClaudeAPI({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const raw = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const s = clean.indexOf('{'), e = clean.lastIndexOf('}');
+    const parsed = JSON.parse(clean.slice(s, e + 1));
+    const entries = (parsed.entries || []).map(x => ({
+      name:     String(x.name || 'Food').slice(0, 80),
+      calories: Math.max(0, Math.round(x.calories || 0)),
+      protein:  Math.max(0, Math.round((x.protein_g ?? x.protein ?? 0) * 10) / 10),
+      carbs:    Math.max(0, Math.round((x.carbs_g ?? x.carbs ?? 0) * 10) / 10),
+      fat:      Math.max(0, Math.round((x.fat_g ?? x.fat ?? 0) * 10) / 10),
+      quality:  ['full', 'partial', 'estimated'].includes(x.quality) ? x.quality : 'estimated',
+    }));
+    if (!entries.length) throw new Error('no items recognized');
+    _quickLogItems = entries;
+    renderQuickLogSheet();
+  } catch (err) {
+    document.getElementById('quickLogLoading').style.display = 'none';
+    document.getElementById('quickLogList').innerHTML =
+      `<div style="color:var(--red);font-size:13px;padding:14px;text-align:center">Couldn't parse that — ${esc(err.message)}.<br>Try again or use manual entry.</div>`;
+  }
+}
+
+function renderQuickLogSheet() {
+  document.getElementById('quickLogLoading').style.display = 'none';
+  const list = document.getElementById('quickLogList');
+  const qBadge = q => q === 'full' ? '<span style="color:#22c55e">● exact</span>'
+    : q === 'partial' ? '<span style="color:#f59e0b">● partial</span>'
+    : '<span style="color:#a78bfa">● estimated</span>';
+  list.innerHTML = _quickLogItems.map((it, i) => `
+    <div class="quicklog-item" data-idx="${i}" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <input type="text" value="${esc(it.name)}" oninput="_quickLogItems[${i}].name=this.value" style="flex:1;font-size:13px;font-weight:600" />
+        <span style="font-size:10px;white-space:nowrap">${qBadge(it.quality)}</span>
+        <button onclick="removeQuickLogItem(${i})" style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+        ${[['calories','kcal','#f59e0b'],['protein','P g','#22c55e'],['carbs','C g','#3b82f6'],['fat','F g','#ef4444']].map(([k,l,c]) => `
+          <div style="text-align:center">
+            <input type="number" inputmode="decimal" value="${it[k]}" oninput="_quickLogItems[${i}].${k}=parseFloat(this.value)||0"
+              style="width:100%;text-align:center;font-size:13px;font-weight:700;color:${c};padding:6px 2px" />
+            <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:2px">${l}</div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+  const actions = document.getElementById('quickLogActions');
+  actions.style.display = _quickLogItems.length ? 'block' : 'none';
+  document.getElementById('quickLogCancelOnly').style.display = _quickLogItems.length ? 'none' : 'block';
+  document.getElementById('quickLogConfirmBtn').textContent =
+    `✅ Log ${_quickLogItems.length} item${_quickLogItems.length === 1 ? '' : 's'}`;
+}
+
+function removeQuickLogItem(i) {
+  _quickLogItems.splice(i, 1);
+  if (_quickLogItems.length) renderQuickLogSheet();
+  else closeQuickLogModal();
+}
+
+function confirmQuickLog() {
+  const items = _quickLogItems.slice();
+  closeQuickLogModal();
+  for (const it of items) {
+    addFoodEntry({ name: it.name, calories: it.calories, protein: it.protein, carbs: it.carbs, fat: it.fat, icon: '🎤' });
+  }
+}
+
+function closeQuickLogModal() {
+  document.getElementById('quickLogModal').classList.remove('open');
+  _quickLogItems = [];
 }
 
 // ── Settings ──
@@ -9090,6 +9258,11 @@ function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
+  // Feature-flag gating (items 2–5)
+  try {
+    if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';
+    if (!FLAGS.photoLog) document.getElementById('photoLogBtn').style.display = 'none';
+  } catch(_) {}
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 

@@ -280,15 +280,18 @@ PROMISE ERROR:
         </div>
         <!-- WHOOP day badge -->
         <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
           <button class="btn-scan" onclick="openScanner()">
             <span style="font-size:16px">&#x1F4F7;</span> Scan
           </button>
-          <button class="btn-scan" onclick="openPhotoAI()" style="background:var(--purple-soft);border-color:#4c1d95;color:#a78bfa">
+          <button class="btn-scan" id="photoLogBtn" onclick="openPhotoAI()" style="background:var(--purple-soft);border-color:#4c1d95;color:#a78bfa">
             <span style="font-size:16px">🤖</span> Photo
           </button>
           <button class="btn-scan" onclick="openAISearch()" style="background:#2d1f05;border-color:#3d2e00;color:#f59e0b">
             <span style="font-size:16px">🔍</span> Search
+          </button>
+          <button class="btn-scan" id="voiceLogBtn" onclick="startVoiceLog()" style="background:#0c2a24;border-color:#134e4a;color:#2dd4bf">
+            <span style="font-size:16px">🎤</span> Voice
           </button>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px">
@@ -979,6 +982,24 @@ PROMISE ERROR:
 </div>
 
 <!-- Weight Check-in Modal -->
+<!-- Voice quick-log confirm sheet (item 2) -->
+<div class="modal-overlay" id="quickLogModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🎤 Confirm Items</div>
+    <div class="modal-sub" id="quickLogTranscript" style="font-style:italic"></div>
+    <div id="quickLogLoading" style="display:none;text-align:center;padding:20px;color:var(--text2);font-size:13px">
+      🤖 Parsing your meal…
+    </div>
+    <div id="quickLogList" style="max-height:50vh;overflow-y:auto"></div>
+    <div id="quickLogActions" style="display:none">
+      <button class="btn-green" id="quickLogConfirmBtn" onclick="confirmQuickLog()">✅ Log items</button>
+      <button class="btn-outline" onclick="closeQuickLogModal()">Cancel</button>
+    </div>
+    <button class="btn-outline" id="quickLogCancelOnly" onclick="closeQuickLogModal()" style="margin-top:6px">Close</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="weightModal">
   <div class="modal-sheet">
     <div class="modal-handle"></div>

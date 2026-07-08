@@ -444,6 +444,15 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
         delete b.stream;
         delete b.metadata;
+        // Cap image payloads (~2MB binary ≈ 2.8M base64 chars) — client downscales first
+        for (const m of (Array.isArray(b.messages) ? b.messages : [])) {
+          if (!Array.isArray(m?.content)) continue;
+          for (const block of m.content) {
+            if (block?.type === "image" && (block.source?.data?.length || 0) > 2800000) {
+              return new Response(JSON.stringify({ error: { message: "image too large — max ~2MB" } }), { status: 400, headers: CORS });
+            }
+          }
+        }
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
