@@ -459,6 +459,9 @@ PROMISE ERROR:
         <div id="garminMacroBanner" class="macro-adj-banner" style="display:none">
           <span>🎯</span><span id="garminMacroText"></span>
         </div>
+        <div id="fuelingBanner" class="macro-adj-banner" style="display:none;cursor:pointer;background:#0c2a3d;border-color:#1d4ed8" onclick="dismissFuelingBanner()" title="Tap to dismiss">
+          <span>🍝</span><span id="fuelingBannerText"></span>
+        </div>
         <div id="todayShoeRow" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #1e3a5f;align-items:center;justify-content:space-between">
           <div style="font-size:12px;color:#60a5fa;font-weight:600" id="todayShoeLabel">👟 Which shoes did you wear?</div>
           <button id="todayShoeAssignBtn" onclick="openTodayShoeAssign()" style="padding:6px 14px;background:#f97316;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">Assign Shoes</button>
@@ -568,6 +571,29 @@ PROMISE ERROR:
 
     <!-- WORKOUT PAGE -->
     <div id="page-lift" class="page">
+      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
+      <div class="card" id="trainingLoadCard" style="display:none">
+        <div class="card-label" style="color:#60a5fa">Training Load</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;gap:18px">
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
+            </div>
+          </div>
+        </div>
+        <div id="tlSparkline" style="margin-bottom:6px"></div>
+        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
+      </div>
+
       <!-- Live workout timer bar -->
       <div class="workout-timer-bar" id="workoutTimerBar">
         <div>
@@ -801,6 +827,39 @@ PROMISE ERROR:
 
       <!-- TRENDS TAB -->
       <div id="historyTab-trends" style="display:none">
+        <!-- Item 5: server-side insights -->
+        <div id="insightsSection" style="display:none">
+          <div class="card" id="insightsSummaryCard" style="display:none">
+            <div class="card-label" style="color:#a78bfa">🤖 This Week</div>
+            <div id="insightsSummary" style="font-size:13px;line-height:1.65;color:var(--text)"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">⚖️ Weight Trend</div>
+            <div id="insWeight"></div>
+            <div id="insWeightNote" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🔥 Weekly Deficit vs Weight Change</div>
+            <div id="insDeficit"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: avg daily deficit (TDEE − consumed) · labels: weight change that week</div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">😴 Sleep → Next-Day Energy & Mood</div>
+            <div id="insSleep"></div>
+            <div id="insSleepNote" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🏃 Weekly Training Load</div>
+            <div id="insLoad"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: weekly TSS · line: CTL (fitness)</div>
+          </div>
+          <div class="card">
+            <div class="section-title" style="margin-bottom:8px">🥩 Protein Adherence — Last 90 Days</div>
+            <div id="insProtein"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">🟩 ≥90% of target · 🟨 70–90% · 🟥 &lt;70% · ⬜ no log</div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="section-title" style="margin-bottom:6px">📈 Monthly Trends</div>
           <div class="chart-tab-row" id="trendChartTabs">

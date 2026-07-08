@@ -4,9 +4,9 @@
 const FLAGS = {
   voiceLog:     true,   // item 2: voice food entry
   photoLog:     true,   // item 2: photo food entry (pre-existing flow, now flag-gated)
-  trainingLoad: false,  // item 3: CTL/ATL/TSB
-  fueling:      false,  // item 4: planned-workout fueling
-  trends:       false,  // item 5: insights tab
+  trainingLoad: true,   // item 3: CTL/ATL/TSB
+  fueling:      true,   // item 4: planned-workout fueling
+  trends:       true,   // item 5: insights tab
 };
 
 // ── Auth & Onboarding ──
@@ -1854,8 +1854,8 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
-  if (name === 'lift') renderWorkoutPage();
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); }
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
@@ -1919,6 +1919,7 @@ function addFoodEntry(food) {
   entries.push(entry);
   setFoodEntries(entries);
   logInteraction('food_logged', food.name);
+  try { scheduleCheckinSync(3000); } catch(_) {}
   scheduleRender(renderRings);
   scheduleRender(renderFoodLog);
   scheduleRender(renderProteinPace);
@@ -3970,6 +3971,370 @@ function logAIFood() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// TRAINING LOAD (Tier 1, item 3) — CTL/ATL/TSB card on the Workout tab.
+// Server computes from TrainingPeaks TSS; this renders and caches 30 min.
+// ═══════════════════════════════════════════════════════════════════════
+async function renderTrainingLoad() {
+  if (!FLAGS.trainingLoad) return;
+  const card = document.getElementById('trainingLoadCard');
+  if (!card) return;
+  if (!getStorage('tpConnected', null)) { card.style.display = 'none'; return; }
+
+  const cache = getStorage('trainingLoadCache', null);
+  let rows = (cache && Date.now() - cache.fetched < 30 * 60 * 1000) ? cache.rows : null;
+  if (!rows) {
+    try {
+      const res = await fetch('/api/training/load?days=90', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('API ' + res.status));
+      rows = data.rows || [];
+      setStorage('trainingLoadCache', { rows, fetched: Date.now() });
+    } catch (e) {
+      console.warn('[training-load]', e.message);
+      card.style.display = 'none';
+      return;
+    }
+  }
+  if (!rows.length) { card.style.display = 'none'; return; }
+
+  const last = rows[rows.length - 1];
+  card.style.display = 'block';
+  document.getElementById('tlCtl').textContent = Math.round(last.ctl);
+  document.getElementById('tlAtl').textContent = Math.round(last.atl);
+  const tsbEl = document.getElementById('tlTsb');
+  const tsb = Math.round(last.tsb);
+  const tsbColor = tsb > 5 ? '#22c55e' : tsb >= -10 ? 'var(--text)' : tsb >= -20 ? '#f59e0b' : '#ef4444';
+  tsbEl.textContent = (tsb > 0 ? '+' : '') + tsb;
+  tsbEl.style.color = tsbColor;
+
+  const interp = tsb > 5 ? '🟢 Fresh — good day for quality'
+    : tsb >= -10 ? '⚪ Building — hold the plan'
+    : tsb >= -20 ? '🟠 Fatigued — consider an easy day'
+    : '🔴 Very fatigued — back off';
+  const interpEl = document.getElementById('tlInterpretation');
+  interpEl.textContent = interp;
+  interpEl.style.color = tsbColor;
+
+  // Sparkline: CTL (solid) + ATL (faint) over the last 42 days
+  const win = rows.slice(-42);
+  const W = 300, H = 44;
+  const vals = win.flatMap(r => [r.ctl, r.atl]);
+  const max = Math.max(...vals, 1), min = Math.min(...vals, 0);
+  const pt = (v, i) => `${(i / Math.max(win.length - 1, 1) * W).toFixed(1)},${(H - 4 - (v - min) / (max - min || 1) * (H - 8)).toFixed(1)}`;
+  document.getElementById('tlSparkline').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px">
+      <polyline points="${win.map((r, i) => pt(r.atl, i)).join(' ')}" fill="none" stroke="#a78bfa" stroke-width="1.5" opacity="0.45"/>
+      <polyline points="${win.map((r, i) => pt(r.ctl, i)).join(' ')}" fill="none" stroke="#3b82f6" stroke-width="2"/>
+    </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PLANNED-WORKOUT FUELING (Tier 1, item 4) — if tomorrow's TP plan is a
+// long/hard session, bump tonight's carb + calorie targets from 4pm.
+// ═══════════════════════════════════════════════════════════════════════
+function tomorrowKey() {
+  const d = new Date(todayKey() + 'T12:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fetchTPPlanned() {
+  if (!FLAGS.fueling || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/tp/planned?date=' + tomorrowKey(), { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok || !data.ok) return;
+    const planned = data.planned || [];
+    const dur = planned.reduce((s, p) => s + (p.duration_min || 0), 0);
+    const tss = planned.reduce((s, p) => s + (p.tss_planned || 0), 0);
+    const race = planned.some(p => p.type === 'Race');
+    const main = planned.slice().sort((a, b) => (b.duration_min || 0) - (a.duration_min || 0))[0];
+    const desc = main ? (main.distance_mi ? `${main.distance_mi}mi ${main.type.toLowerCase()}` : `${Math.round(main.duration_min || 0)}min ${main.type.toLowerCase()}`) : '';
+
+    let bump = null;
+    if (race) bump = { extraCarbs: 100, extraCals: 400, label: `Race day tomorrow (${desc}) → +100g carbs tonight` };
+    else if (dur >= 75 || tss >= 90) bump = { extraCarbs: 60, extraCals: 240, label: `Tomorrow: ${desc} → +60g carbs tonight` };
+
+    setStorage('fuelingBump', bump ? { date: todayKey(), ...bump } : null);
+    renderFuelingBanner();
+    scheduleRender(renderRings);
+    updateMacroTargetsRow();
+  } catch (e) { console.warn('[fueling]', e.message); }
+}
+
+// Active bump (or null): right day, not dismissed, evening window 4pm–midnight
+function getFuelingBump() {
+  if (!FLAGS.fueling) return null;
+  const b = getStorage('fuelingBump', null);
+  if (!b || b.date !== todayKey()) return null;
+  if (getStorage('fuelingDismiss_' + todayKey(), false)) return null;
+  if (nowEST().getHours() < 16) return null;
+  return b;
+}
+
+function applyFuelingBump(m) {
+  const b = getFuelingBump();
+  if (!b || !m) return m;
+  return { ...m, calories: m.calories + b.extraCals, carbs: m.carbs + b.extraCarbs, _fueling: true };
+}
+
+function renderFuelingBanner() {
+  const banner = document.getElementById('fuelingBanner');
+  if (!banner) return;
+  const b = getFuelingBump();
+  if (!b) { banner.style.display = 'none'; return; }
+  document.getElementById('fuelingBannerText').textContent = b.label + ' (tap to dismiss)';
+  banner.style.display = 'flex';
+}
+
+function dismissFuelingBanner() {
+  setStorage('fuelingDismiss_' + todayKey(), true);
+  renderFuelingBanner();
+  scheduleRender(renderRings);
+  updateMacroTargetsRow();
+  showToast('Fueling suggestion dismissed for today');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INSIGHTS / TRENDS (Tier 1, item 5) — five correlation charts rendered as
+// inline SVG from one /api/trends payload, plus a cached weekly AI summary.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Tiny SVG helpers — cheaper than a chart dependency
+function _insLine(pts, color, w = 2, dash = '') {
+  if (pts.length < 2) return '';
+  return `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${color}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+}
+function _insMovAvg(vals, n) {
+  return vals.map((_, i) => {
+    const s = vals.slice(Math.max(0, i - n + 1), i + 1);
+    return s.reduce((a, b) => a + b, 0) / s.length;
+  });
+}
+function _insFit(pts) { // least-squares [slope, intercept]
+  const n = pts.length;
+  if (n < 2) return [0, pts[0]?.[1] || 0];
+  const sx = pts.reduce((s, p) => s + p[0], 0), sy = pts.reduce((s, p) => s + p[1], 0);
+  const sxx = pts.reduce((s, p) => s + p[0] * p[0], 0), sxy = pts.reduce((s, p) => s + p[0] * p[1], 0);
+  const den = n * sxx - sx * sx;
+  if (!den) return [0, sy / n];
+  const m = (n * sxy - sx * sy) / den;
+  return [m, (sy - m * sx) / n];
+}
+function _insEmpty(msg) {
+  return `<div style="padding:24px 0;text-align:center;color:var(--text3);font-size:12px">${msg}</div>`;
+}
+
+async function renderInsights() {
+  if (!FLAGS.trends) return;
+  const section = document.getElementById('insightsSection');
+  if (!section) return;
+  section.style.display = 'block';
+
+  let data = null;
+  const cache = getStorage('trendsCache', null);
+  if (cache && Date.now() - cache.fetched < 10 * 60 * 1000) data = cache.data;
+  if (!data) {
+    try {
+      const res = await fetch('/api/trends?days=180', { headers: authHeaders() });
+      data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('API ' + res.status));
+      setStorage('trendsCache', { data, fetched: Date.now() });
+    } catch (e) {
+      document.getElementById('insWeight').innerHTML = _insEmpty('Could not load trends — ' + esc(e.message));
+      return;
+    }
+  }
+
+  _insRenderWeight(data);
+  _insRenderDeficit(data);
+  _insRenderSleep(data);
+  _insRenderLoad(data);
+  _insRenderProtein(data);
+
+  // Weekly AI summary (server-cached per ISO week)
+  try {
+    const res = await fetch('/api/trends/summary', { headers: authHeaders() });
+    const s = await res.json();
+    if (s.ok && s.summary) {
+      document.getElementById('insightsSummaryCard').style.display = 'block';
+      document.getElementById('insightsSummary').textContent = s.summary;
+    }
+  } catch (_) {}
+}
+
+function _insRenderWeight(data) {
+  const el = document.getElementById('insWeight'), note = document.getElementById('insWeightNote');
+  const w = data.weights || [];
+  if (w.length < 3) { el.innerHTML = _insEmpty('Log a few weigh-ins to see your trend'); note.textContent = ''; return; }
+  const W = 320, H = 140, P = 8;
+  const t0 = new Date(w[0].date).getTime(), t1 = new Date(w[w.length - 1].date).getTime();
+  const lbs = w.map(x => x.lbs);
+  const ma7 = _insMovAvg(lbs, 7), ma28 = _insMovAvg(lbs, 28);
+  const gw = data.profile?.goal_weight;
+  const lo = Math.min(...lbs, gw || Infinity) - 1, hi = Math.max(...lbs) + 1;
+  const X = d => P + (new Date(d).getTime() - t0) / Math.max(t1 - t0, 1) * (W - 2 * P);
+  const Y = v => H - P - (v - lo) / (hi - lo || 1) * (H - 2 * P);
+
+  // Dashed plan line: from first weigh-in toward goal weight at goal date
+  let target = '';
+  if (gw && data.profile.goal_date) {
+    const gt = new Date(data.profile.goal_date).getTime();
+    const endV = lbs[0] + (gw - lbs[0]) * Math.min(1, (t1 - t0) / Math.max(gt - t0, 1));
+    target = _insLine([[X(w[0].date), Y(lbs[0])], [X(w[w.length - 1].date), Y(endV)]], '#64748b', 1.5, '4,4');
+  }
+  const dots = w.map(x => `<circle cx="${X(x.date).toFixed(1)}" cy="${Y(x.lbs).toFixed(1)}" r="2" fill="#f59e0b" opacity="0.55"/>`).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    ${target}${dots}
+    ${_insLine(w.map((x, i) => [X(x.date), Y(ma7[i])]), '#22c55e', 2)}
+    ${_insLine(w.map((x, i) => [X(x.date), Y(ma28[i])]), '#3b82f6', 1.5)}
+  </svg>`;
+
+  // Rate of change: fit over the last 28 days vs what the plan needs
+  const cut = t1 - 28 * 86400000;
+  const recent = w.filter(x => new Date(x.date).getTime() >= cut).map(x => [(new Date(x.date).getTime() - cut) / 86400000, x.lbs]);
+  const [slope] = _insFit(recent);
+  const perWeek = slope * 7;
+  let planned = null;
+  if (gw && data.profile.goal_date) {
+    const daysLeft = (new Date(data.profile.goal_date) - Date.now()) / 86400000;
+    if (daysLeft > 0) planned = (gw - lbs[lbs.length - 1]) / daysLeft * 7;
+  }
+  note.textContent = `Last 4 weeks: ${perWeek > 0 ? '+' : ''}${perWeek.toFixed(2)} lbs/week` +
+    (planned !== null ? ` · plan needs ${planned.toFixed(2)} lbs/week to hit ${gw} lbs by ${data.profile.goal_date}` : '') +
+    ' · 🟢 7-day avg · 🔵 28-day avg · ▫ plan';
+}
+
+function _insWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Monday
+  return d.toISOString().slice(0, 10);
+}
+
+function _insRenderDeficit(data) {
+  const el = document.getElementById('insDeficit');
+  const tdee = data.profile?.tdee || TDEE;
+  // Daily calories: food_log totals as the base, check-in rows override
+  const calByDate = {};
+  for (const f of data.food || []) if (f.calories > 0) calByDate[f.date] = f.calories;
+  for (const c of data.checkins || []) if (c.calories_consumed > 0) calByDate[c.date] = c.calories_consumed;
+  const wByDate = {};
+  for (const w of data.weights || []) wByDate[w.date] = w.lbs;
+  const byWeek = {};
+  for (const [date, cals] of Object.entries(calByDate)) {
+    const wk = _insWeekKey(date);
+    (byWeek[wk] = byWeek[wk] || { cals: [], weights: [] }).cals.push(cals);
+    if (wByDate[date] > 0) byWeek[wk].weights.push(wByDate[date]);
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-10);
+  if (weeks.length < 2) { el.innerHTML = _insEmpty('Need a couple of weeks of logged food'); return; }
+  const rows = weeks.map(wk => {
+    const b = byWeek[wk];
+    return { wk, deficit: tdee - b.cals.reduce((a, x) => a + x, 0) / b.cals.length,
+             wavg: b.weights.length ? b.weights.reduce((a, x) => a + x, 0) / b.weights.length : null };
+  });
+  const W = 320, H = 130, P = 8, bw = (W - 2 * P) / rows.length;
+  const maxD = Math.max(...rows.map(r => Math.abs(r.deficit)), 300);
+  const zero = H / 2;
+  const bars = rows.map((r, i) => {
+    const h = Math.abs(r.deficit) / maxD * (H / 2 - P);
+    const y = r.deficit >= 0 ? zero - h : zero;
+    const dw = (r.wavg !== null && i > 0 && rows[i - 1].wavg !== null) ? r.wavg - rows[i - 1].wavg : null;
+    return `<rect x="${(P + i * bw + 2).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="2" fill="${r.deficit >= 0 ? '#22c55e' : '#ef4444'}" opacity="0.8"/>` +
+      `<text x="${(P + i * bw + bw / 2).toFixed(1)}" y="${(r.deficit >= 0 ? zero + 12 : zero - 5).toFixed(1)}" text-anchor="middle" font-size="8" fill="#94a3b8">${Math.round(r.deficit)}</text>` +
+      (dw !== null ? `<text x="${(P + i * bw + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle" font-size="8" fill="${dw <= 0 ? '#22c55e' : '#f59e0b'}">${dw > 0 ? '+' : ''}${dw.toFixed(1)}</text>` : '');
+  }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><line x1="${P}" y1="${zero}" x2="${W - P}" y2="${zero}" stroke="#334155" stroke-width="1"/>${bars}</svg>`;
+}
+
+function _insRenderSleep(data) {
+  const el = document.getElementById('insSleep'), note = document.getElementById('insSleepNote');
+  const byDate = {};
+  for (const c of data.checkins || []) byDate[c.date] = c;
+  const pairs = [];
+  for (const c of data.checkins || []) {
+    if (!(c.sleep_hrs > 0)) continue;
+    const next = new Date(c.date + 'T12:00:00Z'); next.setUTCDate(next.getUTCDate() + 1);
+    const n = byDate[next.toISOString().slice(0, 10)];
+    if (n && (n.energy > 0 || n.mood > 0)) pairs.push({ sleep: c.sleep_hrs, energy: n.energy || null, mood: n.mood || null });
+  }
+  if (pairs.length < 8) { el.innerHTML = _insEmpty('Need more sleep + mood/energy check-ins to correlate'); note.textContent = ''; return; }
+
+  const panel = (key, color, label, ox) => {
+    const pts = pairs.filter(p => p[key] > 0).map(p => [p.sleep, p[key]]);
+    if (pts.length < 5) return '';
+    const W2 = 150, H2 = 110, P2 = 14;
+    const xs = pts.map(p => p[0]);
+    const xlo = Math.min(...xs) - 0.3, xhi = Math.max(...xs) + 0.3;
+    const X = v => ox + P2 + (v - xlo) / (xhi - xlo || 1) * (W2 - 2 * P2);
+    const Y = v => H2 - P2 - (v - 1) / 4 * (H2 - 2 * P2);
+    const [m, b] = _insFit(pts);
+    return pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.5" fill="${color}" opacity="0.5"/>`).join('') +
+      _insLine([[X(xlo), Y(m * xlo + b)], [X(xhi), Y(m * xhi + b)]], color, 1.5) +
+      `<text x="${ox + W2 / 2}" y="10" text-anchor="middle" font-size="9" font-weight="700" fill="${color}">${label}</text>`;
+  };
+  el.innerHTML = `<svg viewBox="0 0 320 115" style="width:100%;height:auto">${panel('energy', '#f59e0b', 'ENERGY', 0)}${panel('mood', '#a78bfa', 'MOOD', 165)}</svg>`;
+
+  // Personal threshold: the split point with the biggest next-day energy gap
+  let best = null;
+  for (let s = 5.5; s <= 8.5; s += 0.5) {
+    const below = pairs.filter(p => p.energy > 0 && p.sleep < s).map(p => p.energy);
+    const above = pairs.filter(p => p.energy > 0 && p.sleep >= s).map(p => p.energy);
+    if (below.length >= 4 && above.length >= 4) {
+      const gap = above.reduce((a, v) => a + v, 0) / above.length - below.reduce((a, v) => a + v, 0) / below.length;
+      if (!best || gap > best.gap) best = { s, gap };
+    }
+  }
+  note.textContent = best && best.gap > 0.3
+    ? `Your energy drops noticeably when sleep falls below ~${best.s} h (${best.gap.toFixed(1)} points lower next day)`
+    : 'No strong sleep threshold detected yet — keep logging';
+}
+
+function _insRenderLoad(data) {
+  const el = document.getElementById('insLoad');
+  const load = data.load || [];
+  if (load.length < 7) { el.innerHTML = _insEmpty('Connect TrainingPeaks and train — load appears here'); return; }
+  const byWeek = {};
+  for (const r of load) {
+    const wk = _insWeekKey(r.date);
+    (byWeek[wk] = byWeek[wk] || { tss: 0, ctl: 0 }).tss += r.tss;
+    byWeek[wk].ctl = r.ctl; // last value in the week
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-12);
+  const W = 320, H = 130, P = 8, bw = (W - 2 * P) / weeks.length;
+  const maxT = Math.max(...weeks.map(w => byWeek[w].tss), 100);
+  const maxC = Math.max(...weeks.map(w => byWeek[w].ctl), 10);
+  const bars = weeks.map((w, i) =>
+    `<rect x="${(P + i * bw + 2).toFixed(1)}" y="${(H - P - byWeek[w].tss / maxT * (H - 2 * P)).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(byWeek[w].tss / maxT * (H - 2 * P), 1).toFixed(1)}" rx="2" fill="#3b82f6" opacity="0.55"/>`).join('');
+  const ctlPts = weeks.map((w, i) => [P + i * bw + bw / 2, H - P - byWeek[w].ctl / maxC * (H - 2 * P)]);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}${_insLine(ctlPts, '#f59e0b', 2)}</svg>`;
+}
+
+function _insRenderProtein(data) {
+  const el = document.getElementById('insProtein');
+  const target = data.profile?.protein || MACROS.protein;
+  const byDate = {};
+  for (const f of data.food || []) if (f.protein > 0) byDate[f.date] = f.protein;
+  for (const c of data.checkins || []) if (c.protein_g > 0) byDate[c.date] = c.protein_g;
+  const cell = 20, gap = 3, weeks = 13;
+  const today = new Date(todayKey() + 'T12:00:00Z');
+  const start = new Date(today); start.setUTCDate(start.getUTCDate() - (weeks * 7 - 1) - ((today.getUTCDay() + 6) % 7));
+  let cells = '';
+  for (let i = 0; ; i++) {
+    const d = new Date(start.getTime() + i * 86400000);
+    if (d > today) break;
+    const key = d.toISOString().slice(0, 10);
+    const col = Math.floor(i / 7), row = i % 7;
+    const g = byDate[key];
+    const pct = g ? g / target : null;
+    const fill = pct === null ? '#1e293b' : pct >= 0.9 ? '#22c55e' : pct >= 0.7 ? '#f59e0b' : '#ef4444';
+    cells += `<rect x="${col * (cell + gap)}" y="${row * (cell + gap)}" width="${cell}" height="${cell}" rx="4" fill="${fill}" opacity="${pct === null ? 0.45 : 0.9}"><title>${key}: ${g ? Math.round(g) + 'g (' + Math.round(pct * 100) + '%)' : 'no log'}</title></rect>`;
+  }
+  const W = weeks * (cell + gap), H = 7 * (cell + gap);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${cells}</svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // VOICE FOOD LOG (Tier 1, item 2) — mic → transcript → Claude parse →
 // editable multi-item confirm sheet → addFoodEntry per item.
 // ═══════════════════════════════════════════════════════════════════════
@@ -4193,7 +4558,7 @@ function updateMacroTargetsRow() {
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const adaptive   = getStorage('adaptiveMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const m = garminAdj || adaptive || userMacros || MACROS;
+  const m = applyFuelingBump(garminAdj || adaptive || userMacros || MACROS);
 
   const tdee   = getStorage('userTDEE', null) || TDEE;
   const goals  = getStorage('userGoals', {});
@@ -4528,6 +4893,9 @@ async function fetchTPToday() {
     if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
     setStorage('tpToday', { calories: data.calories, distance: data.distance, duration: data.duration, fetched: Date.now() });
     renderShoeStravaCard();
+    // Items 3+4: server recomputes load in the background; refresh planned fueling now
+    setStorage('trainingLoadCache', null);
+    safeCall(fetchTPPlanned, 'fetchTPPlanned');
 
     // Prompt shoe assignment after run syncs
     if (data.count > 0 && data.distance > 0) {
@@ -4764,7 +5132,7 @@ function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const targets    = overrideMacros || garminAdj || adaptive || userMacros || MACROS;
+  const targets    = applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS);
   const macroLog  = getStorage('macroLog', {});
   const dayData   = macroLog[getSelectedDateKey()] || { calories:0, protein:0, carbs:0, fat:0 };
   document.getElementById('ringsRow').innerHTML =
@@ -6990,7 +7358,7 @@ function switchHistoryTab(tab) {
   if (tab === 'lift')   renderHistoryPage();
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
-  if (tab === 'trends') { renderTrendChart(); }
+  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); }
   if (tab === 'whoop')  renderWhoopDashboard();
 }
 

@@ -15,6 +15,9 @@ database_name = "macro-tracker-db"
 database_id = "8d47dc07-8f12-4869-825c-0cee87c206e9"
 migrations_dir = "migrations"
 
+[triggers]
+crons = ["0 8 * * *"]
+
 [vars]
 USDA_API_KEY = "73A0UOQRNjRewH4w9aLpYtkXCjQVoLY8BD7hIG4F"
 

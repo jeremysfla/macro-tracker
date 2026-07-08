@@ -92,7 +92,7 @@ async function getSessionUser(db, req) {
 __name(getSessionUser, "getSessionUser");
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -173,6 +173,72 @@ async function tpGetAccessToken(env) {
 }
 __name(tpGetAccessToken, "tpGetAccessToken");
 
+const TP_TYPE_NAMES = { 1:"Swim",2:"Bike",3:"Run",4:"Brick",5:"Crosstrain",6:"Race",7:"DayOff",8:"MtnBike",9:"Strength",10:"Custom",11:"XCSki",12:"Rowing",13:"Walk",100:"Other" };
+
+async function tpFetchRange(auth, startDate, endDate) {
+  const r = await fetch(`${TP_API_BASE}/fitness/v6/athletes/${auth.athleteId}/workouts/${startDate}/${endDate}`, {
+    headers: { "Authorization": `Bearer ${auth.token}`, "Accept": "application/json" }
+  });
+  if (!r.ok) throw new Error(`TP workouts ${r.status}`);
+  const d = await r.json();
+  return Array.isArray(d) ? d : [];
+}
+__name(tpFetchRange, "tpFetchRange");
+
+// TSS for a completed workout; when tssActual is missing fall back to a
+// duration estimate (hrTSS ≈ 60/hr). Planned-only workouts contribute 0.
+function tpWorkoutTss(w) {
+  const completed = w.totalTime || w.calories || w.distance;
+  if (!completed) return 0;
+  if (typeof w.tssActual === "number" && w.tssActual > 0) return w.tssActual;
+  return (w.totalTime || 0) * 60;
+}
+__name(tpWorkoutTss, "tpWorkoutTss");
+
+// Recompute CTL/ATL/TSB. First run backfills 90 days from a zero seed;
+// after that a 14-day window re-runs, seeded from the row before the window.
+async function tpRecomputeLoad(env, userId) {
+  const auth = await tpGetAccessToken(env);
+  if (auth.error) return auth;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const count = (await env.DB.prepare("SELECT COUNT(*) AS n FROM training_load WHERE user_id = ?").bind(userId).first())?.n || 0;
+  const windowDays = count === 0 ? 90 : 14;
+  const start = new Date(Date.now() - (windowDays - 1) * 86400000).toISOString().slice(0, 10);
+
+  let ctl = 0, atl = 0;
+  if (count > 0) {
+    const seed = await env.DB.prepare(
+      "SELECT ctl, atl FROM training_load WHERE user_id = ? AND date < ? ORDER BY date DESC LIMIT 1"
+    ).bind(userId, start).first();
+    if (seed) { ctl = seed.ctl; atl = seed.atl; }
+  }
+
+  const workouts = await tpFetchRange(auth, start, today);
+  const tssByDay = {};
+  for (const w of workouts) {
+    const day = (w.workoutDay || "").slice(0, 10);
+    if (day) tssByDay[day] = (tssByDay[day] || 0) + tpWorkoutTss(w);
+  }
+
+  const stmts = [];
+  const now = Date.now();
+  for (let d = new Date(start + "T12:00:00Z"); ; d = new Date(d.getTime() + 86400000)) {
+    const day = d.toISOString().slice(0, 10);
+    if (day > today) break;
+    const tss = Math.round((tssByDay[day] || 0) * 10) / 10;
+    ctl = ctl + (tss - ctl) / 42;
+    atl = atl + (tss - atl) / 7;
+    stmts.push(env.DB.prepare(`INSERT INTO training_load (user_id, date, tss, ctl, atl, tsb, computed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET tss=excluded.tss, ctl=excluded.ctl, atl=excluded.atl, tsb=excluded.tsb, computed_at=excluded.computed_at`)
+      .bind(userId, day, tss, Math.round(ctl * 10) / 10, Math.round(atl * 10) / 10, Math.round((ctl - atl) * 10) / 10, now));
+  }
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return { ok: true, days: stmts.length };
+}
+__name(tpRecomputeLoad, "tpRecomputeLoad");
+
 // ── Google token verification ───────────────────────────────────────────
 async function verifyGoogleToken(idToken, env) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
@@ -191,7 +257,7 @@ async function verifyGoogleToken(idToken, env) {
 __name(verifyGoogleToken, "verifyGoogleToken");
 
 var worker_default = {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const u = new URL(req.url);
     const CORS = { "content-type": "application/json", "access-control-allow-origin": "*" };
 
@@ -619,13 +685,187 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           return { id: w.workoutId, title: w.title || "", type: w.workoutTypeValueId, calories: cal, distance: dist, duration: dur, tss: w.tssActual || null };
         });
 
+        // Item 3: refresh training load in the background after each sync
+        if (ctx?.waitUntil) ctx.waitUntil(tpRecomputeLoad(env, tpUser.id).catch(() => {}));
+
         return new Response(JSON.stringify({ ok: true, date, count: workouts.length, calories, distance, duration, workouts }), { headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
     }
 
+    // ── Item 3: daily training load (CTL/ATL/TSB) ─────────────────────────
+    if (u.pathname === "/api/training/load" && req.method === "GET") {
+      const loadUser = await getSessionUser(env.DB, req);
+      if (!loadUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const days = Math.min(parseInt(u.searchParams.get("days") || "90") || 90, 365);
+        let rows = (await env.DB.prepare(
+          `SELECT date, tss, ctl, atl, tsb FROM training_load WHERE user_id = ? AND date >= date('now', '-' || ? || ' days') ORDER BY date ASC`
+        ).bind(loadUser.id, days).all()).results;
+        if (rows.length === 0) {
+          // First call after connecting TP: backfill synchronously
+          const res = await tpRecomputeLoad(env, loadUser.id);
+          if (res.error) return new Response(JSON.stringify({ ok: false, error: res.error }), { status: 400, headers: CORS });
+          rows = (await env.DB.prepare(
+            `SELECT date, tss, ctl, atl, tsb FROM training_load WHERE user_id = ? AND date >= date('now', '-' || ? || ' days') ORDER BY date ASC`
+          ).bind(loadUser.id, days).all()).results;
+        }
+        return new Response(JSON.stringify({ ok: true, rows }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 5: all trend series in one payload ───────────────────────────
+    if (u.pathname === "/api/trends" && req.method === "GET") {
+      const trUser = await getSessionUser(env.DB, req);
+      if (!trUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const days = Math.min(parseInt(u.searchParams.get("days") || "180") || 180, 365);
+        const cutoffSql = `date('now', '-' || ? || ' days')`;
+        const [weights, checkins, load, foodDaily] = await Promise.all([
+          env.DB.prepare(`SELECT date, weight_lbs FROM weight_log WHERE user_id = ? AND date >= ${cutoffSql} ORDER BY date ASC`).bind(trUser.id, days).all(),
+          env.DB.prepare(`SELECT date, energy, mood, sleep_hrs, calories_consumed, protein_g, weight_lbs FROM daily_checkin WHERE user_id = ? AND date >= ${cutoffSql} ORDER BY date ASC`).bind(trUser.id, days).all(),
+          env.DB.prepare(`SELECT date, tss, ctl, atl, tsb FROM training_load WHERE user_id = ? AND date >= ${cutoffSql} ORDER BY date ASC`).bind(trUser.id, days).all(),
+          // Daily calorie/protein totals straight from the synced food log —
+          // covers days where no check-in row was written
+          env.DB.prepare(`SELECT date,
+              SUM(CAST(json_extract(payload_json, '$.calories') AS REAL)) AS calories,
+              SUM(CAST(json_extract(payload_json, '$.protein') AS REAL)) AS protein
+            FROM food_log WHERE user_id = ? AND deleted = 0 AND date >= ${cutoffSql}
+            GROUP BY date ORDER BY date ASC`).bind(trUser.id, days).all(),
+        ]);
+        // Weight: prefer explicit weight_log, fall back to check-in weigh-ins
+        const wmap = {};
+        for (const c of checkins.results) if (c.weight_lbs > 0) wmap[c.date] = c.weight_lbs;
+        for (const w of weights.results) wmap[w.date] = w.weight_lbs;
+        const weightSeries = Object.entries(wmap).sort(([a], [b]) => a.localeCompare(b)).map(([date, lbs]) => ({ date, lbs }));
+        const profile = {
+          calories: trUser.calories, protein: trUser.protein, carbs: trUser.carbs, fat: trUser.fat,
+          tdee: trUser.tdee, current_weight: trUser.current_weight, goal_weight: trUser.goal_weight, goal_date: trUser.goal_date,
+        };
+        return new Response(JSON.stringify({ ok: true, days, profile, weights: weightSeries, checkins: checkins.results, load: load.results, food: foodDaily.results }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 5: weekly "what changed" summary (Claude, cached per ISO week) ──
+    if (u.pathname === "/api/trends/summary" && req.method === "GET") {
+      const tsUser = await getSessionUser(env.DB, req);
+      if (!tsUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        // ISO week key
+        const d = new Date();
+        const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+        const week = Math.ceil((((d - jan4) / 86400000) + jan4.getUTCDay() + 1) / 7);
+        const cacheKey = `trends-${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+
+        const cached = await env.DB.prepare("SELECT email_context FROM brief_cache WHERE user_id = ? AND date = ?").bind(tsUser.id, cacheKey).first();
+        if (cached?.email_context) {
+          try {
+            const c = JSON.parse(cached.email_context);
+            if (Date.now() - (c.generated_at || 0) < 86400000) {
+              return new Response(JSON.stringify({ ok: true, summary: c.summary, cached: true }), { headers: CORS });
+            }
+          } catch(_) {}
+        }
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ ok: false, error: "no key" }), { status: 500, headers: CORS });
+
+        // Calories/protein from the synced food log; weight from weight_log;
+        // sleep/mood from check-ins when present; TSS from training_load.
+        const foodWeek = (win) => env.DB.prepare(`SELECT AVG(c) AS cals, AVG(p) AS prot FROM (
+            SELECT SUM(CAST(json_extract(payload_json,'$.calories') AS REAL)) AS c,
+                   SUM(CAST(json_extract(payload_json,'$.protein') AS REAL)) AS p
+            FROM food_log WHERE user_id = ? AND deleted = 0 AND ${win} GROUP BY date)`).bind(tsUser.id).first();
+        const [wkFood, prevFood, wkW, prevW, wkCk, tssWk] = await Promise.all([
+          foodWeek(`date >= date('now', '-7 days')`),
+          foodWeek(`date >= date('now', '-14 days') AND date < date('now', '-7 days')`),
+          env.DB.prepare(`SELECT MIN(weight_lbs) AS wmin, MAX(weight_lbs) AS wmax, AVG(weight_lbs) AS wavg FROM weight_log WHERE user_id = ? AND date >= date('now', '-7 days')`).bind(tsUser.id).first(),
+          env.DB.prepare(`SELECT AVG(weight_lbs) AS wavg FROM weight_log WHERE user_id = ? AND date >= date('now', '-14 days') AND date < date('now', '-7 days')`).bind(tsUser.id).first(),
+          env.DB.prepare(`SELECT AVG(sleep_hrs) AS sleep, AVG(mood) AS mood, AVG(energy) AS energy FROM daily_checkin WHERE user_id = ? AND date >= date('now', '-7 days')`).bind(tsUser.id).first(),
+          env.DB.prepare(`SELECT SUM(tss) AS tss FROM training_load WHERE user_id = ? AND date >= date('now', '-7 days')`).bind(tsUser.id).first(),
+        ]);
+        const fmt = (v, f) => (v == null ? "not tracked" : f(v));
+        const stats = `THIS WEEK: avg calories ${fmt(wkFood?.cals, v => Math.round(v))} (target ${tsUser.calories || "?"}), avg protein ${fmt(wkFood?.prot, v => Math.round(v) + "g")} (target ${tsUser.protein || "?"}g), weight ${fmt(wkW?.wavg, v => wkW.wmin + "–" + wkW.wmax + " lbs")}, weekly TSS ${Math.round(tssWk?.tss || 0)}, sleep ${fmt(wkCk?.sleep, v => v.toFixed(1) + "h")}, mood ${fmt(wkCk?.mood, v => v.toFixed(1) + "/5")}.
+LAST WEEK: avg calories ${fmt(prevFood?.cals, v => Math.round(v))}, avg protein ${fmt(prevFood?.prot, v => Math.round(v) + "g")}, avg weight ${fmt(prevW?.wavg, v => v.toFixed(1) + " lbs")}.
+GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data comes from Jeremy's own tracking app (the one showing this summary) — never recommend other tracking apps; if a metric is "not tracked", at most gently note it.`;
+
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001", max_tokens: 200,
+            messages: [{ role: "user", content: `Write a "what changed this week" health summary for Jeremy. Second person, under 80 words, cite specific numbers, mention the single most important trend and one action. No preamble, no markdown.\n\n${stats}` }]
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) return new Response(JSON.stringify({ ok: false, error: data?.error?.message }), { status: r.status, headers: CORS });
+        const summary = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+
+        await env.DB.prepare(`INSERT INTO brief_cache (user_id, date, email_context) VALUES (?, ?, ?)
+          ON CONFLICT(user_id, date) DO UPDATE SET email_context = excluded.email_context`)
+          .bind(tsUser.id, cacheKey, JSON.stringify({ summary, generated_at: Date.now() })).run()
+          .catch(async () => {
+            // brief_cache may lack a (user_id,date) unique constraint — fall back to delete+insert
+            await env.DB.prepare("DELETE FROM brief_cache WHERE user_id = ? AND date = ?").bind(tsUser.id, cacheKey).run();
+            await env.DB.prepare("INSERT INTO brief_cache (user_id, date, email_context) VALUES (?, ?, ?)").bind(tsUser.id, cacheKey, JSON.stringify({ summary, generated_at: Date.now() })).run();
+          });
+
+        return new Response(JSON.stringify({ ok: true, summary, cached: false }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 4: tomorrow's planned sessions (fetch live, cache in D1) ─────
+    if (u.pathname === "/api/tp/planned" && req.method === "GET") {
+      const plannedUser = await getSessionUser(env.DB, req);
+      if (!plannedUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const date = u.searchParams.get("date") || new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return new Response(JSON.stringify({ ok: false, error: "Bad date" }), { status: 400, headers: CORS });
+        const auth = await tpGetAccessToken(env);
+        if (auth.error) return new Response(JSON.stringify({ ok: false, error: auth.error }), { status: auth.error === "not_connected" ? 400 : 401, headers: CORS });
+
+        const all = await tpFetchRange(auth, date, date);
+        // Planned = has planned fields and no completed metrics yet
+        const planned = all.filter(w => !(w.totalTime || w.calories || w.distance) && (w.totalTimePlanned || w.tssPlanned || w.distancePlanned))
+          .map(w => ({
+            workout_id: String(w.workoutId),
+            type: TP_TYPE_NAMES[w.workoutTypeValueId] || String(w.workoutTypeValueId || ""),
+            duration_min: w.totalTimePlanned ? Math.round(w.totalTimePlanned * 60) : null,
+            distance_mi: w.distancePlanned ? Math.round(w.distancePlanned / 1609.34 * 10) / 10 : null,
+            tss_planned: w.tssPlanned || null,
+            description: (w.title || "").slice(0, 200),
+          }));
+
+        const now = Date.now();
+        const stmts = [env.DB.prepare("DELETE FROM planned_workout WHERE user_id = ? AND date = ?").bind(plannedUser.id, date)];
+        for (const p of planned) {
+          stmts.push(env.DB.prepare(`INSERT INTO planned_workout (user_id, date, workout_id, type, duration_min, distance_mi, tss_planned, description, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date, workout_id) DO UPDATE SET type=excluded.type, duration_min=excluded.duration_min,
+              distance_mi=excluded.distance_mi, tss_planned=excluded.tss_planned, description=excluded.description, updated_at=excluded.updated_at`)
+            .bind(plannedUser.id, date, p.workout_id, p.type, p.duration_min, p.distance_mi, p.tss_planned, p.description, now));
+        }
+        await env.DB.batch(stmts);
+        return new Response(JSON.stringify({ ok: true, date, planned }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
     return env.ASSETS.fetch(req);
+  },
+
+  // Daily cron (8:00 UTC): keep training load current even without an app open
+  async scheduled(event, env, ctx) {
+    try {
+      const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
+      if (user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
+    } catch (_) {}
   }
 };
 
