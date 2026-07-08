@@ -11,7 +11,7 @@ const FLAGS = {
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          true,   // item 9: PWA install + web push
-  tpAutoRefresh:false,  // item 10: TP cookie auto-refresh + expiry banner
+  tpAutoRefresh:true,   // item 10: TP cookie auto-refresh + expiry banner
 };
 
 // ── Auth & Onboarding ──
@@ -776,6 +776,34 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── TP lifecycle banners (Tier 2, item 10) ───────────────────────────────
+async function checkTPLifecycle() {
+  if (!FLAGS.tpAutoRefresh || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/tp/status', { headers: authHeaders() });
+    const d = await res.json();
+    const expired = d.status === 'expired' || d.error === 'cookie_expired';
+    setStorage('tpLifecycle', { status: expired ? 'expired' : d.status || 'active', last_refreshed_at: d.last_refreshed_at || null, expired_at: d.expired_at || null, checked: Date.now() });
+    renderTPBanners();
+  } catch(_) {}
+}
+
+function renderTPBanners() {
+  const lc = getStorage('tpLifecycle', null);
+  const expired = FLAGS.tpAutoRefresh && lc?.status === 'expired';
+  for (const id of ['tpExpiredBannerLift', 'tpExpiredBannerBrief']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = expired ? 'block' : 'none';
+  }
+  const line = document.getElementById('tpLifecycleLine');
+  if (line && lc) {
+    line.textContent = lc.status === 'expired'
+      ? `⚠️ Expired ${lc.expired_at ? Math.max(1, Math.round((Date.now() - lc.expired_at) / 86400000)) + ' day(s) ago' : ''} — paste a fresh cookie above`
+      : lc.last_refreshed_at ? `Token refreshed ${new Date(lc.last_refreshed_at).toLocaleString()}` : 'Active';
+    line.style.color = lc.status === 'expired' ? '#fbbf24' : '';
+  }
 }
 
 // ── PWA + Web Push (Tier 2, item 9) ──────────────────────────────────────
@@ -2220,7 +2248,7 @@ function switchTab(name, btn) {
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
   if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
-  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); }
+  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
@@ -4868,6 +4896,7 @@ function openSettings() {
   updateSyncStatusUI();
   updateBackupStatusUI();
   updatePushSettingsUI();
+  checkTPLifecycle();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
@@ -5227,6 +5256,8 @@ async function connectTrainingPeaks() {
     if (!res.ok || !data.ok) { showToast('⚠️ ' + (data.error || 'TrainingPeaks connection failed')); return; }
     input.value = '';
     setStorage('tpConnected', { athlete: data.athlete, connectedAt: Date.now() });
+    setStorage('tpLifecycle', { status: 'active', last_refreshed_at: Date.now(), checked: Date.now() });
+    renderTPBanners();
     updateTPSettingsUI();
     showToast('✅ Connected as ' + (data.athlete?.name || 'athlete'));
     fetchTPToday();
@@ -5246,8 +5277,14 @@ async function fetchTPToday() {
     const data = await res.json();
 
     if (!res.ok || !data.ok) {
-      if (data.error === 'cookie_expired' || data.error === 'not_connected') {
+      if (data.error === 'cookie_expired') {
         document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks session expired — reconnect in Settings';
+        setStorage('tpLifecycle', { status: 'expired', checked: Date.now() });
+        renderTPBanners();
+        return;
+      }
+      if (data.error === 'not_connected') {
+        document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks not connected — see Settings';
         setStorage('tpConnected', null);
         updateTPSettingsUI();
         return;
@@ -10018,6 +10055,7 @@ function _initApp() {
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
+  safeCall(checkTPLifecycle, 'checkTPLifecycle');
   // Feature-flag gating (items 2–5)
   try {
     if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';

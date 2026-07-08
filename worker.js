@@ -236,9 +236,17 @@ async function tpGetAccessToken(env) {
     return { token: row.access_token, athleteId: row.athlete_id, athleteName: row.athlete_name };
   }
   const tok = await tpExchangeCookie(row.cookie);
-  if (!tok) return { error: "cookie_expired" };
-  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, updated_at = datetime('now') WHERE id = 1")
-    .bind(tok.accessToken, new Date(tok.expiresAt).toISOString()).run();
+  if (!tok) {
+    // Mark expired once; the daily refresh cron owns the push notification
+    try {
+      if (row.status !== "expired") {
+        await env.DB.prepare("UPDATE tp_auth SET status = 'expired', expired_at = COALESCE(expired_at, ?) WHERE id = 1").bind(Date.now()).run();
+      }
+    } catch(_) {}
+    return { error: "cookie_expired" };
+  }
+  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ?, updated_at = datetime('now') WHERE id = 1")
+    .bind(tok.accessToken, new Date(tok.expiresAt).toISOString(), Date.now()).run();
   return { token: tok.accessToken, athleteId: row.athlete_id, athleteName: row.athlete_name };
 }
 __name(tpGetAccessToken, "tpGetAccessToken");
@@ -403,6 +411,40 @@ Rules:
 GOOD example: {"note":"Weight is down 0.8 lb/wk over 14 days vs the 1.0 you need — hold 1,500 kcal, no change. Protein ≥150g on 11/14 days; the misses were all weekends, front-load 40g at breakfast Sat/Sun. TSB -4 with 168 TSS this week: Thursday's 60-min run fits as planned.","verdict":"keep_going"}
 BAD example: {"note":"Great week! You're crushing protein and training hard. Keep up the awesome work!","verdict":"keep_going"}
 Return ONLY JSON: {"note":"...","verdict":"keep_going|adjust|recover"}`;
+
+// ── TP cookie auto-refresh (Tier 2, item 10) ─────────────────────────────
+// Daily silent refresh: exchange the stored cookie for a fresh token so the
+// cached token never goes stale unnoticed. On failure: mark expired + push.
+// TP does not expose the cookie's own expiry, so the "expiring soon" warning
+// fires on cookie AGE (>27 days since it was stored), once per lifecycle.
+async function tpDailyRefresh(env) {
+  const row = await env.DB.prepare("SELECT * FROM tp_auth WHERE id = 1").first().catch(() => null);
+  if (!row) return;
+  const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
+  if (!user) return;
+
+  const tok = await tpExchangeCookie(row.cookie);
+  if (tok) {
+    await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ? WHERE id = 1")
+      .bind(tok.accessToken, new Date(tok.expiresAt).toISOString(), Date.now()).run();
+    // Proactive age warning, once per cookie lifecycle
+    const storedAt = new Date(row.updated_at + "Z").getTime() || Date.now();
+    const ageDays = (Date.now() - storedAt) / 86400000;
+    if (ageDays > 27 && !row.warned_at) {
+      await env.DB.prepare("UPDATE tp_auth SET warned_at = ? WHERE id = 1").bind(Date.now()).run();
+      await sendPushToUser(env, user.id, "tp_expiry_warning", "⛰️ TrainingPeaks cookie aging",
+        `Your TP cookie is ${Math.round(ageDays)} days old — re-paste it in Settings before it expires.`, "/#settings");
+    }
+    return;
+  }
+  // Failure → expired + notify (dedupe: once per day via push_sent)
+  if (row.status !== "expired") {
+    await env.DB.prepare("UPDATE tp_auth SET status = 'expired', expired_at = COALESCE(expired_at, ?) WHERE id = 1").bind(Date.now()).run();
+  }
+  await sendPushToUser(env, user.id, "tp_expired", "⛰️ TP disconnected",
+    "Your TrainingPeaks cookie expired — reconnect to keep activity syncing.", "/#settings");
+}
+__name(tpDailyRefresh, "tpDailyRefresh");
 
 // ── Web Push (Tier 2, item 9): VAPID-signed empty pushes; the service
 // worker fetches the queued message from /api/push/pending. No payload
@@ -889,6 +931,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
             token_expires_at=excluded.token_expires_at, athlete_id=excluded.athlete_id,
             athlete_name=excluded.athlete_name, updated_at=datetime('now')`)
           .bind(trimmed, tok.accessToken, new Date(tok.expiresAt).toISOString(), athleteId, athleteName).run();
+        // Fresh cookie = fresh lifecycle (item 10)
+        try { await env.DB.prepare("UPDATE tp_auth SET status = 'active', last_refreshed_at = ?, expired_at = NULL, warned_at = NULL WHERE id = 1").bind(Date.now()).run(); } catch(_) {}
 
         return new Response(JSON.stringify({ ok: true, athlete: { id: athleteId, name: athleteName } }), { headers: CORS });
       } catch (e) {
@@ -901,9 +945,10 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       const tpStatusUser = await getSessionUser(env.DB, req);
       if (!tpStatusUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       try {
+        const row = await env.DB.prepare("SELECT status, last_refreshed_at, expired_at, athlete_name, athlete_id FROM tp_auth WHERE id = 1").first().catch(() => null);
         const auth = await tpGetAccessToken(env);
-        if (auth.error) return new Response(JSON.stringify({ ok: true, connected: false, error: auth.error }), { headers: CORS });
-        return new Response(JSON.stringify({ ok: true, connected: true, athlete: { id: auth.athleteId, name: auth.athleteName } }), { headers: CORS });
+        if (auth.error) return new Response(JSON.stringify({ ok: true, connected: false, error: auth.error, status: row?.status || "not_connected", expired_at: row?.expired_at || null }), { headers: CORS });
+        return new Response(JSON.stringify({ ok: true, connected: true, status: "active", last_refreshed_at: row?.last_refreshed_at || null, athlete: { id: auth.athleteId, name: auth.athleteName } }), { headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
@@ -1355,6 +1400,7 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
     const h = t.getUTCHours(), m = t.getUTCMinutes();
     try {
       const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
+      if (h === 6 && m === 0) ctx.waitUntil(tpDailyRefresh(env).catch(() => {}));
       if (h === 8 && m === 0 && user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
       if (h === 8 && m === 15) ctx.waitUntil(runBackup(env).catch(() => {}));
       ctx.waitUntil(runPushScheduler(env).catch(() => {}));  // every 15 min
