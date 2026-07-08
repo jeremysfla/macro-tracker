@@ -141,6 +141,76 @@ function logUpsertStmt(db, cfg, userId, e) {
 }
 __name(logUpsertStmt, "logUpsertStmt");
 
+// ── Backups (Tier 2, item 7): nightly D1 → R2 NDJSON dumps ──────────────
+const BACKUP_TABLES = ["users", "sessions", "daily_checkin", "brief_cache", "tp_auth",
+  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences"];
+
+async function sha256Hex(buf) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+__name(sha256Hex, "sha256Hex");
+
+async function runBackup(env) {
+  if (!env.BACKUPS) return { ok: false, error: "BACKUPS bucket not bound" };
+  const day = new Date().toISOString().slice(0, 10);
+  const manifest = { date: day, schema_version: SCHEMA_VERSION, generated_at: Date.now(), tables: {} };
+  let totalBytes = 0;
+  for (const t of BACKUP_TABLES) {
+    let rows;
+    try { rows = (await env.DB.prepare(`SELECT * FROM ${t}`).all()).results; }
+    catch (e) { manifest.tables[t] = { error: e.message }; continue; }
+    const buf = new TextEncoder().encode(rows.map(r => JSON.stringify(r)).join("\n"));
+    await env.BACKUPS.put(`backups/${day}/${t}.ndjson`, buf);
+    manifest.tables[t] = { rows: rows.length, bytes: buf.length, sha256: await sha256Hex(buf) };
+    totalBytes += buf.length;
+  }
+  manifest.total_bytes = totalBytes;
+  manifest.pruned = await pruneBackups(env).catch(e => ({ error: e.message }));
+  await env.BACKUPS.put(`backups/${day}/manifest.json`, JSON.stringify(manifest, null, 2));
+  await env.BACKUPS.put("backups/latest.json", JSON.stringify(manifest));
+  return { ok: true, manifest };
+}
+__name(runBackup, "runBackup");
+
+// Retention: daily ≤30d; then Mondays only ≤114d; then 1st-of-month only ≤400d; older deleted.
+function backupKeep(dateStr, now) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  const age = (now - d.getTime()) / 86400000;
+  if (age <= 30) return true;
+  if (age <= 114) return d.getUTCDay() === 1;
+  if (age <= 400) return d.getUTCDate() === 1;
+  return false;
+}
+__name(backupKeep, "backupKeep");
+
+async function pruneBackups(env) {
+  const now = Date.now();
+  const days = [];
+  let cursor;
+  do {
+    const list = await env.BACKUPS.list({ prefix: "backups/", delimiter: "/", cursor });
+    for (const p of list.delimitedPrefixes || []) {
+      const m = p.match(/^backups\/(\d{4}-\d{2}-\d{2})\/$/);
+      if (m) days.push(m[1]);
+    }
+    cursor = list.truncated ? list.cursor : null;
+  } while (cursor);
+
+  const deleted = [];
+  for (const day of days) {
+    if (backupKeep(day, now)) continue;
+    let c;
+    do {
+      const objs = await env.BACKUPS.list({ prefix: `backups/${day}/`, cursor: c });
+      for (const o of objs.objects) await env.BACKUPS.delete(o.key);
+      c = objs.truncated ? objs.cursor : null;
+    } while (c);
+    deleted.push(day);
+  }
+  return { deleted, kept: days.length - deleted.length };
+}
+__name(pruneBackups, "pruneBackups");
+
 // ── TrainingPeaks helpers ────────────────────────────────────────────────
 const TP_API_BASE = "https://tpapi.trainingpeaks.com";
 const TP_RUN_TYPES = new Set([3, 6, 13]); // Run, Race, Walk
@@ -717,6 +787,30 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       }
     }
 
+    // ── Item 7: backup status + manual trigger ────────────────────────────
+    if (u.pathname === "/api/backup/status" && req.method === "GET") {
+      const bkUser = await getSessionUser(env.DB, req);
+      if (!bkUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const latest = await env.BACKUPS?.get("backups/latest.json");
+        if (!latest) return new Response(JSON.stringify({ ok: true, last: null }), { headers: CORS });
+        const manifest = JSON.parse(await latest.text());
+        return new Response(JSON.stringify({ ok: true, last: manifest.generated_at, date: manifest.date, total_bytes: manifest.total_bytes, tables: manifest.tables, pruned: manifest.pruned }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/backup/run" && req.method === "POST") {
+      const bkrUser = await getSessionUser(env.DB, req);
+      if (!bkrUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const res = await runBackup(env);
+        return new Response(JSON.stringify(res), { status: res.ok ? 200 : 500, headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
     // ── Item 5: all trend series in one payload ───────────────────────────
     if (u.pathname === "/api/trends" && req.method === "GET") {
       const trUser = await getSessionUser(env.DB, req);
@@ -860,11 +954,15 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
     return env.ASSETS.fetch(req);
   },
 
-  // Daily cron (8:00 UTC): keep training load current even without an app open
+  // 15-minute cron; dispatch by wall clock so one trigger covers everything:
+  //  08:00 UTC — training-load recompute · 08:15 UTC — nightly backup
   async scheduled(event, env, ctx) {
+    const t = new Date(event.scheduledTime);
+    const h = t.getUTCHours(), m = t.getUTCMinutes();
     try {
       const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
-      if (user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
+      if (h === 8 && m === 0 && user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
+      if (h === 8 && m === 15) ctx.waitUntil(runBackup(env).catch(() => {}));
     } catch (_) {}
   }
 };

@@ -1417,6 +1417,13 @@ PROMISE ERROR:
         <button class="btn-green" style="width:auto;padding:8px 14px" onclick="syncAllLogs()">Sync now</button>
       </div>
       <button class="btn-green" style="margin-top:10px;background:#334155" onclick="forceBackfillSync()">⬆️ Force full backfill (local → server)</button>
+      <div class="settings-row" style="margin-top:10px">
+        <div>
+          <div class="settings-row-label">🗄️ Backups <span id="backupDot" style="font-size:10px">⚪</span></div>
+          <div class="settings-row-sub" id="backupStatusLine">—</div>
+        </div>
+        <button class="btn-green" style="width:auto;padding:8px 14px;background:#334155" onclick="runBackupNow()">Back up now</button>
+      </div>
     </div>
 
     <!-- ── NUTRITION DATABASES ── -->

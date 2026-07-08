@@ -7,6 +7,11 @@ const FLAGS = {
   trainingLoad: true,   // item 3: CTL/ATL/TSB
   fueling:      true,   // item 4: planned-workout fueling
   trends:       true,   // item 5: insights tab
+  briefCoach:   false,  // item 6: trend-grounded coach note in daily brief
+  backups:      true,   // item 7: nightly D1 → R2 backups tile
+  quickAdd:     false,  // item 8: copy-yesterday + favorites carousel
+  pwa:          false,  // item 9: PWA install + web push
+  tpAutoRefresh:false,  // item 10: TP cookie auto-refresh + expiry banner
 };
 
 // ── Auth & Onboarding ──
@@ -771,6 +776,34 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── Backups tile (Tier 2, item 7) ────────────────────────────────────────
+async function updateBackupStatusUI() {
+  if (!FLAGS.backups) return;
+  const dot = document.getElementById('backupDot'), line = document.getElementById('backupStatusLine');
+  if (!dot || !line) return;
+  try {
+    const res = await fetch('/api/backup/status', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok || !d.last) { dot.textContent = '🔴'; line.textContent = 'No backup yet — tap "Back up now"'; return; }
+    const ageH = (Date.now() - d.last) / 3600000;
+    dot.textContent = ageH < 36 ? '🟢' : ageH < 72 ? '🟠' : '🔴';
+    const mb = (d.total_bytes / 1048576).toFixed(2);
+    line.textContent = `Last: ${new Date(d.last).toLocaleString()} · ${mb} MB · nightly 8:15 UTC`;
+  } catch (e) { dot.textContent = '⚪'; line.textContent = 'Status unavailable'; }
+}
+
+async function runBackupNow() {
+  showToast('🗄️ Running backup…');
+  try {
+    const res = await fetch('/api/backup/run', { method: 'POST', headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'backup failed');
+    const total = Object.values(d.manifest.tables).reduce((s, t) => s + (t.rows || 0), 0);
+    showToast(`✅ Backed up ${total.toLocaleString()} rows across ${Object.keys(d.manifest.tables).length} tables`);
+    updateBackupStatusUI();
+  } catch (e) { showToast('⚠️ Backup failed: ' + e.message); }
 }
 
 function updateSyncStatusUI() {
@@ -4498,6 +4531,7 @@ function openSettings() {
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
   updateTPSettingsUI();
   updateSyncStatusUI();
+  updateBackupStatusUI();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');

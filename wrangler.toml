@@ -16,7 +16,14 @@ database_id = "8d47dc07-8f12-4869-825c-0cee87c206e9"
 migrations_dir = "migrations"
 
 [triggers]
-crons = ["0 8 * * *"]
+# Single 15-min cron; the scheduled handler dispatches by wall-clock:
+# 08:00 UTC training-load recompute, 08:15 UTC backup + TP refresh,
+# every tick: push reminder scheduler (item 9)
+crons = ["*/15 * * * *"]
+
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "macro-tracker-backups"
 
 [vars]
 USDA_API_KEY = "73A0UOQRNjRewH4w9aLpYtkXCjQVoLY8BD7hIG4F"
