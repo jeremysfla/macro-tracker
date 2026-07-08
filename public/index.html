@@ -288,6 +288,11 @@ PROMISE ERROR:
         </div>
         <!-- WHOOP day badge -->
         <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
+        <!-- Quick-add favorites carousel (item 8) -->
+        <div id="favChipsWrap" style="display:none;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">⚡ Quick add</div>
+          <div class="quick-foods-scroll" id="favChips"></div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
           <button class="btn-scan" onclick="openScanner()">
             <span style="font-size:16px">&#x1F4F7;</span> Scan
@@ -1061,6 +1066,7 @@ PROMISE ERROR:
     <div id="quickLogList" style="max-height:50vh;overflow-y:auto"></div>
     <div id="quickLogActions" style="display:none">
       <button class="btn-green" id="quickLogConfirmBtn" onclick="confirmQuickLog()">✅ Log items</button>
+      <button class="btn-outline" id="quickLogPinBtn" onclick="toggleFavPin()" style="display:none">📌 Pin</button>
       <button class="btn-outline" onclick="closeQuickLogModal()">Cancel</button>
     </div>
     <button class="btn-outline" id="quickLogCancelOnly" onclick="closeQuickLogModal()" style="margin-top:6px">Close</button>

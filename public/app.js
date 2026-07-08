@@ -9,7 +9,7 @@ const FLAGS = {
   trends:       true,   // item 5: insights tab
   briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
   backups:      true,   // item 7: nightly D1 → R2 backups tile
-  quickAdd:     false,  // item 8: copy-yesterday + favorites carousel
+  quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          false,  // item 9: PWA install + web push
   tpAutoRefresh:false,  // item 10: TP cookie auto-refresh + expiry banner
 };
@@ -776,6 +776,121 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── Quick-add favorites + meal-aware copy (Tier 2, item 8) ───────────────
+let _favList = [];
+
+async function renderFavChips(forceFetch) {
+  if (!FLAGS.quickAdd) return;
+  const wrap = document.getElementById('favChipsWrap'), row = document.getElementById('favChips');
+  if (!wrap || !row) return;
+
+  const cache = getStorage('favCache', null);
+  const fresh = cache && Date.now() - cache.fetched < 24 * 3600 * 1000;
+  if (cache?.favorites?.length) { _favList = cache.favorites; _paintFavChips(); }
+  if (fresh && !forceFetch) return;
+  try {
+    const res = await fetch('/api/log/favorites', { headers: authHeaders() });
+    const d = await res.json();
+    if (d.ok) {
+      _favList = d.favorites || [];
+      setStorage('favCache', { favorites: _favList, fetched: Date.now() });
+      _paintFavChips();
+    }
+  } catch (_) {}
+}
+
+function _paintFavChips() {
+  const wrap = document.getElementById('favChipsWrap'), row = document.getElementById('favChips');
+  if (!_favList.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  row.innerHTML = _favList.slice(0, 20).map((f, i) => `
+    <div class="quick-food-chip" data-fi="${i}" onclick="favQuickLog(${i})">
+      <div class="qfc-name">${f.pinned ? '📌 ' : ''}${esc(f.name)}</div>
+      <div class="qfc-cal">${f.calories} kcal · ${Math.round(f.protein)}g pro</div>
+    </div>`).join('');
+  // Long-press: edit sheet (with pin toggle) instead of instant log
+  row.querySelectorAll('.quick-food-chip').forEach(chip => {
+    let t = null, fired = false;
+    const start = () => { fired = false; t = setTimeout(() => { fired = true; favOpenEdit(parseInt(chip.dataset.fi)); }, 550); };
+    const cancel = () => { if (t) clearTimeout(t); t = null; };
+    chip.addEventListener('touchstart', start, { passive: true });
+    chip.addEventListener('touchend', e => { cancel(); if (fired) { e.preventDefault(); } });
+    chip.addEventListener('touchmove', cancel);
+    chip.addEventListener('mousedown', start);
+    chip.addEventListener('mouseup', cancel);
+    chip.addEventListener('mouseleave', cancel);
+    chip.addEventListener('click', e => { if (fired) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  });
+}
+
+function favQuickLog(i) {
+  const f = _favList[i];
+  if (!f) return;
+  addFoodEntry({ name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, icon: f.icon || '⚡' });
+}
+
+// Long-press → the quick-log confirm sheet with one editable item + pin toggle
+let _quickLogPinKey = null;
+function favOpenEdit(i) {
+  const f = _favList[i];
+  if (!f) return;
+  _quickLogItems = [{ name: f.name, calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, quality: 'full' }];
+  _quickLogPinKey = f.key;
+  document.getElementById('quickLogTranscript').textContent = 'Edit before logging';
+  document.getElementById('quickLogLoading').style.display = 'none';
+  document.getElementById('quickLogModal').classList.add('open');
+  renderQuickLogSheet();
+  const pinBtn = document.getElementById('quickLogPinBtn');
+  if (pinBtn) {
+    pinBtn.style.display = 'block';
+    pinBtn.textContent = f.pinned ? '📌 Unpin from quick add' : '📌 Pin to front of quick add';
+  }
+}
+
+async function toggleFavPin() {
+  if (!_quickLogPinKey) return;
+  const fav = _favList.find(f => f.key === _quickLogPinKey);
+  const cache = getStorage('favCache', { favorites: _favList, fetched: 0 });
+  let pinned = (getStorage('favPinned', null)) || _favList.filter(f => f.pinned).map(f => f.key);
+  if (pinned.includes(_quickLogPinKey)) pinned = pinned.filter(k => k !== _quickLogPinKey);
+  else if (pinned.length < 5) pinned.push(_quickLogPinKey);
+  else { showToast('⚠️ Max 5 pinned — unpin something first'); return; }
+  setStorage('favPinned', pinned);
+  if (fav) fav.pinned = pinned.includes(_quickLogPinKey);
+  _favList.sort((x, y) => (y.pinned - x.pinned) || (y.score - x.score));
+  setStorage('favCache', { favorites: _favList, fetched: cache.fetched });
+  _paintFavChips();
+  try { await fetch('/api/prefs', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ pinned_foods: pinned }) }); } catch(_) {}
+  closeQuickLogModal();
+  showToast(fav?.pinned ? '📌 Pinned' : 'Unpinned');
+}
+
+// Meal window helpers: breakfast <10am, lunch 10–3, dinner >3pm
+function currentMealWindow() {
+  const h = nowEST().getHours();
+  return h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner';
+}
+function entryMealWindow(e) {
+  const m = String(e.time || '').match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]) % 12;
+  if (/pm/i.test(m[3])) h += 12;
+  return h < 10 ? 'breakfast' : h < 15 ? 'lunch' : 'dinner';
+}
+// Most recent prior day (≤7 back) with entries in the current meal window
+function findMealCopySource() {
+  const all = getStorage('foodEntries', {});
+  const meal = currentMealWindow();
+  for (let back = 1; back <= 7; back++) {
+    const d = new Date(getSelectedDateKey() + 'T12:00:00');
+    d.setDate(d.getDate() - back);
+    const key = dateToKey(d);
+    const entries = (all[key] || []).filter(e => entryMealWindow(e) === meal);
+    if (entries.length) return { key, entries, back, meal };
+  }
+  return null;
 }
 
 // ── Coach note (Tier 2, item 6) ──────────────────────────────────────────
@@ -1920,7 +2035,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); }
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
@@ -4538,6 +4653,9 @@ function confirmQuickLog() {
 function closeQuickLogModal() {
   document.getElementById('quickLogModal').classList.remove('open');
   _quickLogItems = [];
+  _quickLogPinKey = null;
+  const pinBtn = document.getElementById('quickLogPinBtn');
+  if (pinBtn) pinBtn.style.display = 'none';
 }
 
 // ── Settings ──
@@ -5270,6 +5388,15 @@ function renderWhoopDayBadge() {
 function checkCopyYesterday() {
   const btn = document.getElementById('copyYesterdayBtn');
   if (!btn) return;
+  if (FLAGS.quickAdd) {
+    const src = findMealCopySource();
+    if (src) {
+      btn.style.display = 'flex';
+      const when = src.back === 1 ? "yesterday's" : `${src.back} days ago:`;
+      btn.textContent = `📋 Copy ${when} ${src.meal} (${src.entries.length})`;
+      return;
+    }
+  }
   const all = getStorage('foodEntries', {});
   const yEntries = all[getYesterdayKey()] || [];
   btn.style.display = yEntries.length > 0 ? 'flex' : 'none';
@@ -5279,11 +5406,18 @@ function checkCopyYesterday() {
 }
 
 function copyYesterdayMeals() {
-  const all = getStorage('foodEntries', {});
-  const selDate = new Date(getSelectedDateKey() + 'T12:00:00');
-  selDate.setDate(selDate.getDate() - 1);
-  const prevKey = dateToKey(selDate);
-  const yEntries = all[prevKey] || [];
+  // Meal-aware source when quickAdd is on; whole-previous-day otherwise
+  let yEntries;
+  if (FLAGS.quickAdd) {
+    const src = findMealCopySource();
+    if (src) yEntries = src.entries;
+  }
+  if (!yEntries) {
+    const all = getStorage('foodEntries', {});
+    const selDate = new Date(getSelectedDateKey() + 'T12:00:00');
+    selDate.setDate(selDate.getDate() - 1);
+    yEntries = all[dateToKey(selDate)] || [];
+  }
   if (yEntries.length === 0) { showToast('No meals logged the previous day'); return; }
 
   // Store for the modal
@@ -5320,8 +5454,9 @@ function copySelectedYesterdayMeals() {
   const entries = window._copyYesterdayEntries || [];
   const selected = [...cbs].map(cb => {
     const idx = parseInt(cb.dataset.yi);
+    const { _id, _u, ...rest } = entries[idx];  // fresh sync identity for the copy
     return {
-      ...entries[idx],
+      ...rest,
       id:   Date.now() + Math.random(),
       time: nowEST().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', timeZone:'America/New_York' }),
     };
@@ -9855,6 +9990,8 @@ document.addEventListener('visibilitychange', () => {
       const dirty = SYNC_TABLES.some(t => getStorage('_syncDirty_' + t, 0));
       const lastOk = getStorage('_syncLastOk', 0);
       if (dirty || Date.now() - lastOk > 5 * 60 * 1000) syncAllLogs();
+      const fc = getStorage('favCache', null);
+      if (FLAGS.quickAdd && (!fc || Date.now() - fc.fetched > 24 * 3600 * 1000)) renderFavChips(true);
     } catch(e) {}
   }
 });

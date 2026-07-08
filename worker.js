@@ -92,7 +92,7 @@ async function getSessionUser(db, req) {
 __name(getSessionUser, "getSessionUser");
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -716,9 +716,9 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
     }
 
     // ── Log sync: GET pulls rows since cursor, POST upserts (LWW on updated_at) ──
-    if (u.pathname.startsWith("/api/log/")) {
+    // Unknown names fall through — /api/log/favorites is handled further down.
+    if (u.pathname.startsWith("/api/log/") && LOG_TABLES[u.pathname.slice("/api/log/".length)]) {
       const cfg = LOG_TABLES[u.pathname.slice("/api/log/".length)];
-      if (!cfg) return new Response(JSON.stringify({ error: "Unknown log" }), { status: 404, headers: CORS });
       const logUser = await getSessionUser(env.DB, req);
       if (!logUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
 
@@ -930,6 +930,71 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           .bind(coachUser.id, cacheKey, JSON.stringify({ hash, note, verdict, generated_at: Date.now() })).run();
 
         return new Response(JSON.stringify({ ok: true, note, verdict, cached: false, context }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 8: quick-add favorites + user preferences ────────────────────
+    if (u.pathname === "/api/log/favorites" && req.method === "GET") {
+      const favUser = await getSessionUser(env.DB, req);
+      if (!favUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const rows = (await env.DB.prepare(
+          `SELECT date, payload_json FROM food_log WHERE user_id = ? AND deleted = 0 AND date >= date('now','-60 days')`
+        ).bind(favUser.id).all()).results;
+        const today = Date.now();
+        const agg = {};
+        for (const r of rows) {
+          let e; try { e = JSON.parse(r.payload_json); } catch(_) { continue; }
+          if (!e?.name || !(e.calories > 0)) continue;
+          // Dedupe on normalized name + calories within ±10 kcal buckets
+          const key = e.name.trim().toLowerCase().replace(/\s+/g, " ") + "|" + Math.round(e.calories / 20);
+          const a = agg[key] || (agg[key] = { key, count: 0, last: "1970-01-01", entry: null });
+          a.count++;
+          if (r.date >= a.last) { a.last = r.date; a.entry = e; }
+        }
+        let prefs = {};
+        try {
+          const pr = await env.DB.prepare("SELECT payload_json FROM user_preferences WHERE user_id = ?").bind(favUser.id).first();
+          if (pr) prefs = JSON.parse(pr.payload_json);
+        } catch(_) {}
+        const pinned = new Set(prefs.pinned_foods || []);
+        const favorites = Object.values(agg)
+          .map(a => {
+            const daysSince = Math.max(1, Math.round((today - new Date(a.last).getTime()) / 86400000));
+            return {
+              key: a.key, name: a.entry.name, icon: a.entry.icon || "🍽️",
+              calories: Math.round(a.entry.calories || 0), protein: a.entry.protein || 0,
+              carbs: a.entry.carbs || 0, fat: a.entry.fat || 0,
+              count: a.count, score: a.count / daysSince, pinned: pinned.has(a.key),
+            };
+          })
+          .sort((x, y) => (y.pinned - x.pinned) || (y.score - x.score))
+          .slice(0, 25);
+        return new Response(JSON.stringify({ ok: true, favorites, pinned: [...pinned] }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    if (u.pathname === "/api/prefs" && (req.method === "GET" || req.method === "PUT")) {
+      const prefUser = await getSessionUser(env.DB, req);
+      if (!prefUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const row = await env.DB.prepare("SELECT payload_json FROM user_preferences WHERE user_id = ?").bind(prefUser.id).first();
+        let prefs = {};
+        try { if (row) prefs = JSON.parse(row.payload_json); } catch(_) {}
+        if (req.method === "PUT") {
+          const patch = await req.json();
+          if (patch && typeof patch === "object") prefs = { ...prefs, ...patch };
+          const blob = JSON.stringify(prefs);
+          if (blob.length > 16384) return new Response(JSON.stringify({ ok: false, error: "prefs too large" }), { status: 400, headers: CORS });
+          await env.DB.prepare(`INSERT INTO user_preferences (user_id, payload_json, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at`)
+            .bind(prefUser.id, blob, Date.now()).run();
+        }
+        return new Response(JSON.stringify({ ok: true, prefs }), { headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
