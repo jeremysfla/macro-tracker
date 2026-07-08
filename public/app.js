@@ -10,7 +10,7 @@ const FLAGS = {
   briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
-  pwa:          false,  // item 9: PWA install + web push
+  pwa:          true,   // item 9: PWA install + web push
   tpAutoRefresh:false,  // item 10: TP cookie auto-refresh + expiry banner
 };
 
@@ -776,6 +776,190 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── PWA + Web Push (Tier 2, item 9) ──────────────────────────────────────
+let _swReg = null;
+let _deferredInstallPrompt = null;
+
+function initPWA() {
+  if (!FLAGS.pwa || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    _swReg = reg;
+    // New version ready → offer reload
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          showToast('⬆️ Update ready', () => location.reload());
+        }
+      });
+    });
+  }).catch(e => console.warn('[pwa] sw register failed:', e.message));
+
+  // Install affordances
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    maybeShowInstallBanner('chromium');
+  });
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS && !standalone) maybeShowInstallBanner('ios');
+
+  // Keep server tz current (used for local-time reminders)
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && getStorage('tzSynced', '') !== tz) {
+      fetch('/api/user/tz', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ tz }) })
+        .then(() => setStorage('tzSynced', tz)).catch(() => {});
+    }
+  } catch(_) {}
+}
+
+function maybeShowInstallBanner(kind) {
+  const dismissed = getStorage('installBannerDismissed', 0);
+  if (Date.now() - dismissed < 30 * 86400000) return;
+  const el = document.getElementById('installBanner');
+  if (!el) return;
+  el.style.display = 'flex';
+  document.getElementById('installBannerText').textContent = kind === 'ios'
+    ? 'Install: tap Share → "Add to Home Screen"'
+    : 'Install Macro Tracker on your home screen';
+  const btn = document.getElementById('installBannerBtn');
+  btn.style.display = kind === 'ios' ? 'none' : 'inline-block';
+  btn.onclick = async () => {
+    if (_deferredInstallPrompt) {
+      _deferredInstallPrompt.prompt();
+      await _deferredInstallPrompt.userChoice;
+      _deferredInstallPrompt = null;
+    }
+    dismissInstallBanner();
+  };
+}
+function dismissInstallBanner() {
+  setStorage('installBannerDismissed', Date.now());
+  const el = document.getElementById('installBanner');
+  if (el) el.style.display = 'none';
+}
+
+// ── Push subscription management ──
+function _vapidToBytes(b64u) {
+  const pad = '='.repeat((4 - b64u.length % 4) % 4);
+  const raw = atob((b64u + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function updatePushSettingsUI() {
+  if (!FLAGS.pwa) return;
+  const section = document.getElementById('notifSection');
+  if (!section) return;
+  section.style.display = 'block';
+  const toggle = document.getElementById('pushToggle');
+  const line = document.getElementById('pushStatusLine');
+
+  let subscribed = false;
+  try {
+    const reg = _swReg || await navigator.serviceWorker?.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    subscribed = !!sub;
+  } catch(_) {}
+  toggle.classList.toggle('on', subscribed);
+  line.textContent = subscribed ? 'On — this device receives reminders'
+    : (Notification?.permission === 'denied' ? 'Blocked in browser settings' : 'Off');
+
+  // Reminder toggles from prefs
+  try {
+    const res = await fetch('/api/prefs', { headers: authHeaders() });
+    const d = await res.json();
+    const rem = d.prefs?.reminders || {};
+    document.getElementById('remWeighinToggle').classList.toggle('on', !!rem.morning_weighin?.on);
+    document.getElementById('remEveningToggle').classList.toggle('on', !!rem.evening_log?.on);
+  } catch(_) {}
+
+  // Device list
+  try {
+    const res = await fetch('/api/push/subscriptions', { headers: authHeaders() });
+    const d = await res.json();
+    const list = document.getElementById('pushDeviceList');
+    list.innerHTML = (d.subscriptions || []).map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px">
+        <div>
+          <div style="font-size:12px;font-weight:600">${esc(s.device_label || 'Device')}</div>
+          <div style="font-size:10px;color:var(--text3)">${s.last_used_at ? 'last push ' + new Date(s.last_used_at).toLocaleDateString() : 'never used'}</div>
+        </div>
+        <button onclick="removePushDevice('${esc(s.endpoint).replace(/'/g, '')}')" style="background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer">Remove</button>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+async function togglePush(btn) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('⚠️ Push not supported here' + (/iphone|ipad/i.test(navigator.userAgent) ? ' — install to Home Screen first' : ''));
+    return;
+  }
+  const reg = _swReg || await navigator.serviceWorker.getRegistration() || await navigator.serviceWorker.register('/sw.js');
+  const existing = await reg.pushManager.getSubscription();
+
+  if (existing) {
+    try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch(_) {}
+    await existing.unsubscribe();
+    showToast('🔕 Push disabled on this device');
+    updatePushSettingsUI();
+    return;
+  }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { showToast('⚠️ Notification permission denied'); updatePushSettingsUI(); return; }
+  try {
+    const vres = await fetch('/api/push/vapid', { headers: authHeaders() });
+    const { key } = await vres.json();
+    if (!key) throw new Error('no VAPID key on server');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _vapidToBytes(key) });
+    const j = sub.toJSON();
+    const label = /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone' : /android/i.test(navigator.userAgent) ? 'Android' : 'Desktop';
+    await fetch('/api/push/subscribe', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys, device_label: label + ' · ' + (navigator.platform || '') })
+    });
+    showToast('🔔 Push enabled — try the test button');
+  } catch (e) {
+    showToast('⚠️ Subscribe failed: ' + e.message);
+  }
+  updatePushSettingsUI();
+}
+
+async function removePushDevice(endpoint) {
+  try {
+    await fetch('/api/push/unsubscribe', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ endpoint }) });
+    const reg = _swReg || await navigator.serviceWorker?.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub && sub.endpoint === endpoint) await sub.unsubscribe();
+  } catch(_) {}
+  updatePushSettingsUI();
+}
+
+async function toggleReminder(kind, btn) {
+  btn.classList.toggle('on');
+  const on = btn.classList.contains('on');
+  const defaults = { morning_weighin: '07:00', evening_log: '20:30' };
+  try {
+    const res = await fetch('/api/prefs', { headers: authHeaders() });
+    const d = await res.json();
+    const reminders = d.prefs?.reminders || {};
+    reminders[kind] = { on, time: reminders[kind]?.time || defaults[kind] };
+    await fetch('/api/prefs', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ reminders }) });
+    showToast(on ? '✅ Reminder on' : 'Reminder off');
+  } catch (e) { showToast('⚠️ Could not save: ' + e.message); btn.classList.toggle('on'); }
+}
+
+async function sendTestPush() {
+  try {
+    const res = await fetch('/api/push/test', { method: 'POST', headers: authHeaders() });
+    const d = await res.json();
+    showToast(d.sent ? `🔔 Sent to ${d.sent} device${d.sent > 1 ? 's' : ''}` : '⚠️ No devices subscribed — enable push first');
+  } catch (e) { showToast('⚠️ ' + e.message); }
 }
 
 // ── Quick-add favorites + meal-aware copy (Tier 2, item 8) ───────────────
@@ -4683,6 +4867,7 @@ function openSettings() {
   updateTPSettingsUI();
   updateSyncStatusUI();
   updateBackupStatusUI();
+  updatePushSettingsUI();
 }
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('open');
@@ -9832,6 +10017,7 @@ function _initApp() {
   console.log('[init] _initApp started, readyState:', document.readyState);
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
+  safeCall(initPWA, 'initPWA');
   // Feature-flag gating (items 2–5)
   try {
     if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';

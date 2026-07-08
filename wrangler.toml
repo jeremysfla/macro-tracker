@@ -27,4 +27,5 @@ bucket_name = "macro-tracker-backups"
 
 [vars]
 USDA_API_KEY = "73A0UOQRNjRewH4w9aLpYtkXCjQVoLY8BD7hIG4F"
+VAPID_PUBLIC_KEY = "BLQYcRpjr8T4X5sJD5j8XXs1MOhuKp9eiK2JkeukIQTdIc8yl8r0-j3EjGcrQdDqJ2rgKj2zmN626ECKrgPau-Y"
 

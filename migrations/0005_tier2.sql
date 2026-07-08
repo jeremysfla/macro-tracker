@@ -25,10 +25,14 @@ CREATE TABLE IF NOT EXISTS push_subscription (
 
 -- Item 9: dedupe ledger so a reminder fires at most once per day
 CREATE TABLE IF NOT EXISTS push_sent (
-  user_id  TEXT NOT NULL,
-  date     TEXT NOT NULL,
-  kind     TEXT NOT NULL,
-  sent_at  INTEGER NOT NULL,
+  user_id   TEXT NOT NULL,
+  date      TEXT NOT NULL,
+  kind      TEXT NOT NULL,
+  sent_at   INTEGER NOT NULL,
+  title     TEXT,
+  body      TEXT,
+  url       TEXT,
+  delivered INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, date, kind)
 );
 

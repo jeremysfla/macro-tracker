@@ -404,6 +404,106 @@ GOOD example: {"note":"Weight is down 0.8 lb/wk over 14 days vs the 1.0 you need
 BAD example: {"note":"Great week! You're crushing protein and training hard. Keep up the awesome work!","verdict":"keep_going"}
 Return ONLY JSON: {"note":"...","verdict":"keep_going|adjust|recover"}`;
 
+// ── Web Push (Tier 2, item 9): VAPID-signed empty pushes; the service
+// worker fetches the queued message from /api/push/pending. No payload
+// encryption needed, no third-party service.
+function b64u(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+__name(b64u, "b64u");
+
+async function vapidAuthHeader(env, endpoint) {
+  const jwk = JSON.parse(env.VAPID_PRIVATE_JWK);
+  const key = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const aud = new URL(endpoint).origin;
+  const enc = new TextEncoder();
+  const header = b64u(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = b64u(enc.encode(JSON.stringify({ aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: "mailto:jeremy@dronenerds.com" })));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(`${header}.${payload}`));
+  return `vapid t=${header}.${payload}.${b64u(sig)}, k=${env.VAPID_PUBLIC_KEY}`;
+}
+__name(vapidAuthHeader, "vapidAuthHeader");
+
+// Queue the message, then poke every subscription with an empty push.
+async function sendPushToUser(env, userId, kind, title, body, url) {
+  const today = new Date().toISOString().slice(0, 10);
+  // Dedupe: one send per (user, day, kind)
+  const ins = await env.DB.prepare(`INSERT INTO push_sent (user_id, date, kind, sent_at, title, body, url, delivered)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0) ON CONFLICT(user_id, date, kind) DO NOTHING`)
+    .bind(userId, today, kind, Date.now(), title, body, url || "/").run();
+  if (!ins.meta.changes) return { ok: true, deduped: true };
+
+  const subs = (await env.DB.prepare("SELECT * FROM push_subscription WHERE user_id = ?").bind(userId).all()).results;
+  let sent = 0, pruned = 0;
+  for (const s of subs) {
+    try {
+      const r = await fetch(s.endpoint, {
+        method: "POST",
+        headers: { "Authorization": await vapidAuthHeader(env, s.endpoint), "TTL": "3600" },
+      });
+      if (r.status === 404 || r.status === 410) {
+        await env.DB.prepare("DELETE FROM push_subscription WHERE user_id = ? AND endpoint = ?").bind(userId, s.endpoint).run();
+        pruned++;
+      } else if (r.ok || r.status === 201) {
+        sent++;
+        await env.DB.prepare("UPDATE push_subscription SET last_used_at = ? WHERE user_id = ? AND endpoint = ?").bind(Date.now(), userId, s.endpoint).run();
+      }
+    } catch (_) {}
+  }
+  return { ok: true, sent, pruned, subs: subs.length };
+}
+__name(sendPushToUser, "sendPushToUser");
+
+function userLocalHHMM(user) {
+  try {
+    return new Date().toLocaleTimeString("en-GB", { timeZone: user.tz || "America/New_York", hour: "2-digit", minute: "2-digit" });
+  } catch (_) { return "00:00"; }
+}
+__name(userLocalHHMM, "userLocalHHMM");
+
+// Runs every 15 min from the cron. Fires enabled reminders inside their
+// [HH:MM, HH:MM+15) local window, at most once per day each.
+async function runPushScheduler(env) {
+  const user = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
+  if (!user) return;
+  const nsubs = (await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE user_id = ?").bind(user.id).first())?.n || 0;
+  if (!nsubs) return;
+
+  let prefs = {};
+  try {
+    const row = await env.DB.prepare("SELECT payload_json FROM user_preferences WHERE user_id = ?").bind(user.id).first();
+    if (row) prefs = JSON.parse(row.payload_json);
+  } catch (_) {}
+  const rem = prefs.reminders || {};
+  const nowHHMM = userLocalHHMM(user);
+  const inWindow = target => {
+    const [th, tm] = target.split(":").map(Number);
+    const [nh, nm] = nowHHMM.split(":").map(Number);
+    const t = th * 60 + tm, n = nh * 60 + nm;
+    return n >= t && n < t + 15;
+  };
+
+  if (rem.morning_weighin?.on && inWindow(rem.morning_weighin.time || "07:00")) {
+    await sendPushToUser(env, user.id, "morning_weighin", "⚖️ Morning weigh-in",
+      "Hop on the scale before coffee — trend data works best fasted.", "/");
+  }
+
+  if (rem.evening_log?.on && inWindow(rem.evening_log.time || "20:30")) {
+    // Fire only when actually behind target
+    const localDate = userLocalDate(user);
+    const totals = await env.DB.prepare(`SELECT SUM(CAST(json_extract(payload_json,'$.calories') AS REAL)) AS cals,
+        SUM(CAST(json_extract(payload_json,'$.protein') AS REAL)) AS prot
+      FROM food_log WHERE user_id = ? AND deleted = 0 AND date = ?`).bind(user.id, localDate).first();
+    const protBehind = user.protein && (totals?.prot || 0) < user.protein * 0.8;
+    const calsBehind = user.calories && (totals?.cals || 0) < user.calories * 0.6;
+    if (protBehind || calsBehind) {
+      const missing = protBehind ? `Protein is at ${Math.round(totals?.prot || 0)}g of ${user.protein}g` : `Calories are at ${Math.round(totals?.cals || 0)} of ${user.calories}`;
+      await sendPushToUser(env, user.id, "evening_log", "🌙 Evening check", `${missing} — log dinner or grab a protein snack.`, "/");
+    }
+  }
+}
+__name(runPushScheduler, "runPushScheduler");
+
 // ── Google token verification ───────────────────────────────────────────
 async function verifyGoogleToken(idToken, env) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
@@ -935,6 +1035,87 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       }
     }
 
+    // ── Item 9: store browser timezone for local-time reminders ───────────
+    if (u.pathname === "/api/user/tz" && req.method === "POST") {
+      const tzUser = await getSessionUser(env.DB, req);
+      if (!tzUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const { tz } = await req.json();
+        if (typeof tz === "string" && tz.length < 64 && /^[A-Za-z_/+-]+$/.test(tz)) {
+          await env.DB.prepare("UPDATE users SET tz = ? WHERE id = ?").bind(tz, tzUser.id).run();
+        }
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 9: web push subscribe/unsubscribe/list/pending/test ──────────
+    if (u.pathname === "/api/push/vapid" && req.method === "GET") {
+      const vUser = await getSessionUser(env.DB, req);
+      if (!vUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      return new Response(JSON.stringify({ ok: true, key: env.VAPID_PUBLIC_KEY || null }), { headers: CORS });
+    }
+    if (u.pathname === "/api/push/subscribe" && req.method === "POST") {
+      const sUser = await getSessionUser(env.DB, req);
+      if (!sUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const b = await req.json();
+        const endpoint = b.endpoint, p256dh = b.keys?.p256dh, auth = b.keys?.auth;
+        if (!endpoint || !p256dh || !auth) return new Response(JSON.stringify({ ok: false, error: "bad subscription" }), { status: 400, headers: CORS });
+        await env.DB.prepare(`INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, device_label, created_at)
+          VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth, device_label=excluded.device_label`)
+          .bind(sUser.id, endpoint, p256dh, auth, (b.device_label || "").slice(0, 80), Date.now()).run();
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/push/unsubscribe" && req.method === "POST") {
+      const uUser = await getSessionUser(env.DB, req);
+      if (!uUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const { endpoint } = await req.json();
+        await env.DB.prepare("DELETE FROM push_subscription WHERE user_id = ? AND endpoint = ?").bind(uUser.id, endpoint || "").run();
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/push/subscriptions" && req.method === "GET") {
+      const lUser = await getSessionUser(env.DB, req);
+      if (!lUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      const rows = (await env.DB.prepare("SELECT endpoint, device_label, created_at, last_used_at FROM push_subscription WHERE user_id = ?").bind(lUser.id).all()).results;
+      return new Response(JSON.stringify({ ok: true, subscriptions: rows }), { headers: CORS });
+    }
+    // Called by the service worker on push receipt (cookie-authenticated)
+    if (u.pathname === "/api/push/pending" && req.method === "GET") {
+      const pUser = await getSessionUser(env.DB, req);
+      if (!pUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const row = await env.DB.prepare(`SELECT date, kind, title, body, url FROM push_sent
+          WHERE user_id = ? AND delivered = 0 ORDER BY sent_at DESC LIMIT 1`).bind(pUser.id).first();
+        if (row) {
+          await env.DB.prepare("UPDATE push_sent SET delivered = 1 WHERE user_id = ? AND date = ? AND kind = ?").bind(pUser.id, row.date, row.kind).run();
+          return new Response(JSON.stringify({ ok: true, notification: { title: row.title, body: row.body, url: row.url } }), { headers: CORS });
+        }
+        return new Response(JSON.stringify({ ok: true, notification: null }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/push/test" && req.method === "POST") {
+      const tUser = await getSessionUser(env.DB, req);
+      if (!tUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        // unique kind per test so dedupe never blocks it
+        const res = await sendPushToUser(env, tUser.id, "test-" + Date.now(), "🔔 Test notification", "Push is working — you're all set.", "/");
+        return new Response(JSON.stringify(res), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
     // ── Item 8: quick-add favorites + user preferences ────────────────────
     if (u.pathname === "/api/log/favorites" && req.method === "GET") {
       const favUser = await getSessionUser(env.DB, req);
@@ -1176,6 +1357,7 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
       const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
       if (h === 8 && m === 0 && user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
       if (h === 8 && m === 15) ctx.waitUntil(runBackup(env).catch(() => {}));
+      ctx.waitUntil(runPushScheduler(env).catch(() => {}));  // every 15 min
     } catch (_) {}
   }
 };

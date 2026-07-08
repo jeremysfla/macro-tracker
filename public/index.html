@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0f1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Macro" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 <title>Jeremymacro</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -181,6 +187,13 @@ PROMISE ERROR:
     </div>
   </div>
   <!-- Daily Greeting Tile -->
+  <!-- PWA install banner (item 9) -->
+  <div id="installBanner" style="display:none;align-items:center;gap:10px;background:#0c2a24;border:1px solid #134e4a;border-radius:12px;padding:10px 14px;margin-bottom:12px">
+    <span style="font-size:16px">📲</span>
+    <span id="installBannerText" style="flex:1;font-size:12px;color:var(--text)"></span>
+    <button id="installBannerBtn" class="btn-green" style="width:auto;padding:6px 12px;font-size:11px">Install</button>
+    <button onclick="dismissInstallBanner()" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer">✕</button>
+  </div>
   <div class="greeting-tile" id="greetingTile">
     <div class="greeting-header">
       <div>
@@ -1415,6 +1428,34 @@ PROMISE ERROR:
         </div>
         <button class="btn-red" style="margin-top:10px" onclick="disconnectTrainingPeaks()">Disconnect TrainingPeaks</button>
       </div>
+    </div>
+
+    <!-- ── NOTIFICATIONS (item 9) ── -->
+    <div class="settings-section" id="notifSection" style="display:none">
+      <div class="settings-section-title">🔔 Notifications</div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Push on this device</div>
+          <div class="settings-row-sub" id="pushStatusLine">Off</div>
+        </div>
+        <button class="toggle" id="pushToggle" onclick="togglePush(this)"></button>
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Morning weigh-in reminder</div>
+          <div class="settings-row-sub">7:00 local, every day</div>
+        </div>
+        <button class="toggle" id="remWeighinToggle" onclick="toggleReminder('morning_weighin', this)"></button>
+      </div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-row-label">Evening log check</div>
+          <div class="settings-row-sub">8:30pm, only if protein &lt;80% or calories &lt;60% of target</div>
+        </div>
+        <button class="toggle" id="remEveningToggle" onclick="toggleReminder('evening_log', this)"></button>
+      </div>
+      <div id="pushDeviceList" style="margin-top:8px"></div>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="sendTestPush()">🔔 Send test notification</button>
     </div>
 
     <!-- ── CLOUD SYNC ── -->
