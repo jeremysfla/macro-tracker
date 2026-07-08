@@ -194,6 +194,26 @@ PROMISE ERROR:
     <button id="installBannerBtn" class="btn-green" style="width:auto;padding:6px 12px;font-size:11px">Install</button>
     <button onclick="dismissInstallBanner()" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer">✕</button>
   </div>
+  <!-- Tier 1.5: readiness + Garmin wellness card -->
+  <div class="card" id="readinessCard" style="display:none;cursor:pointer" onclick="toggleReadinessDetail()">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="text-align:center;min-width:64px">
+        <div id="rdScore" style="font-size:34px;font-weight:800;line-height:1">—</div>
+        <div id="rdBand" style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-top:2px">READINESS</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="rdNarrative" style="font-size:12px;color:var(--text);line-height:1.5"></div>
+        <div id="rdSparkline" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <div id="rdAnomalyBanner" style="display:none;margin-top:10px;background:#3d2e05;border:1px solid #92620d;border-radius:10px;padding:8px 12px;font-size:11.5px;color:#fbbf24"></div>
+    <div id="rdDetail" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px"></div>
+    <div id="wellnessRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px"></div>
+    <div style="text-align:right;margin-top:8px">
+      <button onclick="event.stopPropagation();openOverrideModal()" style="background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer">⚙️ fix a reading</button>
+    </div>
+  </div>
+
   <div class="greeting-tile" id="greetingTile">
     <div class="greeting-header">
       <div>
@@ -488,6 +508,10 @@ PROMISE ERROR:
         <div class="garmin-activity-row" id="garminStatsRow"></div>
         <div id="garminMacroBanner" class="macro-adj-banner" style="display:none">
           <span>🎯</span><span id="garminMacroText"></span>
+        </div>
+        <div id="readinessDeficitBanner" class="macro-adj-banner" style="display:none;background:#2d1220;border-color:#7f1d4d">
+          <span>🛌</span><span id="readinessDeficitText" style="flex:1"></span>
+          <button onclick="undoReadinessDeficit()" style="background:#7f1d4d;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit">UNDO</button>
         </div>
         <div id="fuelingBanner" class="macro-adj-banner" style="display:none;cursor:pointer;background:#0c2a3d;border-color:#1d4ed8" onclick="dismissFuelingBanner()" title="Tap to dismiss">
           <span>🍝</span><span id="fuelingBannerText"></span>
@@ -887,6 +911,14 @@ PROMISE ERROR:
             <div id="insLoad"></div>
             <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: weekly TSS · line: CTL (fitness)</div>
           </div>
+          <div class="card" id="bodyCompCard">
+            <div class="section-title" style="margin-bottom:8px">🧬 Body Composition — Fat vs Lean</div>
+            <div id="bcChart1"></div>
+            <div style="font-size:10px;color:var(--text3);margin:4px 0 12px">Gray: weight · 🔴 fat mass · 🟢 lean mass (7d MA lines)</div>
+            <div id="bcChart2"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Weekly change: fat vs lean</div>
+            <div id="bcCallout" style="font-size:11.5px;margin-top:10px;line-height:1.6"></div>
+          </div>
           <div class="card">
             <div class="section-title" style="margin-bottom:8px">🥩 Protein Adherence — Last 90 Days</div>
             <div id="insProtein"></div>
@@ -1091,6 +1123,26 @@ PROMISE ERROR:
       <button class="btn-outline" onclick="closeQuickLogModal()">Cancel</button>
     </div>
     <button class="btn-outline" id="quickLogCancelOnly" onclick="closeQuickLogModal()" style="margin-top:6px">Close</button>
+  </div>
+</div>
+
+<!-- Wellness override (Tier 1.5B) -->
+<div class="modal-overlay" id="overrideModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">⚙️ Fix a Reading</div>
+    <div class="modal-sub">Overrides sit on top of Garmin data — the original is kept</div>
+    <input type="date" id="ovDate" class="big-input" style="margin-bottom:10px" />
+    <select id="ovField" class="big-input" style="margin-bottom:10px">
+      <option value="weight_lbs">Weight (lbs)</option>
+      <option value="sleep_total_hrs">Sleep (hours)</option>
+      <option value="hrv_ms">HRV (ms)</option>
+      <option value="resting_hr_bpm">Resting HR (bpm)</option>
+      <option value="body_fat_pct">Body fat (%)</option>
+    </select>
+    <input type="number" id="ovValue" class="big-input" step="0.1" placeholder="Corrected value (blank = remove override)" style="margin-bottom:16px" />
+    <button class="btn-green" onclick="saveOverride()">Save Override</button>
+    <button class="btn-outline" onclick="document.getElementById('overrideModal').classList.remove('open')">Cancel</button>
   </div>
 </div>
 
@@ -1833,15 +1885,8 @@ PROMISE ERROR:
       <div id="wmGreeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px">Good morning, Jeremy 👋</div>
       <div id="wmDate" style="font-size:13px;color:var(--text2);margin-bottom:20px"></div>
 
-      <!-- Weight -->
-      <div style="margin-bottom:16px">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">⚖️ Weight today</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input id="wmWeight" type="number" step="0.1" placeholder="lbs" inputmode="decimal"
-            style="flex:1;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;outline:none;-webkit-appearance:none">
-          <span style="font-size:13px;color:var(--text2);white-space:nowrap">lbs</span>
-        </div>
-      </div>
+      <!-- Garmin already sent these (Tier 1.5B) -->
+      <div id="wmWellnessContext" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.7"></div>
 
       <!-- Energy row -->
       <div class="wm-mood-row">
@@ -1866,6 +1911,10 @@ PROMISE ERROR:
           <button onclick="wmSetMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
         </div>
       </div>
+
+      <!-- Notes -->
+      <input id="wmNotes" type="text" placeholder="Notes (optional)" autocomplete="off"
+        style="width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-top:4px;margin-bottom:4px" />
 
       <!-- Submit -->
       <button id="wmSubmitBtn" onclick="submitWelcomeCheckin()"

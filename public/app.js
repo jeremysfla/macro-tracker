@@ -12,6 +12,11 @@ const FLAGS = {
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          true,   // item 9: PWA install + web push
   tpAutoRefresh:true,   // item 10: TP cookie auto-refresh + expiry banner
+  wellness:     true,   // 1.5A/B: TP wellness ingest + slim check-in + Today tile
+  readiness:    true,   // 1.5C: morning readiness score card
+  bodyComp:     true,   // 1.5D: fat vs lean mass charts under Trends
+  anomalyAlert: true,   // 1.5E: HRV/RHR anomaly banner
+  readinessActions: true, // 1.5F: fueling shift + deficit dial-back
 };
 
 // ── Auth & Onboarding ──
@@ -776,6 +781,193 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// WELLNESS + READINESS (Tier 1.5) — Garmin data via TP drives the morning
+// card, slim check-in, body-comp charts, anomaly banner, and deficit policy.
+// ═══════════════════════════════════════════════════════════════════════
+
+async function renderReadinessCard() {
+  if (!FLAGS.readiness) return;
+  const card = document.getElementById('readinessCard');
+  if (!card || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/readiness/today', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) return;
+    card.style.display = 'block';
+    const scoreEl = document.getElementById('rdScore'), bandEl = document.getElementById('rdBand'), narrEl = document.getElementById('rdNarrative');
+
+    if (!d.row) {
+      scoreEl.textContent = '…';
+      bandEl.textContent = 'GATHERING';
+      bandEl.style.color = 'var(--text3)';
+      narrEl.textContent = d.gathering ? `Building your baseline — ${d.have || 0}/${d.need || 14} days of HRV data so far.` : 'No wellness data yet today.';
+      renderWellnessRow();
+      return;
+    }
+    const colors = { primed: '#22c55e', ready: '#4ade80', guarded: '#f59e0b', compromised: '#ef4444' };
+    const c = colors[d.row.band] || 'var(--text)';
+    scoreEl.textContent = d.row.score;
+    scoreEl.style.color = c;
+    bandEl.textContent = d.row.band.toUpperCase();
+    bandEl.style.color = c;
+    narrEl.textContent = d.row.narrative || '';
+    setStorage('readinessToday', { date: d.row.date, score: d.row.score, band: d.row.band, narrative: d.row.narrative, fetched: Date.now() });
+
+    // Anomaly banner (1.5E)
+    const ab = document.getElementById('rdAnomalyBanner');
+    if (FLAGS.anomalyAlert && d.anomalies?.length) {
+      const kinds = { hrv_rhr_combo: 'HRV low + RHR elevated', rhr_solo: 'Resting HR well above baseline', hrv_trend: 'HRV >20% below baseline two days running' };
+      ab.textContent = '⚠️ ' + d.anomalies.map(a => kinds[a.kind] || a.kind).join(' · ') + ' — treat today as recovery.';
+      ab.style.display = 'block';
+    } else ab.style.display = 'none';
+
+    // Detail: per-component bars
+    const detail = document.getElementById('rdDetail');
+    const comps = d.row.inputs?.components || {};
+    const labels = { hrv: 'HRV', rhr: 'RHR', sleep: 'Sleep', bb: 'Body Battery', tsb: 'Form (TSB)' };
+    detail.innerHTML = Object.entries(comps).map(([k, v]) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="width:82px;font-size:10px;font-weight:700;color:var(--text2)">${labels[k] || k}</div>
+        <div style="flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
+          <div style="width:${Math.round(v)}%;height:100%;background:${v >= 70 ? '#22c55e' : v >= 45 ? '#f59e0b' : '#ef4444'}"></div>
+        </div>
+        <div style="width:28px;text-align:right;font-size:10px;font-weight:700">${Math.round(v)}</div>
+      </div>`).join('');
+
+    // 30-day sparkline
+    try {
+      const hres = await fetch('/api/readiness?days=30', { headers: authHeaders() });
+      const h = await hres.json();
+      const rows = h.rows || [];
+      if (rows.length >= 2) {
+        const W = 200, H = 26;
+        const pt = (r, i) => `${(i / (rows.length - 1) * W).toFixed(1)},${(H - 2 - (r.score / 100) * (H - 4)).toFixed(1)}`;
+        document.getElementById('rdSparkline').innerHTML =
+          `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:220px;height:${H}px"><polyline points="${rows.map(pt).join(' ')}" fill="none" stroke="${c}" stroke-width="1.5" opacity="0.7"/></svg>`;
+      }
+    } catch(_) {}
+
+    renderWellnessRow();
+    applyReadinessDeficitPolicy();
+    renderTPBanners();
+  } catch (e) { console.warn('[readiness]', e.message); }
+}
+
+function toggleReadinessDetail() {
+  const d = document.getElementById('rdDetail');
+  if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
+}
+
+// Wellness metric grid with 7-day deltas (1.5B Today tile)
+async function renderWellnessRow() {
+  if (!FLAGS.wellness) return;
+  const row = document.getElementById('wellnessRow');
+  if (!row) return;
+  try {
+    const res = await fetch('/api/wellness?days=9', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok || !d.rows?.length) return;
+    const rows = d.rows; // date DESC
+    const today = rows[0];
+    const baseline = f => {
+      const vals = rows.slice(1).map(r => r[f]).filter(v => v != null);
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    };
+    const mood = getMoodLog()[todayKey()] || {};
+    const fmt = (v, dec) => v == null ? '—' : (+v).toFixed(dec);
+    const delta = (v, b, invert, dec) => {
+      if (v == null || b == null) return '';
+      const dv = v - b;
+      if (Math.abs(dv) < Math.pow(10, -dec) / 2) return '';
+      const good = invert ? dv < 0 : dv > 0;
+      return `<span style="color:${good ? '#22c55e' : '#f59e0b'};font-size:8.5px"> ${dv > 0 ? '▲' : '▼'}${Math.abs(dv).toFixed(dec)}</span>`;
+    };
+    const cells = [
+      { l: 'Weight', v: fmt(today.weight_lbs, 1), d: delta(today.weight_lbs, baseline('weight_lbs'), true, 1), c: '#f59e0b' },
+      { l: 'Sleep', v: fmt(today.sleep_total_hrs, 1) + (today.sleep_total_hrs != null ? 'h' : ''), d: delta(today.sleep_total_hrs, baseline('sleep_total_hrs'), false, 1), c: '#a78bfa' },
+      { l: 'HRV', v: fmt(today.hrv_ms, 0), d: delta(today.hrv_ms, baseline('hrv_ms'), false, 0), c: '#22c55e' },
+      { l: 'RHR', v: fmt(today.resting_hr_bpm, 0), d: delta(today.resting_hr_bpm, baseline('resting_hr_bpm'), true, 0), c: '#ef4444' },
+      { l: 'Battery', v: fmt(today.body_battery_wake, 0), d: delta(today.body_battery_wake, baseline('body_battery_wake'), false, 0), c: '#3b82f6' },
+      { l: 'Stress', v: fmt(today.stress_avg, 0), d: delta(today.stress_avg, baseline('stress_avg'), true, 0), c: '#f97316' },
+      { l: 'Mood', v: mood.mood ? mood.mood + '/5' : '—', d: '', c: '#eab308' },
+      { l: 'Energy', v: mood.energy ? mood.energy + '/5' : '—', d: '', c: '#14b8a6' },
+    ];
+    row.innerHTML = cells.map(x => `
+      <div style="text-align:center;background:var(--surface2);border-radius:10px;padding:7px 2px">
+        <div style="font-size:12.5px;font-weight:800;color:${x.c}">${x.v}${x.d}</div>
+        <div style="font-size:8.5px;color:var(--text3);font-weight:700;letter-spacing:0.5px;text-transform:uppercase">${x.l}</div>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+// Override sheet (1.5B advanced affordance)
+function openOverrideModal() {
+  document.getElementById('ovDate').value = todayKey();
+  document.getElementById('ovValue').value = '';
+  document.getElementById('overrideModal').classList.add('open');
+}
+async function saveOverride() {
+  const date = document.getElementById('ovDate').value;
+  const field = document.getElementById('ovField').value;
+  const raw = document.getElementById('ovValue').value.trim();
+  try {
+    const res = await fetch('/api/wellness/override', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ date, field, value: raw === '' ? null : parseFloat(raw) })
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'failed');
+    document.getElementById('overrideModal').classList.remove('open');
+    showToast(raw === '' ? 'Override removed' : '✅ Override saved');
+    renderReadinessCard();
+    setStorage('trendsCache', null);
+  } catch (e) { showToast('⚠️ ' + e.message); }
+}
+
+// Deficit dial-back (1.5F): policy strict|soft|adaptive, default soft
+function applyReadinessDeficitPolicy() {
+  if (!FLAGS.readinessActions) return;
+  const banner = document.getElementById('readinessDeficitBanner');
+  if (!banner) return;
+  const rd = getStorage('readinessToday', null);
+  const policy = getStorage('readinessDeficitPolicy', 'soft');
+  const undone = getStorage('readinessDeficitUndo_' + todayKey(), false);
+  let bump = null;
+  if (rd?.date === todayKey() && policy !== 'strict' && !undone) {
+    const tdee = getStorage('userTDEE', null) || TDEE;
+    const base = getStorage('userMacros', null) || MACROS;
+    if (rd.band === 'compromised') bump = { calories: tdee, label: `Readiness ${rd.score} (compromised) → target set to maintenance today` };
+    else if (rd.band === 'guarded' && policy === 'adaptive') {
+      const deficit = tdee - base.calories;
+      bump = { calories: base.calories + Math.round(deficit * 0.25), label: `Readiness ${rd.score} (guarded) → deficit reduced 25% today` };
+    }
+  }
+  setStorage('readinessDeficitBump', bump);
+  if (bump) {
+    document.getElementById('readinessDeficitText').textContent = '🛌 ' + bump.label;
+    banner.style.display = 'flex';
+  } else banner.style.display = 'none';
+  scheduleRender(renderRings);
+  try { updateMacroTargetsRow(); } catch(_) {}
+}
+
+function applyReadinessBump(m) {
+  if (!FLAGS.readinessActions || !m) return m;
+  const bump = getStorage('readinessDeficitBump', null);
+  if (!bump) return m;
+  const extra = bump.calories - m.calories;
+  if (extra <= 0) return m;
+  // Recovery-day surplus goes to carbs
+  return { ...m, calories: bump.calories, carbs: m.carbs + Math.round(extra / 4), _readiness: true };
+}
+
+function undoReadinessDeficit() {
+  setStorage('readinessDeficitUndo_' + todayKey(), true);
+  applyReadinessDeficitPolicy();
+  showToast('Keeping the normal deficit today');
 }
 
 // ── TP lifecycle banners (Tier 2, item 10) ───────────────────────────────
@@ -2247,7 +2439,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
   else { stopWorkoutTimer(); skipRestTimer(); }
   if (name === 'program') { renderProgramPage(); renderEventList(); }
@@ -4447,6 +4639,11 @@ async function fetchTPPlanned() {
     let bump = null;
     if (race) bump = { extraCarbs: 100, extraCals: 400, label: `Race day tomorrow (${desc}) → +100g carbs tonight` };
     else if (dur >= 75 || tss >= 90) bump = { extraCarbs: 60, extraCals: 240, label: `Tomorrow: ${desc} → +60g carbs tonight` };
+    // 1.5F: hard day planned but readiness is shot → surface both options
+    const rdf = getStorage('readinessToday', null);
+    if (bump && FLAGS.readinessActions && rdf?.date === todayKey() && rdf.band === 'compromised') {
+      bump.label = `Readiness ${rdf.score} (compromised) — consider moving tomorrow's ${desc}; if keeping it, ` + bump.label.replace(/^Tomorrow: |^Race day tomorrow \(/, '').replace(') → ', ' → ');
+    }
 
     setStorage('fuelingBump', bump ? { date: todayKey(), ...bump } : null);
     renderFuelingBanner();
@@ -4544,6 +4741,8 @@ async function renderInsights() {
   _insRenderSleep(data);
   _insRenderLoad(data);
   _insRenderProtein(data);
+  if (FLAGS.bodyComp) safeCall(_insRenderBodyComp, '_insRenderBodyComp');
+  else { const bc = document.getElementById('bodyCompCard'); if (bc) bc.style.display = 'none'; }
 
   // Weekly AI summary (server-cached per ISO week)
   try {
@@ -4701,6 +4900,114 @@ function _insRenderLoad(data) {
     `<rect x="${(P + i * bw + 2).toFixed(1)}" y="${(H - P - byWeek[w].tss / maxT * (H - 2 * P)).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(byWeek[w].tss / maxT * (H - 2 * P), 1).toFixed(1)}" rx="2" fill="#3b82f6" opacity="0.55"/>`).join('');
   const ctlPts = weeks.map((w, i) => [P + i * bw + bw / 2, H - P - byWeek[w].ctl / maxC * (H - 2 * P)]);
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}${_insLine(ctlPts, '#f59e0b', 2)}</svg>`;
+}
+
+// ── Body composition (Tier 1.5D): fat mass vs lean mass from wellness ────
+async function _insRenderBodyComp() {
+  const card = document.getElementById('bodyCompCard');
+  if (!card) return;
+  let rows;
+  const cache = getStorage('bodyCompCache', null);
+  if (cache && Date.now() - cache.fetched < 10 * 60 * 1000) rows = cache.rows;
+  if (!rows) {
+    try {
+      const res = await fetch('/api/wellness?days=90', { headers: authHeaders() });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'wellness fetch failed');
+      rows = (d.rows || []).slice().reverse(); // ASC
+      setStorage('bodyCompCache', { rows, fetched: Date.now() });
+    } catch (e) {
+      document.getElementById('bcChart1').innerHTML = _insEmpty('Could not load body comp — ' + esc(e.message));
+      return;
+    }
+  }
+  const days = rows.filter(r => r.weight_lbs != null).map(r => {
+    const fat = r.body_fat_pct != null ? r.weight_lbs * r.body_fat_pct / 100 : null;
+    const lean = fat != null ? r.weight_lbs - fat : (r.muscle_mass_lbs ?? null);
+    return { date: r.date, w: r.weight_lbs, fat, lean };
+  });
+  if (days.length < 3) {
+    document.getElementById('bcChart1').innerHTML = _insEmpty('Need a few smart-scale readings for body comp');
+    document.getElementById('bcChart2').innerHTML = ''; document.getElementById('bcCallout').textContent = '';
+    return;
+  }
+
+  // Chart 1: weight (gray) + fat (red) + lean (green), 7d MAs; dashed gaps where comp missing
+  const W = 320, H = 150, P = 8;
+  const t0 = new Date(days[0].date).getTime(), t1 = new Date(days[days.length - 1].date).getTime();
+  const X = d => P + (new Date(d).getTime() - t0) / Math.max(t1 - t0, 1) * (W - 2 * P);
+  const allVals = days.flatMap(x => [x.w, x.fat, x.lean]).filter(v => v != null);
+  const lo = Math.min(...allVals) - 2, hi = Math.max(...allVals) + 2;
+  const Y = v => H - P - (v - lo) / (hi - lo || 1) * (H - 2 * P);
+  const maOf = key => {
+    const out = [];
+    for (let i = 0; i < days.length; i++) {
+      const win = days.slice(Math.max(0, i - 6), i + 1).map(x => x[key]).filter(v => v != null);
+      out.push(win.length ? win.reduce((s, v) => s + v, 0) / win.length : null);
+    }
+    return out;
+  };
+  const seg = (key, ma, color, w) => {
+    // contiguous runs solid; bridge gaps dashed
+    let svg = '', run = [];
+    let lastIdx = null;
+    for (let i = 0; i < days.length; i++) {
+      if (days[i][key] == null) continue;
+      const pt = [X(days[i].date), Y(ma[i])];
+      if (lastIdx != null && i - lastIdx > 1) {
+        svg += _insLine([run[run.length - 1], pt], color, w, '3,4');
+        svg += _insLine(run, color, w);
+        run = [pt];
+      } else run.push(pt);
+      lastIdx = i;
+    }
+    if (run.length > 1) svg += _insLine(run, color, w);
+    return svg;
+  };
+  document.getElementById('bcChart1').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    ${seg('w', maOf('w'), '#64748b', 1.2)}${seg('fat', maOf('fat'), '#ef4444', 2)}${seg('lean', maOf('lean'), '#22c55e', 2)}
+  </svg>`;
+
+  // Chart 2: weekly change in fat vs lean
+  const byWeek = {};
+  for (const x of days) {
+    if (x.fat == null || x.lean == null) continue;
+    const wk = _insWeekKey(x.date);
+    (byWeek[wk] = byWeek[wk] || { fat: [], lean: [] }).fat.push(x.fat);
+    byWeek[wk].lean.push(x.lean);
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-9);
+  const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
+  const deltas = [];
+  for (let i = 1; i < weeks.length; i++) {
+    deltas.push({ wk: weeks[i], dFat: avg(byWeek[weeks[i]].fat) - avg(byWeek[weeks[i - 1]].fat), dLean: avg(byWeek[weeks[i]].lean) - avg(byWeek[weeks[i - 1]].lean) });
+  }
+  if (deltas.length) {
+    const W2 = 320, H2 = 110, P2 = 8, bw = (W2 - 2 * P2) / deltas.length, zero = H2 / 2;
+    const maxD = Math.max(...deltas.flatMap(x => [Math.abs(x.dFat), Math.abs(x.dLean)]), 0.5);
+    const bars = deltas.map((x, i) => {
+      const bx = P2 + i * bw;
+      const fh = Math.abs(x.dFat) / maxD * (H2 / 2 - P2), lh = Math.abs(x.dLean) / maxD * (H2 / 2 - P2);
+      return `<rect x="${(bx + 2).toFixed(1)}" y="${(x.dFat >= 0 ? zero - fh : zero).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(fh, 1).toFixed(1)}" rx="2" fill="#ef4444" opacity="0.85"/>` +
+             `<rect x="${(bx + bw / 2 + 1).toFixed(1)}" y="${(x.dLean >= 0 ? zero - lh : zero).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(lh, 1).toFixed(1)}" rx="2" fill="#22c55e" opacity="0.85"/>`;
+    }).join('');
+    document.getElementById('bcChart2').innerHTML = `<svg viewBox="0 0 ${W2} ${H2}" style="width:100%;height:auto"><line x1="${P2}" y1="${zero}" x2="${W2 - P2}" y2="${zero}" stroke="#334155"/>${bars}</svg>`;
+  } else document.getElementById('bcChart2').innerHTML = '';
+
+  // Callout: 28-day rates + sustained lean-loss warning
+  const cut = t1 - 28 * 86400000;
+  const recent = days.filter(x => new Date(x.date).getTime() >= cut && x.fat != null);
+  const callout = document.getElementById('bcCallout');
+  if (recent.length >= 6) {
+    const rate = key => {
+      const pts = recent.map(x => [(new Date(x.date).getTime() - cut) / 86400000, x[key]]);
+      return _insFit(pts)[0] * 7;
+    };
+    const fatRate = rate('fat'), leanRate = rate('lean');
+    let html = `28-day rates: <b style="color:#ef4444">fat ${fatRate > 0 ? '+' : ''}${fatRate.toFixed(2)} lb/wk</b> · <b style="color:#22c55e">lean ${leanRate > 0 ? '+' : ''}${leanRate.toFixed(2)} lb/wk</b>`;
+    if (leanRate < -0.15) html += `<div style="color:#f59e0b;margin-top:4px">⚠️ Losing lean mass — consider more protein or a smaller deficit.</div>`;
+    callout.innerHTML = html;
+  } else callout.textContent = '';
 }
 
 function _insRenderProtein(data) {
@@ -4957,7 +5264,7 @@ function updateMacroTargetsRow() {
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const adaptive   = getStorage('adaptiveMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const m = applyFuelingBump(garminAdj || adaptive || userMacros || MACROS);
+  const m = applyReadinessBump(applyFuelingBump(garminAdj || adaptive || userMacros || MACROS));
 
   const tdee   = getStorage('userTDEE', null) || TDEE;
   const goals  = getStorage('userGoals', {});
@@ -5539,7 +5846,7 @@ function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const targets    = applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS);
+  const targets    = applyReadinessBump(applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS));
   const macroLog  = getStorage('macroLog', {});
   const dayData   = macroLog[getSelectedDateKey()] || { calories:0, protein:0, carbs:0, fat:0 };
   document.getElementById('ringsRow').innerHTML =
@@ -10056,6 +10363,7 @@ function _initApp() {
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
   safeCall(checkTPLifecycle, 'checkTPLifecycle');
+  safeCall(renderReadinessCard, 'renderReadinessCard');
   // Feature-flag gating (items 2–5)
   try {
     if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';
@@ -10216,6 +10524,8 @@ document.addEventListener('visibilitychange', () => {
       if (dirty || Date.now() - lastOk > 5 * 60 * 1000) syncAllLogs();
       const fc = getStorage('favCache', null);
       if (FLAGS.quickAdd && (!fc || Date.now() - fc.fetched > 24 * 3600 * 1000)) renderFavChips(true);
+      const rt = getStorage('readinessToday', null);
+      if (FLAGS.readiness && (!rt || rt.date !== todayKey() || Date.now() - (rt.fetched || 0) > 30 * 60 * 1000)) renderReadinessCard();
     } catch(e) {}
   }
 });
@@ -11816,12 +12126,8 @@ function showWelcomeModal() {
   if (greetEl) greetEl.textContent = greet + ', ' + name + ' 👋';
   if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
-  // Pre-fill weight if logged recently
-  const weights = getStorage('weightLog', {});
-  const wKeys = Object.keys(weights).sort();
-  const lastW = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
-  const wmW = document.getElementById('wmWeight');
-  if (wmW && lastW) wmW.value = lastW;
+  // Weight comes from the Garmin scale now — show it read-only (1.5B)
+  safeCall(fillWelcomeWellnessContext, 'fillWelcomeWellnessContext');
 
   // Reset state
   _wmState = { energy: null, mood: null };
@@ -11876,15 +12182,15 @@ function submitWelcomeCheckin() {
     saveMoodLog(log);
   }
 
-  // Save weight
-  const wmW = document.getElementById('wmWeight');
-  if (wmW && wmW.value) {
-    const w = parseFloat(wmW.value);
-    if (w > 50 && w < 500) {
-      const wLog = getStorage('weightLog', {});
-      wLog[key] = w;
-      setStorage('weightLog', wLog);
-    }
+  // Weight now arrives from the Garmin scale via wellness (Tier 1.5B).
+  // Notes ride along with the check-in sync.
+  const notesEl = document.getElementById('wmNotes');
+  if (notesEl && notesEl.value.trim()) {
+    const log = getMoodLog();
+    if (!log[key]) log[key] = {};
+    log[key].notes = notesEl.value.trim().slice(0, 500);
+    saveMoodLog(log);
+    notesEl.value = '';
   }
 
   // Mark today as checked in
@@ -11917,12 +12223,13 @@ function scheduleCheckinSync(delay) {
           date: key,
           energy: mood.energy || null,
           mood: mood.mood || null,
-          weight_lbs: wLog[key] || null,
+          // weight/sleep/steps come from the wellness ingest now (1.5B)
           water_oz: waterLog[key] || null,
           calories_consumed: totals.cal || null,
           protein_g: totals.p || null,
           carbs_g: totals.c || null,
           fat_g: totals.f || null,
+          notes: mood.notes || null,
         })
       });
     } catch(e) { console.warn('Checkin sync failed:', e); }
@@ -11970,6 +12277,26 @@ function updateCheckinSummaryCard() {
     if (energyEl) energyEl.textContent = '💜';
     card.style.display = 'block';
   }
+}
+
+async function fillWelcomeWellnessContext() {
+  const el = document.getElementById('wmWellnessContext');
+  if (!el || !FLAGS.wellness) return;
+  try {
+    const res = await fetch('/api/wellness/latest', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) return;
+    const L = d.latest || {};
+    const bits = [];
+    if (L.weight_lbs) bits.push(`⚖️ ${L.weight_lbs.value} lbs`);
+    if (L.sleep_total_hrs) bits.push(`😴 ${L.sleep_total_hrs.value.toFixed(1)}h sleep`);
+    if (L.hrv_ms) bits.push(`🫀 HRV ${Math.round(L.hrv_ms.value)}`);
+    if (L.body_battery_wake) bits.push(`🔋 ${Math.round(L.body_battery_wake.value)}`);
+    if (bits.length) {
+      el.innerHTML = '<b style="color:var(--text)">From Garmin:</b> ' + bits.join(' · ');
+      el.style.display = 'block';
+    }
+  } catch(_) {}
 }
 
 function maybeShowWelcomeModal() {

@@ -1583,10 +1583,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
             FROM food_log WHERE user_id = ? AND deleted = 0 AND date >= ${cutoffSql}
             GROUP BY date ORDER BY date ASC`).bind(trUser.id, days).all(),
         ]);
-        // Weight: prefer explicit weight_log, fall back to check-in weigh-ins
+        // Coalesced weight (Tier 1.5): override > wellness > weight_log > legacy check-in
         const wmap = {};
         for (const c of checkins.results) if (c.weight_lbs > 0) wmap[c.date] = c.weight_lbs;
         for (const w of weights.results) wmap[w.date] = w.weight_lbs;
+        try {
+          const wellRows = await wellnessWithOverrides(env, trUser.id, days);
+          for (const r of wellRows) if (r.weight_lbs > 0) wmap[r.date] = r.weight_lbs;
+        } catch(_) {}
         const weightSeries = Object.entries(wmap).sort(([a], [b]) => a.localeCompare(b)).map(([date, lbs]) => ({ date, lbs }));
         const profile = {
           calories: trUser.calories, protein: trUser.protein, carbs: trUser.carbs, fat: trUser.fat,
