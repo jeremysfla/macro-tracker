@@ -192,6 +192,14 @@ PROMISE ERROR:
         <button onclick="toggleGreetingTile()" title="Minimize" class="greeting-minimize-btn">▲</button>
       </div>
     </div>
+    <!-- Coach note (item 6) — long-press to regenerate -->
+    <div class="greeting-section" id="greetingCoachSection" style="display:none">
+      <div class="greeting-section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>🎯 Coach</span>
+        <span style="font-size:9px;color:var(--text3);font-weight:600" id="coachContextLabel">context: 14d</span>
+      </div>
+      <div id="coachNoteBody" style="font-size:12.5px;line-height:1.6;color:var(--text)"></div>
+    </div>
     <!-- Calendar Section -->
     <div class="greeting-section" id="greetingCalSection">
       <div class="greeting-section-label greeting-cal-label">📅 Today's Schedule</div>

@@ -7,7 +7,7 @@ const FLAGS = {
   trainingLoad: true,   // item 3: CTL/ATL/TSB
   fueling:      true,   // item 4: planned-workout fueling
   trends:       true,   // item 5: insights tab
-  briefCoach:   false,  // item 6: trend-grounded coach note in daily brief
+  briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     false,  // item 8: copy-yesterday + favorites carousel
   pwa:          false,  // item 9: PWA install + web push
@@ -776,6 +776,39 @@ async function forceBackfillSync() {
   await syncAllLogs();
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
+}
+
+// ── Coach note (Tier 2, item 6) ──────────────────────────────────────────
+async function renderCoachNote(force) {
+  if (!FLAGS.briefCoach) return;
+  const section = document.getElementById('greetingCoachSection');
+  const body = document.getElementById('coachNoteBody');
+  if (!section || !body) return;
+  if (force) { section.style.display = 'block'; body.innerHTML = '<span style="color:var(--text3)">Regenerating…</span>'; }
+  try {
+    const res = await fetch('/api/brief/coach' + (force ? '?force=1' : ''), { headers: authHeaders() });
+    const d = await res.json();
+    if (!res.ok || !d.ok || !d.note) { if (!force) section.style.display = 'none'; return; }
+    const chip = { keep_going: ['🟢 keep going', '#22c55e'], adjust: ['🟠 adjust', '#f59e0b'], recover: ['🔴 recover', '#ef4444'] }[d.verdict] || ['', 'var(--text2)'];
+    section.style.display = 'block';
+    body.innerHTML = `${esc(d.note)} <span style="font-size:10px;font-weight:700;color:${chip[1]};white-space:nowrap">${chip[0]}</span>`;
+  } catch (e) { if (!force) section.style.display = 'none'; }
+}
+
+// Long-press the coach section (600ms) to force a regeneration
+function initCoachLongPress() {
+  const el = document.getElementById('greetingCoachSection');
+  if (!el || el._lpBound) return;
+  el._lpBound = true;
+  let t = null;
+  const start = () => { t = setTimeout(() => { t = null; renderCoachNote(true); }, 600); };
+  const cancel = () => { if (t) clearTimeout(t); t = null; };
+  el.addEventListener('touchstart', start, { passive: true });
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchmove', cancel);
+  el.addEventListener('mousedown', start);
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
 }
 
 // ── Backups tile (Tier 2, item 7) ────────────────────────────────────────
@@ -5326,6 +5359,10 @@ function initGreetingTile() {
 
   // Load quote
   loadDailyQuote();
+
+  // Coach note grounded in 14-day trends (item 6)
+  safeCall(renderCoachNote, 'renderCoachNote');
+  safeCall(initCoachLongPress, 'initCoachLongPress');
 
   // Try loading calendar + gmail with saved token
   const savedToken = localStorage.getItem('googleAccessToken');

@@ -309,6 +309,101 @@ async function tpRecomputeLoad(env, userId) {
 }
 __name(tpRecomputeLoad, "tpRecomputeLoad");
 
+// ── Brief context (Tier 2, item 6): compact 14-day trend stats (<2KB) ────
+function userLocalDate(user) {
+  try { return new Date().toLocaleDateString("en-CA", { timeZone: user.tz || "America/New_York" }); }
+  catch (_) { return new Date().toISOString().slice(0, 10); }
+}
+__name(userLocalDate, "userLocalDate");
+
+async function buildBriefContext(env, user) {
+  const uid = user.id;
+  const q = (sql, ...binds) => env.DB.prepare(sql).bind(...binds).all().then(r => r.results).catch(() => []);
+  const [weights, food, checkins, load, planned] = await Promise.all([
+    q(`SELECT date, weight_lbs FROM weight_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date ASC`, uid),
+    q(`SELECT date, SUM(CAST(json_extract(payload_json,'$.calories') AS REAL)) AS cals,
+         SUM(CAST(json_extract(payload_json,'$.protein') AS REAL)) AS prot
+       FROM food_log WHERE user_id = ? AND deleted = 0 AND date >= date('now','-14 days') GROUP BY date ORDER BY date ASC`, uid),
+    q(`SELECT date, sleep_hrs, sleep_score, mood, energy FROM daily_checkin WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date ASC`, uid),
+    q(`SELECT date, tss, ctl, atl, tsb FROM training_load WHERE user_id = ? AND date >= date('now','-60 days') ORDER BY date ASC`, uid),
+    q(`SELECT date, type, duration_min, tss_planned FROM planned_workout WHERE user_id = ? AND date > date('now') AND date <= date('now','+7 days')`, uid),
+  ]);
+  const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+  const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+
+  const lbs = weights.map(w => w.weight_lbs);
+  const wLast7 = weights.slice(-7).map(w => w.weight_lbs);
+  let ratePerWeek = null;
+  if (weights.length >= 4) {
+    const t0 = new Date(weights[0].date).getTime();
+    const pts = weights.map(w => [(new Date(w.date).getTime() - t0) / 86400000, w.weight_lbs]);
+    const n = pts.length, sx = pts.reduce((s, p) => s + p[0], 0), sy = pts.reduce((s, p) => s + p[1], 0);
+    const sxx = pts.reduce((s, p) => s + p[0] * p[0], 0), sxy = pts.reduce((s, p) => s + p[0] * p[1], 0);
+    const den = n * sxx - sx * sx;
+    if (den) ratePerWeek = r1(((n * sxy - sx * sy) / den) * 7);
+  }
+
+  const calTarget = user.calories || null, protTarget = user.protein || null, tdee = user.tdee || null;
+  const calDays = food.filter(f => f.cals > 0);
+  const protHit = d => protTarget ? d.prot >= protTarget * 0.9 : false;
+  let protStreak = 0;
+  for (let i = food.length - 1; i >= 0; i--) { if (protHit(food[i])) protStreak++; else break; }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const day7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const tssThisWeek = load.filter(l => l.date > day7).reduce((s, l) => s + l.tss, 0);
+  const day14 = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+  const tssLastWeek = load.filter(l => l.date > day14 && l.date <= day7).reduce((s, l) => s + l.tss, 0);
+  const lastWorkout = [...load].reverse().find(l => l.tss > 0);
+  const lastHard = [...load].reverse().find(l => l.tss > 80);
+  const latest = load[load.length - 1];
+  const daysSince = d => d ? Math.round((new Date(today) - new Date(d)) / 86400000) : null;
+
+  const foodDates = new Set(food.map(f => f.date));
+  const weighDates = new Set(weights.map(w => w.date));
+  const streak = set => {
+    let s = 0;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      if (set.has(d)) s++;
+      else if (i === 0) continue;  // today may not be logged yet
+      else break;
+    }
+    return s;
+  };
+
+  const sleeps = checkins.filter(c => c.sleep_hrs > 0);
+  const moods = checkins.filter(c => c.mood > 0);
+  const energies = checkins.filter(c => c.energy > 0);
+
+  return {
+    weight: { n: weights.length, avg7: r1(mean(wLast7)), avg14: r1(mean(lbs)), min: r1(lbs.length ? Math.min(...lbs) : null), max: r1(lbs.length ? Math.max(...lbs) : null), rate_lb_per_wk: ratePerWeek, goal: user.goal_weight || null, goal_date: user.goal_date || null },
+    macros: {
+      days_logged: calDays.length, mean_cals: r1(mean(calDays.map(f => f.cals))), target_cals: calTarget, tdee,
+      mean_deficit: tdee && calDays.length ? Math.round(tdee - mean(calDays.map(f => f.cals))) : null,
+      cal_adherence_pct: calTarget && calDays.length ? Math.round(calDays.filter(f => Math.abs(f.cals - calTarget) <= 150).length / calDays.length * 100) : null,
+      protein_target_g: protTarget, protein_hit_days: food.filter(protHit).length, protein_days_total: food.length, protein_streak: protStreak,
+    },
+    sleep: { mean_hrs: r1(mean(sleeps.map(c => c.sleep_hrs))), worst_hrs: r1(sleeps.length ? Math.min(...sleeps.map(c => c.sleep_hrs)) : null), mean_score: r1(mean(checkins.filter(c => c.sleep_score > 0).map(c => c.sleep_score))) },
+    mood: { mean: r1(mean(moods.map(c => c.mood))), min: moods.length ? Math.min(...moods.map(c => c.mood)) : null, days_below_3: moods.filter(c => c.mood < 3).length, energy_mean: r1(mean(energies.map(c => c.energy))) },
+    training: { ctl: latest ? r1(latest.ctl) : null, atl: latest ? r1(latest.atl) : null, tsb: latest ? r1(latest.tsb) : null, tss_this_week: Math.round(tssThisWeek), tss_last_week: Math.round(tssLastWeek), days_since_workout: daysSince(lastWorkout?.date), days_since_hard: daysSince(lastHard?.date) },
+    planned_7d: { sessions: planned.length, total_min: Math.round(planned.reduce((s, p) => s + (p.duration_min || 0), 0)), total_tss: Math.round(planned.reduce((s, p) => s + (p.tss_planned || 0), 0)), longest_min: Math.round(Math.max(0, ...planned.map(p => p.duration_min || 0))) },
+    streaks: { logging: streak(foodDates), weigh_in: streak(weighDates) },
+  };
+}
+__name(buildBriefContext, "buildBriefContext");
+
+const COACH_SYSTEM = `You are Jeremy's evidence-based training and nutrition coach. You write one short coach note per day from his tracked data.
+Rules:
+- Every sentence must reference a specific number from the data or state a concrete decision. Vague encouragement is forbidden.
+- If training.tsb < -15: recommend recovery and do NOT push a calorie deficit.
+- If weight.rate_lb_per_wk is more than 0.3 lb/wk off what the plan needs: flag it with a specific direction.
+- If protein was hit on 12+ of 14 days, acknowledge the streak by number.
+- Cap at 80 words. Verdict is exactly one of: keep_going, adjust, recover.
+GOOD example: {"note":"Weight is down 0.8 lb/wk over 14 days vs the 1.0 you need — hold 1,500 kcal, no change. Protein ≥150g on 11/14 days; the misses were all weekends, front-load 40g at breakfast Sat/Sun. TSB -4 with 168 TSS this week: Thursday's 60-min run fits as planned.","verdict":"keep_going"}
+BAD example: {"note":"Great week! You're crushing protein and training hard. Keep up the awesome work!","verdict":"keep_going"}
+Return ONLY JSON: {"note":"...","verdict":"keep_going|adjust|recover"}`;
+
 // ── Google token verification ───────────────────────────────────────────
 async function verifyGoogleToken(idToken, env) {
   const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
@@ -460,6 +555,8 @@ var worker_default = {
         const emailSection = emailContext.length
           ? emailContext.map(e => `- From: ${e.from}\n  Subject: ${e.subject}\n  Preview: ${e.snippet}`).join("\n")
           : "No urgent emails";
+        let trendSection = "";
+        try { trendSection = `\n14-DAY TRENDS:\n${JSON.stringify(await buildBriefContext(env, user))}\n`; } catch(_) {}
 
         const prompt = `You are Jeremy's personal AI chief-of-staff. Write a tight daily brief as JSON.
 
@@ -472,11 +569,11 @@ HEALTH:
 
 URGENT EMAILS:
 ${emailSection}
-
+${trendSection}
 Return ONLY valid JSON, no markdown:
-{"greeting":"${greeting}, Jeremy","date":"${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}","urgent_emails":[{"from":"Name","subject":"Subject","flag":"why urgent"}],"health_note":"one sentence with numbers","focus":"most important thing today"}
+{"greeting":"${greeting}, Jeremy","date":"${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}","urgent_emails":[{"from":"Name","subject":"Subject","flag":"why urgent"}],"health_note":"one sentence with numbers","coach_note":"prescriptive note citing 2+ numbers from the 14-day trends, max 80 words, no vague encouragement","focus":"most important thing today"}
 
-Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numbers; Return ONLY JSON`;
+Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numbers; coach_note must cite specific numbers; Return ONLY JSON`;
 
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -782,6 +879,57 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           ).bind(loadUser.id, days).all()).results;
         }
         return new Response(JSON.stringify({ ok: true, rows }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Item 6: trend-grounded coach note (cached by context hash) ────────
+    if (u.pathname === "/api/brief/coach" && req.method === "GET") {
+      const coachUser = await getSessionUser(env.DB, req);
+      if (!coachUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ ok: false, error: "no key" }), { status: 500, headers: CORS });
+        const force = u.searchParams.get("force") === "1";
+        const context = await buildBriefContext(env, coachUser);
+        const ctxJson = JSON.stringify(context);
+        const hash = (await sha256Hex(new TextEncoder().encode(ctxJson))).slice(0, 12);
+        const cacheKey = "coach-" + userLocalDate(coachUser);
+
+        if (!force) {
+          const cached = await env.DB.prepare("SELECT email_context FROM brief_cache WHERE user_id = ? AND date = ?").bind(coachUser.id, cacheKey).first();
+          if (cached?.email_context) {
+            try {
+              const c = JSON.parse(cached.email_context);
+              // Same context → same note; new check-in/weight/workout changes the hash
+              if (c.hash === hash) return new Response(JSON.stringify({ ok: true, note: c.note, verdict: c.verdict, cached: true, context }), { headers: CORS });
+            } catch(_) {}
+          }
+        }
+
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001", max_tokens: 300, system: COACH_SYSTEM,
+            messages: [{ role: "user", content: `Jeremy's last-14-day data:\n${ctxJson}\n\nWrite today's coach note.` }]
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) return new Response(JSON.stringify({ ok: false, error: data?.error?.message }), { status: r.status, headers: CORS });
+        const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        let note = null, verdict = "keep_going";
+        try {
+          const clean = text.replace(/```json|```/g, "").trim();
+          const p = JSON.parse(clean.slice(clean.indexOf("{"), clean.lastIndexOf("}") + 1));
+          note = p.note; verdict = ["keep_going", "adjust", "recover"].includes(p.verdict) ? p.verdict : "keep_going";
+        } catch(_) { note = text.slice(0, 400); }
+
+        await env.DB.prepare(`INSERT INTO brief_cache (user_id, date, email_context) VALUES (?, ?, ?)
+          ON CONFLICT(user_id, date) DO UPDATE SET email_context = excluded.email_context`)
+          .bind(coachUser.id, cacheKey, JSON.stringify({ hash, note, verdict, generated_at: Date.now() })).run();
+
+        return new Response(JSON.stringify({ ok: true, note, verdict, cached: false, context }), { headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
