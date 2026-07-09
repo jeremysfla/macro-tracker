@@ -323,8 +323,6 @@ PROMISE ERROR:
             <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">source</div>
           </div>
         </div>
-        <!-- WHOOP day badge -->
-        <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
         <!-- Quick-add favorites carousel (item 8) -->
         <div id="favChipsWrap" style="display:none;margin-bottom:10px">
           <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">⚡ Quick add</div>
@@ -586,7 +584,7 @@ PROMISE ERROR:
       </div>
 
       
-      <!-- FEATURE: Sleep Panel (from WHOOP data) -->
+      <!-- Sleep panel (Garmin via wellness ingest) -->
       <div id="sleepCard" style="display:none;background:linear-gradient(135deg,#0f1729,#1a1040);border:1.5px solid #312e81;border-radius:18px;padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:11px;font-weight:700;color:#818cf8;letter-spacing:1px;text-transform:uppercase">😴 Last Night's Sleep</div>
@@ -713,48 +711,6 @@ PROMISE ERROR:
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
         <button id="htab-lift"    class="htab-btn"             onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
-        <button id="htab-whoop"   class="htab-btn"             onclick="switchHistoryTab('whoop')">💍 WHOOP</button>
-      </div>
-
-      <!-- WHOOP DASHBOARD -->
-      <div id="historyTab-whoop" style="display:none">
-
-        <!-- Upload Card -->
-        <div id="whoopUploadCard" class="card" style="padding:16px 18px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📁 Import WHOOP Data</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Export your data from WHOOP app → Account → Privacy → Export Data. Upload the ZIP file here.</div>
-          <label id="whoopDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;background:#0f0d1a;border:2px dashed #4c1d95;border-radius:14px;cursor:pointer;min-height:80px;transition:border-color 0.2s">
-            <div style="font-size:28px">💍</div>
-            <div style="font-size:13px;font-weight:700;color:#a78bfa">Tap to upload WHOOP ZIP</div>
-            <div id="whoopUploadStatus" style="font-size:11px;color:var(--text3)">physiological_cycles.csv + sleeps.csv + workouts.csv</div>
-            <input type="file" accept=".zip" style="display:none" onchange="handleWhoopUpload(this)" />
-          </label>
-          <div id="whoopParseProgress" style="display:none;margin-top:10px;font-size:12px;color:var(--text2);text-align:center;padding:8px;background:var(--surface2);border-radius:10px"></div>
-        </div>
-
-        <!-- Summary row: shown after data loaded -->
-        <div id="whoopDashboard" style="display:none">
-          <!-- Today's Status -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopTodayCard"></div>
-
-          <!-- 7-day sparkline tiles -->
-          <div id="whoopSparkRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"></div>
-
-          <!-- Sleep breakdown -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopSleepCard"></div>
-
-          <!-- Workout activity breakdown -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopWorkoutCard"></div>
-
-          <!-- AI Insights -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopAICard">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">🤖 AI Recovery Coach</div>
-              <button onclick="runWhoopAI()" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);border:none;border-radius:10px;padding:7px 14px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Analyze</button>
-            </div>
-            <div id="whoopAIResult" style="font-size:13px;color:var(--text2)">Tap Analyze to get personalized recovery and training insights based on your WHOOP data.</div>
-          </div>
-        </div>
       </div>
 
       <!-- LIFT HISTORY -->
@@ -934,11 +890,6 @@ PROMISE ERROR:
             <button class="chart-tab" data-metric="carbs" onclick="setTrendMetric('carbs',this)">Carbs</button>
             <button class="chart-tab" data-metric="fat" onclick="setTrendMetric('fat',this)">Fat</button>
             <button class="chart-tab" data-metric="weight" onclick="setTrendMetric('weight',this)">Weight</button>
-            <button class="chart-tab" data-metric="recovery" onclick="setTrendMetric('recovery',this)">💍 Recovery</button>
-            <button class="chart-tab" data-metric="hrv" onclick="setTrendMetric('hrv',this)">💍 HRV</button>
-            <button class="chart-tab" data-metric="rhr" onclick="setTrendMetric('rhr',this)">💍 RHR</button>
-            <button class="chart-tab" data-metric="strain" onclick="setTrendMetric('strain',this)">💍 Strain</button>
-            <button class="chart-tab" data-metric="sleepPerf" onclick="setTrendMetric('sleepPerf',this)">💍 Sleep</button>
           </div>
           <div class="chart-container" id="monthChartContainer"></div>
           <div id="trendSummaryRow" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>
@@ -1698,7 +1649,7 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=quota3" defer></script>
+<script src="/app.js?v=nowhoop4" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
