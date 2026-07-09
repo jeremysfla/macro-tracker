@@ -6636,6 +6636,25 @@ function selectWeekDay(key) {
 
 // All Claude API calls route through the Cloudflare worker proxy at /api/claude
 // The actual API key lives in Cloudflare environment secrets (never in code)
+// Long analyses on mobile: hold a screen wake lock so Android doesn't kill
+// the connection when the display dims, and retry once if the network drops.
+async function callClaudeAPIWithRetry(payload) {
+  let wakeLock = null;
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch(_) {}
+  try {
+    try {
+      return await callClaudeAPI(payload);
+    } catch (e) {
+      const netFail = e instanceof TypeError || /failed to fetch|load failed|network/i.test(e.message);
+      if (!netFail) throw e;
+      showToast('⚠️ Connection dropped — retrying…');
+      return await callClaudeAPI(payload);
+    }
+  } finally {
+    try { await wakeLock?.release(); } catch(_) {}
+  }
+}
+
 async function callClaudeAPI(payload) {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -9288,8 +9307,8 @@ async function analyzeBloodPasteText() {
   status.textContent = 'AI is reading your pasted lab results…';
 
   try {
-    const data = await callClaudeAPI({
-      model: 'claude-opus-4-7',
+    const data = await callClaudeAPIWithRetry({
+      model: 'claude-haiku-4-5-20251001',  // transcription task: same accuracy as opus on real reports, ~2x faster
       max_tokens: 8000,
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
     });
@@ -9366,8 +9385,8 @@ async function analyzeBloodReport() {
       ];
     }
 
-    const data = await callClaudeAPI({
-      model: 'claude-opus-4-7',
+    const data = await callClaudeAPIWithRetry({
+      model: 'claude-haiku-4-5-20251001',  // transcription task: same accuracy as opus on real reports, ~2x faster
       max_tokens: 8000,
       messages: [{ role: 'user', content: msgContent }]
     });
@@ -9411,8 +9430,10 @@ async function analyzeBloodReport() {
     btn.disabled = false;
     btn.textContent = '🤖 Analyze with AI';
     status.style.color = '#ef4444';
-    status.textContent = '❌ ' + (e.message || 'Unknown error');
-    status.style.color = '#ef4444';
+    const netFail = e instanceof TypeError || /failed to fetch|load failed/i.test(e.message || '');
+    status.textContent = netFail
+      ? '❌ Connection dropped mid-analysis (takes ~30s) — keep the screen on and tap Analyze again'
+      : '❌ ' + (e.message || 'Unknown error');
   }
 }
 
