@@ -622,62 +622,6 @@ PROMISE ERROR:
     </div>
 
     <!-- WORKOUT PAGE -->
-    <div id="page-lift" class="page">
-      <!-- TP expired banner (item 10) -->
-      <div id="tpExpiredBannerLift" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
-        ⚠️ TrainingPeaks disconnected — activity sync is paused. Tap to reconnect in Settings.
-      </div>
-      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
-      <div class="card" id="trainingLoadCard" style="display:none">
-        <div class="card-label" style="color:#60a5fa">Training Load</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="display:flex;gap:18px">
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
-            </div>
-          </div>
-        </div>
-        <div id="tlSparkline" style="margin-bottom:6px"></div>
-        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
-      </div>
-
-      <!-- Live workout timer bar -->
-      <div class="workout-timer-bar" id="workoutTimerBar">
-        <div>
-          <div style="font-size:9px;color:#60a5fa;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">Duration</div>
-          <div class="workout-timer-elapsed" id="workoutTimerDisplay">0:00</div>
-        </div>
-        <div class="workout-timer-stats">
-          <div class="workout-timer-stat">
-            <div class="workout-timer-stat-val" id="timerSetsCount">0</div>
-            <div class="workout-timer-stat-lbl">Sets</div>
-          </div>
-          <div class="workout-timer-stat">
-            <div class="workout-timer-stat-val" id="timerVolumeCount">0</div>
-            <div class="workout-timer-stat-lbl">Volume (lbs)</div>
-          </div>
-        </div>
-      </div>
-      <div class="session-tabs" id="sessionTabs"></div>
-      <div class="card" id="sessionHeader"></div>
-      <div id="exerciseList"></div>
-      <div class="card" style="padding:14px 18px;margin-bottom:14px" id="workoutNotesCard">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📝 Session Notes</div>
-        <textarea id="workoutNotesInput" placeholder="How did it feel? Any PRs, injuries, energy levels…" style="width:100%;min-height:72px;background:var(--surface2);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-family:inherit;font-size:13px;padding:10px 14px;resize:vertical;outline:none;line-height:1.6"></textarea>
-      </div>
-      <button class="btn-green" onclick="saveWorkout()">SAVE WORKOUT ✓</button>
-    </div>
-
-    <!-- PROGRAM PAGE -->
     <div id="page-program" class="page">
 
       <!-- Events Section -->
@@ -710,13 +654,10 @@ PROMISE ERROR:
         <button id="htab-blood"   class="htab-btn htab-active" onclick="switchHistoryTab('blood')">🩸 Blood</button>
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
-        <button id="htab-lift"    class="htab-btn"             onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
       </div>
 
       <!-- LIFT HISTORY -->
-      <div id="historyTab-lift" style="display:none">
-        <div id="historyList"></div>
-      </div>
+      
 
       <!-- BLOOD WORK -->
       <div id="historyTab-blood">
@@ -841,6 +782,28 @@ PROMISE ERROR:
 
       <!-- TRENDS TAB -->
       <div id="historyTab-trends" style="display:none">
+      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
+      <div class="card" id="trainingLoadCard" style="display:none">
+        <div class="card-label" style="color:#60a5fa">Training Load</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;gap:18px">
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
+            </div>
+          </div>
+        </div>
+        <div id="tlSparkline" style="margin-bottom:6px"></div>
+        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
+      </div>
         <!-- Item 5: server-side insights -->
         <div id="insightsSection" style="display:none">
           <div class="card" id="insightsSummaryCard" style="display:none">
@@ -1643,13 +1606,12 @@ PROMISE ERROR:
   <button class="tab-btn active" onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
   <button class="tab-btn" onclick="switchTab('recipes',this)"><span class="tab-icon">🍽️</span>Recipes</button>
   <button class="tab-btn" onclick="switchTab('shoes',this)"><span class="tab-icon">👟</span>Shoes</button>
-  <button class="tab-btn" onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" onclick="switchTab('program',this)"><span class="tab-icon">📋</span>Program</button>
   <button class="tab-btn" onclick="switchTab('history',this)"><span class="tab-icon">🗓️</span>History</button>
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=shoeslim5" defer></script>
+<script src="/app.js?v=noworkout6" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
@@ -1861,6 +1823,15 @@ PROMISE ERROR:
           <button onclick="wmSetMood('mood',3)" data-val="3" class="mood-btn" title="Okay">😐</button>
           <button onclick="wmSetMood('mood',4)" data-val="4" class="mood-btn" title="Good">😊</button>
           <button onclick="wmSetMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
+        </div>
+      </div>
+
+      <!-- Workout yes/no (feeds the workout streak) -->
+      <div class="wm-mood-row">
+        <div class="wm-mood-label">💪 Worked out today?</div>
+        <div class="wm-btns" id="wmWorkoutBtns">
+          <button onclick="wmSetWorkout(true)" data-val="yes" class="mood-btn" title="Yes" style="font-size:14px;font-weight:800">YES</button>
+          <button onclick="wmSetWorkout(false)" data-val="no" class="mood-btn" title="No" style="font-size:14px;font-weight:800">NO</button>
         </div>
       </div>
 

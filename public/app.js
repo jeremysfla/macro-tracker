@@ -2501,10 +2501,9 @@ function switchTab(name, btn) {
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
   if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
-  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
-  else { stopWorkoutTimer(); skipRestTimer(); }
+  stopWorkoutTimer(); skipRestTimer();  // workout tab removed; timers are legacy no-ops
   if (name === 'program') { renderProgramPage(); renderEventList(); }
-  if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
+  if (name === 'history') { renderBloodWorkPage(); }
   if (name === 'trends') renderTrendChart();
   if (name === 'shoes')  renderShoePage();
 }
@@ -2631,8 +2630,10 @@ function renderStreakCard() {
   const now = nowEST();
 
   // Helper: did the user complete a workout on a given YYYY-MM-DD key?
-  // Counts: any liftLog entry for that date OR any shoeRun logged on that date
+  // Counts: check-in "worked out: YES", any legacy lift entry, or a logged run
+  const moodLog = getMoodLog();
   function hasActivityOn(key) {
+    if (moodLog[key]?.workedOut === true) return true;
     const hasLift = Object.keys(liftLog).some(k => k.startsWith(key));
     const hasRun  = shoeRuns.some(r => r.date === key);
     return hasLift || hasRun;
@@ -8183,16 +8184,15 @@ function onStravaRunSynced(runData) {
 // ═══════════════════════════════════════════════════════
 
 function switchHistoryTab(tab) {
-  ['lift','blood','nutr','trends'].forEach(t => {
+  ['blood','nutr','trends'].forEach(t => {
     const el = document.getElementById('historyTab-'+t);
     const btn = document.getElementById('htab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
     if (btn) btn.classList.toggle('htab-active', t === tab);
   });
-  if (tab === 'lift')   renderHistoryPage();
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
-  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); }
+  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -11457,7 +11457,7 @@ function saveMoodLog(log) { setStorage('moodLog', log); }
 const ENERGY_EMOJIS_MAP = ['😴','😕','😐','🙂','💪'];
 const MOOD_EMOJIS_MAP   = ['😣','😞','😐','😊','😄'];
 
-let _wmState = { energy: null, mood: null };
+let _wmState = { energy: null, mood: null, workedOut: null };
 
 function showWelcomeModal() {
   console.log('[checkin] showWelcomeModal called');
@@ -11477,7 +11477,9 @@ function showWelcomeModal() {
   safeCall(fillWelcomeWellnessContext, 'fillWelcomeWellnessContext');
 
   // Reset state
-  _wmState = { energy: null, mood: null };
+  _wmState = { energy: null, mood: null, workedOut: null };
+  const wb = document.getElementById('wmWorkoutBtns');
+  if (wb) wb.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
   ['wmEnergyBtns','wmMoodBtns'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
@@ -11499,6 +11501,15 @@ function closeWelcomeModal() {
   document.body.style.overflow = '';
 }
 
+function wmSetWorkout(val) {
+  _wmState.workedOut = val;
+  const wrap = document.getElementById('wmWorkoutBtns');
+  if (wrap) wrap.querySelectorAll('.mood-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.val === (val ? 'yes' : 'no')));
+  try { wmUpdateSubmitState(); } catch(_) {}
+  renderStreakCard && setTimeout(renderStreakCard, 100);
+}
+
 function wmSetMood(type, val) {
   _wmState[type] = val;
   const containerId = type === 'energy' ? 'wmEnergyBtns' : 'wmMoodBtns';
@@ -11508,24 +11519,28 @@ function wmSetMood(type, val) {
       b.classList.toggle('active', parseInt(b.dataset.val) === val);
     });
   }
-  // Enable submit once both are set (or at least one — be lenient)
+  wmUpdateSubmitState();
+}
+
+// Enable submit once anything is answered
+function wmUpdateSubmitState() {
   const btn = document.getElementById('wmSubmitBtn');
-  if (btn) {
-    const ready = _wmState.energy !== null || _wmState.mood !== null;
-    btn.disabled = !ready;
-    btn.style.opacity = ready ? '1' : '0.5';
-  }
+  if (!btn) return;
+  const ready = _wmState.energy !== null || _wmState.mood !== null || _wmState.workedOut !== null;
+  btn.disabled = !ready;
+  btn.style.opacity = ready ? '1' : '0.5';
 }
 
 function submitWelcomeCheckin() {
   const key = dateToKey(nowEST());
 
-  // Save mood/energy
-  if (_wmState.energy !== null || _wmState.mood !== null) {
+  // Save mood/energy/workout answer
+  if (_wmState.energy !== null || _wmState.mood !== null || _wmState.workedOut !== null) {
     const log = getMoodLog();
     if (!log[key]) log[key] = {};
     if (_wmState.energy !== null) log[key].energy = _wmState.energy;
     if (_wmState.mood   !== null) log[key].mood   = _wmState.mood;
+    if (_wmState.workedOut !== null) log[key].workedOut = _wmState.workedOut;
     saveMoodLog(log);
   }
 
@@ -11571,6 +11586,7 @@ function scheduleCheckinSync(delay) {
           energy: mood.energy || null,
           mood: mood.mood || null,
           // weight/sleep/steps come from the wellness ingest now (1.5B)
+          worked_out: mood.workedOut === true ? 1 : mood.workedOut === false ? 0 : null,
           water_oz: waterLog[key] || null,
           calories_consumed: totals.cal || null,
           protein_g: totals.p || null,

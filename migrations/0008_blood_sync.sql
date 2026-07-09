@@ -9,3 +9,6 @@ CREATE TABLE IF NOT EXISTS blood_log (
   deleted      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, date, entry_id)
 );
+
+-- Workout tab removed: yes/no check-in answer feeds the workout streak
+ALTER TABLE daily_checkin ADD COLUMN worked_out INTEGER;
