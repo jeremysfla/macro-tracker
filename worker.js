@@ -93,7 +93,7 @@ async function getSessionUser(db, req) {
 __name(getSessionUser, "getSessionUser");
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -101,6 +101,7 @@ const LOG_TABLES = {
   weight: { table: "weight_log",   kind: "weight" },
   shoes:  { table: "shoe_mileage", kind: "keyed" },
   lifts:  { table: "lift_log",     kind: "dated" },
+  blood:  { table: "blood_log",    kind: "dated" },
 };
 
 function logUpsertStmt(db, cfg, userId, e) {
@@ -108,7 +109,7 @@ function logUpsertStmt(db, cfg, userId, e) {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return null;
   const deleted = e.deleted ? 1 : 0;
   const payload = JSON.stringify(e.payload ?? {});
-  if (payload.length > 32768) return null;
+  if (payload.length > (cfg.table === "blood_log" ? 262144 : 32768)) return null;
 
   if (cfg.kind === "dated") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || "") || typeof e.entry_id !== "string" || !e.entry_id || e.entry_id.length > 128) return null;

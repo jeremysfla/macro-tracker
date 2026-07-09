@@ -491,8 +491,8 @@ function setStorage(key, val) {
 // Tombstones are only emitted for recent dates so the 90-day prune sweep
 // never deletes server history.
 // ═══════════════════════════════════════════════════════════════════════
-const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts'];
-const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts' };
+const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts', 'blood'];
+const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts', bloodResults: 'blood' };
 const SYNC_MERGE_DAYS = 90;      // only merge server rows this recent into local cache
 const SYNC_TOMBSTONE_DAYS = 30;  // only report deletions this recent (older = prune, not delete)
 let _syncApplying = false;       // guard: writes made by the sync engine itself
@@ -715,6 +715,12 @@ function _syncRebuildShadow(table) {
     for (const s of getStorage('shoeGarage', [])) if (s.id) sh['shoe:' + s.id] = { h: JSON.stringify({ ...s, _u: 0 }) };
     for (const r of getStorage('shoeRuns', [])) if (r._id) sh['run:' + r._id] = { h: JSON.stringify({ ...r, _u: 0 }) };
     _syncSet('_syncShadow_shoes', sh);
+  } else if (table === 'blood') {
+    const sh = {};
+    for (const e of getStorage('bloodResults', [])) {
+      if (e?.id) sh[String(e.id)] = { h: JSON.stringify({ ...e, _u: 0 }), d: e.date };
+    }
+    _syncSet('_syncShadow_blood', sh);
   } else if (table === 'lifts') {
     const sh = {};
     for (const [key, val] of Object.entries(getStorage('liftLog2', {}))) {
@@ -726,7 +732,51 @@ function _syncRebuildShadow(table) {
   }
 }
 
+function _syncBloodRows() {
+  const results = getStorage('bloodResults', []);
+  const shadow = getStorage('_syncShadow_blood', {});
+  const rows = []; let mutated = false;
+  for (const e of results) {
+    if (!e || !e.date) continue;
+    if (!e.id) { e.id = Date.now() + Math.random(); mutated = true; }
+    const key = String(e.id);
+    const h = JSON.stringify({ ...e, _u: 0 });
+    if (shadow[key]?.h !== h) {
+      e._u = Date.now(); mutated = true;
+      rows.push({ date: e.date, entry_id: key, payload: e, updated_at: e._u, deleted: 0 });
+    }
+  }
+  const liveIds = new Set(results.map(e => String(e.id)));
+  for (const [key, sh] of Object.entries(shadow)) {
+    if (!liveIds.has(key)) rows.push({ date: sh.d || '1970-01-01', entry_id: key, payload: {}, updated_at: Date.now(), deleted: 1 });
+  }
+  if (mutated) _syncSet('bloodResults', results);
+  return rows;
+}
+
+function _syncApplyBlood(rows) {
+  const results = getStorage('bloodResults', []);
+  let changed = false;
+  for (const r of rows) {
+    const idx = results.findIndex(e => String(e.id) === r.entry_id);
+    const localU = idx >= 0 ? (results[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { results.splice(idx, 1); changed = true; } }
+    else if (r.payload?.date) {
+      const entry = { ...r.payload, _u: r.updated_at };
+      if (idx >= 0) results[idx] = entry; else results.push(entry);
+      changed = true;
+    }
+  }
+  if (changed) {
+    results.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    _syncSet('bloodResults', results);
+    try { renderBloodWorkPage(); } catch(_) {}
+  }
+}
+
 const _SYNC_IMPL = {
+  blood:  { toRows: _syncBloodRows,  apply: _syncApplyBlood },
   food:   { toRows: _syncFoodRows,   apply: _syncApplyFood },
   weight: { toRows: _syncWeightRows, apply: _syncApplyWeight },
   shoes:  { toRows: _syncShoeRows,   apply: _syncApplyShoes },
@@ -7338,7 +7388,7 @@ const BACKUP_KEYS = [
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
   'tpToday',
   'tpAutoAdjust',
-  'shoeGarage', 'shoeRuns',
+  'shoeGarage', 'shoeRuns', 'bloodResults',
 ];
 
 function exportData() {
@@ -9302,6 +9352,27 @@ function buildBloodParsePrompt() {
   ].join(' ');
 }
 
+function _freeCacheSpace() {
+  // Safe-to-drop caches, largest first — regenerated automatically
+  ['trendsCache', 'bodyCompCache', 'favCache', 'trainingLoadCache', 'dailyQuote',
+   'greetingCache', 'weeklyNarrative', 'brief_cache', 'tpToday'].forEach(k => {
+    try { localStorage.removeItem(k); } catch(_) {}
+  });
+}
+
+function _localStorageTopKeys(n) {
+  try {
+    const sizes = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      sizes.push([k, (localStorage.getItem(k) || '').length]);
+    }
+    sizes.sort((a, b) => b[1] - a[1]);
+    const total = sizes.reduce((s, x) => s + x[1], 0);
+    return { totalKB: Math.round(total / 1024), top: sizes.slice(0, n).map(([k, v]) => `${k}:${Math.round(v / 1024)}KB`) };
+  } catch(_) { return null; }
+}
+
 async function saveBloodEntry(parsed) {
   const testDate = parsed.test_date || new Date().toISOString().slice(0,10);
   const results = getBloodResults();
@@ -9313,7 +9384,26 @@ async function saveBloodEntry(parsed) {
     uploadedAt: new Date().toISOString(),
   };
   results.unshift(newEntry);
-  saveBloodResults(results);
+  let ok = saveBloodResults(results);
+  if (!ok) {
+    // Device storage full — drop regenerable caches and retry
+    _freeCacheSpace();
+    ok = saveBloodResults(results);
+  }
+  if (!ok) {
+    // Last resort: persist server-side directly so the record is never lost
+    const usage = _localStorageTopKeys(6);
+    reportClientError('blood_quota', new Error('localStorage quota exceeded'), usage || {});
+    try {
+      const res = await fetch('/api/log/blood', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ entries: [{ date: newEntry.date, entry_id: String(newEntry.id), payload: newEntry, updated_at: Date.now(), deleted: 0 }] })
+      });
+      const d = await res.json();
+      if (d.ok && d.applied) throw new Error('Phone storage is full — the record was saved to the cloud and will appear after you free up space (Settings → sync)');
+    } catch (e) { if (/saved to the cloud/.test(e.message)) throw e; }
+    throw new Error('Phone storage is full and the cloud save failed — free up space and try again');
+  }
   return newEntry;
 }
 
