@@ -7438,6 +7438,31 @@ function getShoePhoto(shoeId) {
   if (!_shoePhotoCache) _shoePhotoCache = getStorage('shoePhotos', {});
   return _shoePhotoCache[shoeId] || null;
 }
+// One-time: recompress stored shoe photos to thumbnails (they were 800px
+// JPEGs totalling ~4MB — the main localStorage quota hog on mobile)
+async function recompressShoePhotos() {
+  if (getStorage('shoePhotosCompressedV1', false)) return;
+  const photos = getStorage('shoePhotos', {});
+  const keys = Object.keys(photos);
+  if (!keys.length) { setStorage('shoePhotosCompressedV1', true); return; }
+  const before = JSON.stringify(photos).length;
+  for (const k of keys) {
+    try { photos[k] = await resizeImage(photos[k], 320, 0.72); } catch(_) {}
+  }
+  _invalidateShoePhotoCache();
+  const ok = setStorage('shoePhotos', photos);
+  const after = JSON.stringify(photos).length;
+  if (ok) {
+    setStorage('shoePhotosCompressedV1', true);
+    const freedKB = Math.round((before - after) / 1024);
+    if (freedKB > 50) {
+      showToast(`🧹 Shoe photos compressed — freed ${freedKB}KB`);
+      reportClientError('storage_recompress', new Error('ok'), { freedKB, photos: keys.length });
+      syncAllLogs();  // room now — pull any cloud-only records (e.g. blood) down
+    }
+  }
+}
+
 // Migration: if old shoes have photoData embedded, move it out
 function migrateShoePhotos() {
   const shoes  = getShoes();
@@ -7740,7 +7765,7 @@ async function updateShoePhoto(shoeId, input) {
   reader.onload = async (e) => {
     const dataUrl = e.target.result;
     // Resize to reduce storage footprint
-    const resized = await resizeImage(dataUrl, 800);
+    const resized = await resizeImage(dataUrl, 320, 0.72);  // thumbnail-size — quota matters more than pixels
     const photos = getStorage('shoePhotos', {});
     photos[shoeId] = resized;
     _invalidateShoePhotoCache();
@@ -7759,7 +7784,7 @@ async function updateShoePhoto(shoeId, input) {
 }
 
 // ── Resize image helper (returns base64 dataUrl) ─────────────
-function resizeImage(dataUrl, maxSize) {
+function resizeImage(dataUrl, maxSize, quality) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
@@ -7769,8 +7794,9 @@ function resizeImage(dataUrl, maxSize) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      resolve(canvas.toDataURL('image/jpeg', quality || 0.82));
     };
+    img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
 }
@@ -9782,6 +9808,7 @@ function _initApp() {
     if (!FLAGS.photoLog) document.getElementById('photoLogBtn').style.display = 'none';
   } catch(_) {}
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
+  setTimeout(() => safeCall(recompressShoePhotos, 'recompressShoePhotos'), 1500);
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
 
   // Migrate burnLog: old entries stored gross Strava calories; correct to net (×0.75)
