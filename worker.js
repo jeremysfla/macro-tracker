@@ -1172,9 +1172,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           if (!Array.isArray(entries) || entries.length > 500) {
             return new Response(JSON.stringify({ ok: false, error: "entries must be an array of ≤500" }), { status: 400, headers: CORS });
           }
-          const stmts = entries.map(e => logUpsertStmt(env.DB, cfg, logUser.id, e)).filter(Boolean);
+          const stmts = [], reasons = [];
+          for (const e of entries) {
+            const s = logUpsertStmt(env.DB, cfg, logUser.id, e);
+            if (s) stmts.push(s);
+            else reasons.push(`entry ${e.entry_id || e.date || "?"}: bad date/id/value or payload too large`);
+          }
           if (stmts.length) await env.DB.batch(stmts);
-          return new Response(JSON.stringify({ ok: true, applied: stmts.length, skipped: entries.length - stmts.length, now: Date.now() }), { headers: CORS });
+          return new Response(JSON.stringify({ ok: true, applied: stmts.length, skipped: entries.length - stmts.length, skipped_reasons: reasons.slice(0, 5), now: Date.now() }), { headers: CORS });
         } catch (e) {
           return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
         }

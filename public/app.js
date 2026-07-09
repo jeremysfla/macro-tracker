@@ -479,6 +479,7 @@ function setStorage(key, val) {
     return true;
   } catch(e) {
     console.error('setStorage failed for key:', key, e);
+    setStorage._lastError = e;
     return false;
   }
 }
@@ -1406,6 +1407,16 @@ async function runBackupNow() {
     showToast(`✅ Backed up ${total.toLocaleString()} rows across ${Object.keys(d.manifest.tables).length} tables`);
     updateBackupStatusUI();
   } catch (e) { showToast('⚠️ Backup failed: ' + e.message); }
+}
+
+// Settings: clear regenerable caches and report what's left
+function freeUpSpace() {
+  const before = _localStorageTopKeys(5);
+  _freeCacheSpace();
+  const after = _localStorageTopKeys(5);
+  reportClientError('storage_report', new Error('manual free-up'), { before, after });
+  showToast(`🧹 Freed ${Math.max(0, (before?.totalKB || 0) - (after?.totalKB || 0))}KB — now ${after?.totalKB}KB. Biggest: ${(after?.top || []).slice(0, 3).join(', ')}`);
+  syncAllLogs();
 }
 
 function updateSyncStatusUI() {
@@ -9392,17 +9403,30 @@ async function saveBloodEntry(parsed) {
   }
   if (!ok) {
     // Last resort: persist server-side directly so the record is never lost
-    const usage = _localStorageTopKeys(6);
-    reportClientError('blood_quota', new Error('localStorage quota exceeded'), usage || {});
-    try {
-      const res = await fetch('/api/log/blood', {
-        method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ entries: [{ date: newEntry.date, entry_id: String(newEntry.id), payload: newEntry, updated_at: Date.now(), deleted: 0 }] })
-      });
-      const d = await res.json();
-      if (d.ok && d.applied) throw new Error('Phone storage is full — the record was saved to the cloud and will appear after you free up space (Settings → sync)');
-    } catch (e) { if (/saved to the cloud/.test(e.message)) throw e; }
-    throw new Error('Phone storage is full and the cloud save failed — free up space and try again');
+    const usage = _localStorageTopKeys(5);
+    const errName = setStorage._lastError?.name || 'unknown';
+    reportClientError('blood_quota', new Error('localStorage write failed: ' + errName), usage || {});
+    const hogs = usage ? ` [used ${usage.totalKB}KB — biggest: ${usage.top.join(', ')}]` : '';
+    let lastErr = 'no attempt';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch('/api/log/blood', {
+          method: 'POST', headers: authHeaders(),
+          body: JSON.stringify({ entries: [{ date: newEntry.date, entry_id: String(newEntry.id), payload: newEntry, updated_at: Date.now(), deleted: 0 }] })
+        });
+        const d = await res.json();
+        if (d.ok && d.applied >= 1) {
+          throw new Error('SAVED_CLOUD');
+        }
+        lastErr = (d.skipped_reasons || []).join('; ') || ('server said applied=0, http ' + res.status);
+        break;  // server answered but rejected — retrying won't help
+      } catch (e) {
+        if (e.message === 'SAVED_CLOUD') throw new Error('Phone storage is full (' + errName + ') — record SAVED TO CLOUD ✓. Free up space, then Settings → Sync now.' + hogs);
+        lastErr = e.message;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    throw new Error('Phone storage full (' + errName + ') AND cloud save failed (' + lastErr + ').' + hogs);
   }
   return newEntry;
 }
@@ -9558,16 +9582,17 @@ async function analyzeBloodReport() {
 // Fire-and-forget error telemetry so failures on the phone are debuggable
 function reportClientError(kind, err, extra) {
   try {
-    fetch('/api/debug/client', {
-      method: 'POST', headers: authHeaders(),
-      body: JSON.stringify({
-        kind, build: BUILD_ID,
-        message: String(err?.message || err).slice(0, 300),
-        name: err?.name, stack: String(err?.stack || '').slice(0, 500),
-        online: navigator.onLine, swController: !!navigator.serviceWorker?.controller,
-        ua: navigator.userAgent.slice(0, 120), ...extra,
-      })
-    }).catch(() => {});
+    const body = JSON.stringify({
+      kind, build: BUILD_ID,
+      message: String(err?.message || err).slice(0, 300),
+      name: err?.name, stack: String(err?.stack || '').slice(0, 500),
+      online: navigator.onLine, swController: !!navigator.serviceWorker?.controller,
+      ua: navigator.userAgent.slice(0, 120), ...extra,
+    });
+    // sendBeacon rides on the session cookie and survives page churn
+    let sent = false;
+    try { sent = navigator.sendBeacon?.('/api/debug/client', new Blob([body], { type: 'application/json' })); } catch(_) {}
+    if (!sent) fetch('/api/debug/client', { method: 'POST', headers: authHeaders(), body }).catch(() => {});
   } catch(_) {}
 }
 

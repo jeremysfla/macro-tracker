@@ -1533,6 +1533,7 @@ PROMISE ERROR:
         <button class="btn-green" style="width:auto;padding:8px 14px" onclick="syncAllLogs()">Sync now</button>
       </div>
       <button class="btn-green" style="margin-top:10px;background:#334155" onclick="forceBackfillSync()">⬆️ Force full backfill (local → server)</button>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="freeUpSpace()">🧹 Free up device storage</button>
       <div class="settings-row" style="margin-top:10px">
         <div>
           <div class="settings-row-label">🗄️ Backups <span id="backupDot" style="font-size:10px">⚪</span></div>
@@ -1697,7 +1698,7 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=bloodsync2" defer></script>
+<script src="/app.js?v=quota3" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
