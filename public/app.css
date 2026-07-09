@@ -767,3 +767,26 @@
   .wm-btns {
     display:flex;flex:1;gap:6px;
   }
+
+  /* ── Blood page: continuous flow redesign ─────────────────────── */
+  .blood-flow { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; overflow:hidden; margin-bottom:14px; }
+  .blood-section { border-top:1px solid var(--border); }
+  .blood-section:first-child { border-top:none; }
+  .blood-section-header { padding:12px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; }
+  .blood-section-header:active { background:rgba(255,255,255,0.03); }
+  .blood-section-title { font-size:12px; font-weight:800; letter-spacing:0.8px; text-transform:uppercase; color:var(--text2); display:flex; align-items:center; gap:8px; }
+  .blood-section-body { padding:0 16px 10px; }
+  .blood-sec-badge { font-size:10px; font-weight:800; padding:2px 9px; border-radius:9px; }
+  .blood-sec-badge.ok   { background:#052e16; color:#22c55e; }
+  .blood-sec-badge.warn { background:#3d2e05; color:#f59e0b; }
+  .blood-sec-badge.bad  { background:#3d0505; color:#ef4444; }
+  .blood-chev { font-size:10px; color:var(--text3); transition:transform 0.15s; }
+  .blood-chev.collapsed { transform:rotate(-90deg); }
+  .blood-dist-wrap { padding:14px 16px 12px; }
+  .blood-dist-bar { display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--surface2); }
+  .blood-dist-legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:10.5px; color:var(--text2); font-weight:600; }
+  .bview-seg { display:flex; background:var(--surface2); border-radius:18px; padding:3px; border:1px solid var(--border); }
+  .bview-seg .bview-btn { border:none; background:transparent; border-radius:14px; padding:6px 13px; }
+  .bview-seg .bview-btn.active { background:#ef4444; color:#fff; }
+  .blood-header-card { background:var(--surface); border:1.5px solid var(--border); border-radius:18px; padding:14px 16px; margin-bottom:12px; }
+  .blood-date-pill { width:100%; background:var(--surface2); border:1.5px solid var(--border); border-radius:12px; padding:10px 12px; color:var(--text); font-size:13px; font-weight:600; font-family:inherit; margin-top:10px; }

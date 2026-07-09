@@ -8689,6 +8689,14 @@ async function saveBloodEntry(parsed) {
   return newEntry;
 }
 
+function toggleBloodUpload() {
+  const up = document.getElementById('bloodUploadCard');
+  if (!up) return;
+  up._userToggled = true;
+  up.style.display = up.style.display === 'none' ? 'block' : 'none';
+  if (up.style.display === 'block') up.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function toggleBloodPaste() {
   const area = document.getElementById('bloodPasteArea');
   area.style.display = area.style.display === 'none' ? 'block' : 'none';
@@ -8859,6 +8867,10 @@ function renderBloodWorkPage() {
   const container = document.getElementById('bloodResultsList');
   if (!container) return;
 
+  // Upload card collapses behind the ＋ button once records exist
+  const up = document.getElementById('bloodUploadCard');
+  if (up && !up._userToggled) up.style.display = results.length ? 'none' : 'block';
+
   if (results.length === 0) {
     container.innerHTML = '<div class="empty-state">No blood work uploaded yet.<br>Upload your first lab report above.</div>';
     return;
@@ -8869,23 +8881,27 @@ function renderBloodWorkPage() {
   ).join('');
 
   container.innerHTML = `
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div class="card-label" style="color:#ef4444;margin:0;flex:1">📅 Lab Result</div>
-        <div style="display:flex;gap:6px">
-          <button id="bview-panels" class="bview-btn active" onclick="setBloodView('panels')">Panels</button>
-          <button id="bview-trends" class="bview-btn" onclick="setBloodView('trends')">Trends</button>
-          <button id="bview-table"  class="bview-btn" onclick="setBloodView('table')">Compare</button>
+    <div class="blood-header-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="card-label" style="color:#ef4444;margin:0">🩸 Blood Work</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="bview-seg">
+            <button id="bview-panels" class="bview-btn active" onclick="setBloodView('panels')">Panels</button>
+            <button id="bview-trends" class="bview-btn" onclick="setBloodView('trends')">Trends</button>
+            <button id="bview-table"  class="bview-btn" onclick="setBloodView('table')">Compare</button>
+          </div>
+          <button onclick="toggleBloodUpload()" title="Add report" style="width:30px;height:30px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);font-size:16px;font-weight:700;cursor:pointer;line-height:1">＋</button>
         </div>
       </div>
-      <select id="bloodDateSelect" onchange="renderBloodPanels(parseInt(this.value))"
-        style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit">
+      <select id="bloodDateSelect" class="blood-date-pill" onchange="renderBloodPanels(parseInt(this.value))">
         ${dateOptions}
       </select>
     </div>
-    <div id="bloodSummaryBar"></div>
-    <div id="bloodOOBStrip"></div>
-    <div id="bloodPanelsContainer"></div>
+    <div class="blood-flow" id="bloodFlow">
+      <div id="bloodSummaryBar"></div>
+      <div id="bloodOOBStrip"></div>
+      <div id="bloodPanelsContainer"></div>
+    </div>
     <div id="bloodTrendContainer" style="margin-top:4px"></div>
     <div id="bloodTableContainer" style="display:none"></div>
   `;
@@ -8981,33 +8997,20 @@ function renderBloodPanels(idx) {
   const alarmHigh = allStatuses5.filter(s => s === 'alarm_high').length;
   const totalM    = entry.markers.length;
   const summaryEl = document.getElementById('bloodSummaryBar');
-  if (summaryEl) summaryEl.innerHTML = `
-    <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmLow}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Low</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #60a5fa30">
-        <div class="blood-summary-num" style="color:#60a5fa;font-size:18px">${belowOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Below Opt</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #22c55e30">
-        <div class="blood-summary-num" style="color:#22c55e;font-size:18px">${optimal}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Optimal</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #f59e0b30">
-        <div class="blood-summary-num" style="color:#f59e0b;font-size:18px">${aboveOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Above Opt</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmHigh}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">High</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid var(--border)">
-        <div class="blood-summary-num" style="color:var(--text);font-size:18px">${totalM}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Total</div>
-      </div>
-    </div>`;
+  if (summaryEl) {
+    const seg = (n, color) => n > 0 ? `<div style="flex:${n};background:${color}"></div>` : '';
+    const leg = (n, color, label) => n > 0 ? `<span><b style="color:${color}">${n}</b> ${label}</span>` : '';
+    summaryEl.innerHTML = `
+      <div class="blood-dist-wrap">
+        <div class="blood-dist-bar">
+          ${seg(alarmLow, '#ef4444')}${seg(belowOpt, '#60a5fa')}${seg(optimal, '#22c55e')}${seg(aboveOpt, '#f59e0b')}${seg(alarmHigh, '#dc2626')}
+        </div>
+        <div class="blood-dist-legend">
+          ${leg(alarmLow, '#ef4444', 'low')}${leg(belowOpt, '#60a5fa', 'below opt')}${leg(optimal, '#22c55e', 'optimal')}${leg(aboveOpt, '#f59e0b', 'above opt')}${leg(alarmHigh, '#ef4444', 'high')}
+          <span style="margin-left:auto;color:var(--text3)">${totalM} markers</span>
+        </div>
+      </div>`;
+  }
 
   // ── NEEDS ATTENTION (Collapsible) ────────────────────
   const oobEl = document.getElementById('bloodOOBStrip');
@@ -9057,24 +9060,24 @@ function renderBloodPanels(idx) {
     }).join('');
 
     oobEl.innerHTML = `
-      <div class="blood-attn-header expanded" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.classList.toggle('expanded',!open);el.querySelector('.blood-attn-chevron').classList.toggle('collapsed',open)})(this)">
-        <div class="blood-attn-header-left">
-          <span class="blood-attn-count">${flagged.length}</span>
-          <span class="blood-attn-title">Needs Attention</span>
+      <div class="blood-section">
+        <div class="blood-section-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-chev').classList.toggle('collapsed',open)})(this)">
+          <span class="blood-section-title" style="color:#f59e0b">⚠️ Needs Attention <span class="blood-sec-badge bad">${flagged.length}</span></span>
+          <span class="blood-chev">▼</span>
         </div>
-        <span class="blood-attn-chevron">▼</span>
-      </div>
-      <div class="blood-attn-body">${attnCards}</div>`;
+        <div class="blood-section-body">${attnCards}</div>
+      </div>`;
   } else if (oobEl) {
-    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within optimal range</div>`;
+    oobEl.innerHTML = `<div class="blood-section"><div style="padding:12px 16px;font-size:12.5px;font-weight:700;color:#22c55e">✅ All markers within optimal range</div></div>`;
   }
 
   // ── PANELS VIEW ──────────────────────────────────────
   const panelsEl  = document.getElementById('bloodPanelsContainer');
   const trendsEl  = document.getElementById('bloodTrendContainer');
   const tableEl   = document.getElementById('bloodTableContainer');
+  const flowEl    = document.getElementById('bloodFlow');
 
-  panelsEl.style.display  = view === 'panels'  ? '' : 'none';
+  if (flowEl) flowEl.style.display = view === 'panels' ? '' : 'none';
   trendsEl.style.display  = view === 'trends'  ? '' : 'none';
   tableEl.style.display   = view === 'table'   ? '' : 'none';
 
@@ -9138,16 +9141,12 @@ function renderBloodPanels(idx) {
         </div>`;
       }).join('');
 
-      const panelId = 'bpanel_' + panel;
-      return `<div class="${panelClass}">
-        <div class="blood-panel-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-panel-chevron').classList.toggle('collapsed',open)})(this)">
-          <div class="blood-panel-header-left">
-            <span class="blood-panel-title">${PANEL_LABELS[panel] || '🔬 Other'}</span>
-            <span class="blood-panel-badge ${badgeClass}">${badgeText}</span>
-          </div>
-          <span class="blood-panel-chevron${startOpen ? '' : ' collapsed'}">▼</span>
+      return `<div class="blood-section">
+        <div class="blood-section-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-chev').classList.toggle('collapsed',open)})(this)">
+          <span class="blood-section-title">${PANEL_LABELS[panel] || '🔬 Other'} <span class="blood-sec-badge ${badgeClass}">${badgeText}</span></span>
+          <span class="blood-chev${startOpen ? '' : ' collapsed'}">▼</span>
         </div>
-        <div class="blood-panel-body" style="${startOpen ? '' : 'display:none'}">
+        <div class="blood-section-body" style="${startOpen ? '' : 'display:none'}">
           ${rows}
         </div>
       </div>`;

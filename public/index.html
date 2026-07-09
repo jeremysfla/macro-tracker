@@ -727,7 +727,7 @@ PROMISE ERROR:
           <button onclick="saveBodyComp()" style="width:100%;padding:10px;background:#f97316;border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">Log Measurements</button>
         </div>
 
-        <div class="card" style="margin-top:14px">
+        <div class="card" id="bloodUploadCard" style="margin-top:14px">
           <div class="card-label" style="color:#ef4444">🩸 Upload Lab Results</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Take a photo or scan of your lab report. AI will read all values automatically.</div>
           <div id="bloodUploadDrop" style="border:2px dashed #2a3040;border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('bloodFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#ef4444'" ondragleave="this.style.borderColor='#2a3040'" ondrop="event.preventDefault();handleBloodDrop(event)">
@@ -1611,7 +1611,7 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=noworkout6" defer></script>
+<script src="/app.js?v=bloodui7" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
