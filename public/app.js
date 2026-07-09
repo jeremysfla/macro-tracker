@@ -7439,6 +7439,25 @@ function getShoePhoto(shoeId) {
   if (!_shoePhotoCache) _shoePhotoCache = getStorage('shoePhotos', {});
   return _shoePhotoCache[shoeId] || null;
 }
+// Dedupe blood records: keep the newest per (date, lab)
+function dedupeBloodResults() {
+  const results = getStorage('bloodResults', []);
+  const seen = {};
+  const kept = [];
+  // newest first by uploadedAt so the first seen wins
+  for (const r of [...results].sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''))) {
+    const key = r.date + '|' + (r.lab || '');
+    if (seen[key]) continue;
+    seen[key] = true;
+    kept.push(r);
+  }
+  if (kept.length !== results.length) {
+    kept.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    setStorage('bloodResults', kept);   // sync engine tombstones the dropped ones
+    console.log('[blood] deduped', results.length - kept.length, 'duplicate record(s)');
+  }
+}
+
 // One-time: recompress stored shoe photos to thumbnails (they were 800px
 // JPEGs totalling ~4MB — the main localStorage quota hog on mobile)
 async function recompressShoePhotos() {
@@ -8652,6 +8671,13 @@ async function saveBloodEntry(parsed) {
     markers: normalizeBloodMarkers(parsed.markers || []),
     uploadedAt: new Date().toISOString(),
   };
+  // Re-uploading the same report replaces it instead of duplicating —
+  // same date + same lab is the same panel
+  const dupIdx = results.findIndex(r => r.date === newEntry.date && r.lab === newEntry.lab);
+  if (dupIdx >= 0) {
+    newEntry.id = results[dupIdx].id;  // keep sync identity so the server row updates in place
+    results.splice(dupIdx, 1);
+  }
   results.unshift(newEntry);
   let ok = saveBloodResults(results);
   if (!ok) {
@@ -9809,6 +9835,7 @@ function _initApp() {
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
   setTimeout(() => safeCall(recompressShoePhotos, 'recompressShoePhotos'), 1500);
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
+  safeCall(dedupeBloodResults, 'dedupeBloodResults');
 
   // Migrate burnLog: old entries stored gross Strava calories; correct to net (×0.75)
   // Run once, marked with _netMigrated flag
