@@ -7754,7 +7754,7 @@ Closet shoes:\n`;
 
     try {
       const data = await callClaudeAPI({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-7',
         max_tokens: 400,
         messages:[{ role:'user', content: contentArr }]
       });
@@ -9289,7 +9289,7 @@ async function analyzeBloodPasteText() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 8000,
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
     });
@@ -9367,7 +9367,7 @@ async function analyzeBloodReport() {
     }
 
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 8000,
       messages: [{ role: 'user', content: msgContent }]
     });
@@ -10049,7 +10049,7 @@ async function generateBloodAIInsights(entry) {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -10085,7 +10085,7 @@ async function analyzeBloodWithNutrition() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -11545,7 +11545,7 @@ async function sendClaudeMessage() {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-7',
         max_tokens: 1024,
         system: getAppContext(),
         messages: claudeHistory

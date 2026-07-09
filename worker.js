@@ -10,9 +10,10 @@ const CLAUDE_ALLOWED_MODELS = new Set([
   'claude-haiku-4-5-20251001',
   'claude-sonnet-4-5-20250929',
   'claude-sonnet-4-6',
+  'claude-opus-4-6',   // older bundles cached on devices still request this
   'claude-opus-4-7',
 ]);
-const CLAUDE_MAX_TOKENS_CAP = 4096;
+const CLAUDE_MAX_TOKENS_CAP = 8192;  // bloodwork parsing legitimately needs 8k out
 
 // ── Session helpers ─────────────────────────────────────────────────────
 function generateSessionToken() {
