@@ -93,7 +93,7 @@ async function getSessionUser(db, req) {
 __name(getSessionUser, "getSessionUser");
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -1046,6 +1046,82 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
         const data = await r.json();
         return new Response(JSON.stringify(data), { status: r.ok?200:r.status, headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS }); }
+    }
+
+    // ── Client error telemetry (debugging mobile failures) ────────────────
+    if (u.pathname === "/api/debug/client" && req.method === "POST") {
+      const dbgUser = await getSessionUser(env.DB, req);
+      if (!dbgUser) return new Response(JSON.stringify({ ok: false }), { status: 401, headers: CORS });
+      try {
+        const b = await req.json();
+        await env.DB.prepare("INSERT OR REPLACE INTO client_log (user_id, ts, kind, detail_json) VALUES (?, ?, ?, ?)")
+          .bind(dbgUser.id, Date.now(), String(b.kind || "error").slice(0, 40), JSON.stringify(b).slice(0, 8000)).run();
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Async Claude proxy: submit → poll (mobile-safe for long analyses) ──
+    if (u.pathname === "/api/claude/async" && req.method === "POST") {
+      const ajUser = await getSessionUser(env.DB, req);
+      if (!ajUser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      try {
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
+        const b = await req.json();
+        if (!b || typeof b !== "object" || !CLAUDE_ALLOWED_MODELS.has(b.model)) {
+          return new Response(JSON.stringify({ error: { message: "model not allowed" } }), { status: 400, headers: CORS });
+        }
+        b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
+        delete b.stream; delete b.metadata;
+        for (const m of (Array.isArray(b.messages) ? b.messages : [])) {
+          if (!Array.isArray(m?.content)) continue;
+          for (const block of m.content) {
+            const len = block?.source?.data?.length || 0;
+            if ((block?.type === "image" && len > 2800000) || (block?.type === "document" && len > 8000000)) {
+              return new Response(JSON.stringify({ error: { message: "file too large" } }), { status: 400, headers: CORS });
+            }
+          }
+        }
+        const jobId = crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO ai_job (user_id, id, status, created_at, updated_at) VALUES (?, ?, 'running', ?, ?)")
+          .bind(ajUser.id, jobId, Date.now(), Date.now()).run();
+
+        const run = (async () => {
+          try {
+            const r = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+              body: JSON.stringify(b)
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data?.error?.message || `Anthropic ${r.status}`);
+            await env.DB.prepare("UPDATE ai_job SET status='done', result_json=?, updated_at=? WHERE user_id=? AND id=?")
+              .bind(JSON.stringify(data).slice(0, 200000), Date.now(), ajUser.id, jobId).run();
+          } catch (e) {
+            await env.DB.prepare("UPDATE ai_job SET status='error', error=?, updated_at=? WHERE user_id=? AND id=?")
+              .bind(String(e.message).slice(0, 500), Date.now(), ajUser.id, jobId).run().catch(() => {});
+          }
+        })();
+        if (ctx?.waitUntil) ctx.waitUntil(run);
+
+        return new Response(JSON.stringify({ ok: true, job_id: jobId }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/claude/job" && req.method === "GET") {
+      const jUser = await getSessionUser(env.DB, req);
+      if (!jUser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      const id = u.searchParams.get("id") || "";
+      const row = await env.DB.prepare("SELECT status, result_json, error FROM ai_job WHERE user_id = ? AND id = ?").bind(jUser.id, id).first();
+      if (!row) return new Response(JSON.stringify({ ok: false, error: "unknown job" }), { status: 404, headers: CORS });
+      // prune old jobs opportunistically
+      if (Math.random() < 0.1) ctx?.waitUntil?.(env.DB.prepare("DELETE FROM ai_job WHERE updated_at < ?").bind(Date.now() - 86400000).run().catch(() => {}));
+      const body = { ok: true, status: row.status };
+      if (row.status === "done") { try { body.result = JSON.parse(row.result_json); } catch(_) { body.status = "error"; body.error = "corrupt result"; } }
+      if (row.status === "error") body.error = row.error;
+      return new Response(JSON.stringify(body), { headers: CORS });
     }
 
     // ── USDA API proxy ──────────────────────────────────────────────────

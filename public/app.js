@@ -1363,9 +1363,9 @@ function updateSyncStatusUI() {
   if (!el) return;
   const last = getStorage('_syncLastOk', 0);
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
-  el.textContent = !last ? 'Never synced'
+  el.textContent = (!last ? 'Never synced'
     : dirty.length ? `⚠️ Pending: ${dirty.join(', ')} — retries automatically`
-    : `Last synced ${new Date(last).toLocaleTimeString()}`;
+    : `Last synced ${new Date(last).toLocaleTimeString()}`) + ` · build ${BUILD_ID}`;
 }
 // ═══ End D1 log sync ═══
 
@@ -6655,6 +6655,33 @@ async function callClaudeAPIWithRetry(payload) {
   }
 }
 
+// Submit to the async proxy and poll with short requests every 2.5s.
+// Poll-time network blips are ignored — the job keeps running server-side.
+async function callClaudeAPIAsync(payload, onProgress) {
+  let sub;
+  try {
+    sub = await fetch('/api/claude/async', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+  } catch (e) {
+    reportClientError('claude_async_submit', e, { payloadKB: Math.round(JSON.stringify(payload).length / 1024) });
+    throw new Error('Could not reach the server to start the analysis (submit leg) — ' + e.message);
+  }
+  const sd = await sub.json().catch(() => ({}));
+  if (!sub.ok || !sd.ok) throw new Error(sd.error?.message || ('submit failed: ' + sub.status));
+  const t0 = Date.now();
+  while (Date.now() - t0 < 180000) {
+    await new Promise(r => setTimeout(r, 2500));
+    if (onProgress) onProgress(Math.round((Date.now() - t0) / 1000));
+    let d = null;
+    try {
+      const res = await fetch('/api/claude/job?id=' + sd.job_id, { headers: authHeaders() });
+      d = await res.json();
+    } catch (_) { continue; }  // blip — job is still running server-side
+    if (d?.status === 'done') return d.result;
+    if (d?.status === 'error') throw new Error(d.error || 'analysis failed');
+  }
+  throw new Error('analysis timed out after 3 minutes — try again');
+}
+
 async function callClaudeAPI(payload) {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -9307,11 +9334,11 @@ async function analyzeBloodPasteText() {
   status.textContent = 'AI is reading your pasted lab results…';
 
   try {
-    const data = await callClaudeAPIWithRetry({
-      model: 'claude-haiku-4-5-20251001',  // transcription task: same accuracy as opus on real reports, ~2x faster
+    const data = await callClaudeAPIAsync({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
-    });
+    }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
     if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
     const rawText = data.content?.[0]?.text || '';
     // Sanitize common Claude JSON quirks before parsing
@@ -9385,11 +9412,11 @@ async function analyzeBloodReport() {
       ];
     }
 
-    const data = await callClaudeAPIWithRetry({
-      model: 'claude-haiku-4-5-20251001',  // transcription task: same accuracy as opus on real reports, ~2x faster
+    const data = await callClaudeAPIAsync({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
       messages: [{ role: 'user', content: msgContent }]
-    });
+    }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
 
     // Surface API-level errors
     if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
@@ -9427,14 +9454,31 @@ async function analyzeBloodReport() {
 
   } catch(e) {
     console.error('Blood parse error:', e);
+    reportClientError('blood_analyze', e, { fileType: _bloodFileData?.mediaType, hasText: !!_bloodFileData?.extractedText, textLen: (_bloodFileData?.extractedText || '').length, b64Len: (_bloodFileData?.base64 || '').length });
     btn.disabled = false;
     btn.textContent = '🤖 Analyze with AI';
     status.style.color = '#ef4444';
     const netFail = e instanceof TypeError || /failed to fetch|load failed/i.test(e.message || '');
     status.textContent = netFail
-      ? '❌ Connection dropped mid-analysis (takes ~30s) — keep the screen on and tap Analyze again'
+      ? '❌ Network error [build ' + BUILD_ID + '] — details reported, tap Analyze to retry'
       : '❌ ' + (e.message || 'Unknown error');
   }
+}
+
+// Fire-and-forget error telemetry so failures on the phone are debuggable
+function reportClientError(kind, err, extra) {
+  try {
+    fetch('/api/debug/client', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({
+        kind, build: BUILD_ID,
+        message: String(err?.message || err).slice(0, 300),
+        name: err?.name, stack: String(err?.stack || '').slice(0, 500),
+        online: navigator.onLine, swController: !!navigator.serviceWorker?.controller,
+        ua: navigator.userAgent.slice(0, 120), ...extra,
+      })
+    }).catch(() => {});
+  } catch(_) {}
 }
 
 function renderBloodWorkPage() {
