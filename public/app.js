@@ -1023,12 +1023,20 @@ function undoReadinessDeficit() {
 
 // ── TP lifecycle banners (Tier 2, item 10) ───────────────────────────────
 async function checkTPLifecycle() {
-  if (!FLAGS.tpAutoRefresh || !getStorage('tpConnected', null)) return;
+  if (!FLAGS.tpAutoRefresh) return;
   try {
     const res = await fetch('/api/tp/status?nocache=' + Date.now(), { headers: authHeaders(), cache: 'no-store' });
     const d = await res.json();
     const expired = d.status === 'expired' || d.error === 'cookie_expired';
     setStorage('tpLifecycle', { status: expired ? 'expired' : d.status || 'active', last_refreshed_at: d.last_refreshed_at || null, expired_at: d.expired_at || null, checked: Date.now() });
+    // Self-heal: local flag was wiped but the server connection is alive
+    if (d.connected && !getStorage('tpConnected', null)) {
+      setStorage('tpConnected', { athlete: d.athlete, connectedAt: Date.now() });
+      updateTPSettingsUI();
+      setStorage('tpToday', null);        // force a fresh pull
+      fetchTPToday();
+      renderReadinessCard && renderReadinessCard();
+    }
     renderTPBanners();
   } catch(_) {}
 }
