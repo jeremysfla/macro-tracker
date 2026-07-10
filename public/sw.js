@@ -1,7 +1,7 @@
 // Macro Tracker service worker (Tier 2, item 9)
 // Shell: stale-while-revalidate · API GETs: network-first (2s) with cache
 // fallback · push: fetch pending message from server, show notification.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const SHELL_CACHE = 'shell-' + VERSION;
 const API_CACHE = 'api-' + VERSION;
 const SHELL = ['/', '/app.js', '/app.css', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
@@ -41,6 +41,9 @@ self.addEventListener('fetch', e => {
     })());
     return;
   }
+
+  // Volatile endpoints: always live, never cached
+  if (/^\/api\/(tp\/status|readiness\/today|push\/pending)/.test(url.pathname)) return;
 
   if (url.pathname.startsWith('/api/')) {
     // network-first with 2s timeout, fall back to cache, then empty shape

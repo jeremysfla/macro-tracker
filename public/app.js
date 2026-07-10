@@ -1025,7 +1025,7 @@ function undoReadinessDeficit() {
 async function checkTPLifecycle() {
   if (!FLAGS.tpAutoRefresh || !getStorage('tpConnected', null)) return;
   try {
-    const res = await fetch('/api/tp/status', { headers: authHeaders() });
+    const res = await fetch('/api/tp/status?nocache=' + Date.now(), { headers: authHeaders(), cache: 'no-store' });
     const d = await res.json();
     const expired = d.status === 'expired' || d.error === 'cookie_expired';
     setStorage('tpLifecycle', { status: expired ? 'expired' : d.status || 'active', last_refreshed_at: d.last_refreshed_at || null, expired_at: d.expired_at || null, checked: Date.now() });
@@ -5647,6 +5647,19 @@ async function fetchTPToday() {
 
     if (!res.ok || !data.ok) {
       if (data.error === 'cookie_expired') {
+        // Verify before alarming — transient TP 401s and stale SW caches happen.
+        let confirmed = false;
+        try {
+          const v = await fetch('/api/tp/status?nocache=' + Date.now(), { headers: authHeaders(), cache: 'no-store' });
+          const vd = await v.json();
+          confirmed = vd.status === 'expired' || vd.error === 'cookie_expired';
+          if (!confirmed && vd.connected) {
+            setStorage('tpLifecycle', { status: 'active', checked: Date.now() });
+            renderTPBanners();
+            setTimeout(() => fetchTPToday(), 1500);  // retry the sync once
+            return;
+          }
+        } catch(_) { return; }  // network blip — don't touch state
         document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks session expired — reconnect in Settings';
         setStorage('tpLifecycle', { status: 'expired', checked: Date.now() });
         renderTPBanners();
@@ -5662,6 +5675,8 @@ async function fetchTPToday() {
     }
 
     renderGarminCard(data.calories, data.distance, data.duration, data.count);
+    const lc = getStorage('tpLifecycle', null);
+    if (lc && lc.status !== 'active') { setStorage('tpLifecycle', { status: 'active', checked: Date.now() }); renderTPBanners(); }
     // Device-reported workout calories are gross expenditure (include BMR during
     // the run). Our TDEE already covers BMR for the full day, so we only add the
     // NET incremental burn: ~75% of gross is the standard correction.

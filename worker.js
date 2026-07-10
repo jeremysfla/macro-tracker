@@ -247,7 +247,7 @@ async function tpGetAccessToken(env) {
     } catch(_) {}
     return { error: "cookie_expired" };
   }
-  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ?, updated_at = datetime('now') WHERE id = 1")
+  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ? WHERE id = 1")
     .bind(tok.accessToken, new Date(tok.expiresAt).toISOString(), Date.now()).run();
   return { token: tok.accessToken, athleteId: row.athlete_id, athleteName: row.athlete_name };
 }
@@ -1801,7 +1801,9 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
     const h = t.getUTCHours(), m = t.getUTCMinutes();
     try {
       const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
-      if (h === 6 && m === 0) ctx.waitUntil(tpDailyRefresh(env).catch(() => {}));
+      // Every 6h: exchange the cookie to keep the TP session warm (sliding
+      // inactivity windows stay open when the session is used regularly)
+      if (h % 6 === 0 && m === 0) ctx.waitUntil(tpDailyRefresh(env).catch(() => {}));
       if (h === 8 && m === 0 && user) {
         ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
         ctx.waitUntil((async () => {
