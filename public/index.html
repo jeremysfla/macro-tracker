@@ -214,6 +214,15 @@ PROMISE ERROR:
     </div>
   </div>
 
+  <!-- 7-day trends strip (tap → full Trends tab) -->
+  <div class="card" id="todayTrendsStrip" style="display:none;cursor:pointer;padding:12px 14px" onclick="switchTab('history');switchHistoryTab('trends')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">📈 7-Day Trends</div>
+      <div style="font-size:10px;color:var(--text3)">tap for detail ›</div>
+    </div>
+    <div id="trendsStripRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"></div>
+  </div>
+
   <div class="greeting-tile" id="greetingTile">
     <div class="greeting-header">
       <div>
@@ -342,34 +351,6 @@ PROMISE ERROR:
             <span style="font-size:16px">🎤</span> Voice
           </button>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:11px;color:var(--text3);font-weight:600">OR ENTER MANUALLY</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <div class="macro-grid">
-          <input type="number" id="in-calories" placeholder="+ calories (kcal)" />
-          <input type="number" id="in-protein" placeholder="+ protein (g)" />
-          <input type="number" id="in-carbs" placeholder="+ carbs (g)" />
-          <input type="number" id="in-fat" placeholder="+ fat (g)" />
-        </div>
-        <button class="btn-green" style="margin-top:10px" onclick="logMacros()">LOG MEAL</button>
-        <div id="manualSaveSection" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-          <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💾 Save as Quick-Add Food</div>
-          <input type="text" id="manualFoodName" placeholder="Food name (e.g. Oatmeal with berries)" style="margin-bottom:8px"/>
-          <div class="time-slot-picker" id="manualTimeSlotPicker">
-            <button class="ts-btn" data-slot="breakfast" onclick="toggleTimeSlot(this,'manual')">🌅 Breakfast</button>
-            <button class="ts-btn" data-slot="morning" onclick="toggleTimeSlot(this,'manual')">☕ Morning Snack</button>
-            <button class="ts-btn" data-slot="lunch" onclick="toggleTimeSlot(this,'manual')">🥗 Lunch</button>
-            <button class="ts-btn" data-slot="afternoon" onclick="toggleTimeSlot(this,'manual')">🍎 Afternoon</button>
-            <button class="ts-btn" data-slot="dinner" onclick="toggleTimeSlot(this,'manual')">🍽️ Dinner</button>
-            <button class="ts-btn" data-slot="evening" onclick="toggleTimeSlot(this,'manual')">🌙 Evening</button>
-          </div>
-          <button class="btn-save-food" style="margin-top:10px;width:100%" onclick="saveManualFood()">Save Food</button>
-        </div>
-        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none;margin-top:12px">
-          📋 Copy Yesterday's Meals
-        </button>
       </div>
 
       <!-- 5. Food recommendations -->
@@ -617,6 +598,34 @@ PROMISE ERROR:
           <button onclick="clearAllEntries()" style="font-size:11px;font-weight:700;color:var(--red);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:8px;background:var(--red-soft)">Clear All</button>
         </div>
         <div id="foodLogList"></div>
+      </div>
+
+      <!-- Manual entry — moved below the log (quick methods live up top) -->
+      <div class="card">
+        <div class="card-label" style="color:#94a3b8">✍️ Manual Entry</div>
+        <div class="macro-grid">
+          <input type="number" id="in-calories" placeholder="+ calories (kcal)" />
+          <input type="number" id="in-protein" placeholder="+ protein (g)" />
+          <input type="number" id="in-carbs" placeholder="+ carbs (g)" />
+          <input type="number" id="in-fat" placeholder="+ fat (g)" />
+        </div>
+        <button class="btn-green" style="margin-top:10px" onclick="logMacros()">LOG MEAL</button>
+        <div id="manualSaveSection" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💾 Save as Quick-Add Food</div>
+          <input type="text" id="manualFoodName" placeholder="Food name (e.g. Oatmeal with berries)" style="margin-bottom:8px"/>
+          <div class="time-slot-picker" id="manualTimeSlotPicker">
+            <button class="ts-btn" data-slot="breakfast" onclick="toggleTimeSlot(this,'manual')">🌅 Breakfast</button>
+            <button class="ts-btn" data-slot="morning" onclick="toggleTimeSlot(this,'manual')">☕ Morning Snack</button>
+            <button class="ts-btn" data-slot="lunch" onclick="toggleTimeSlot(this,'manual')">🥗 Lunch</button>
+            <button class="ts-btn" data-slot="afternoon" onclick="toggleTimeSlot(this,'manual')">🍎 Afternoon</button>
+            <button class="ts-btn" data-slot="dinner" onclick="toggleTimeSlot(this,'manual')">🍽️ Dinner</button>
+            <button class="ts-btn" data-slot="evening" onclick="toggleTimeSlot(this,'manual')">🌙 Evening</button>
+          </div>
+          <button class="btn-save-food" style="margin-top:10px;width:100%" onclick="saveManualFood()">Save Food</button>
+        </div>
+        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none;margin-top:12px">
+          📋 Copy Yesterday's Meals
+        </button>
       </div>
 
     </div>
@@ -1611,7 +1620,7 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=tpheal2" defer></script>
+<script src="/app.js?v=layout1" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">

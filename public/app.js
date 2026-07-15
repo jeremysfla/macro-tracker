@@ -1356,6 +1356,54 @@ function findMealCopySource() {
   return null;
 }
 
+// ── 7-day trends strip on Today (tap → full Trends tab) ─────────────────
+async function renderTodayTrendsStrip() {
+  const card = document.getElementById('todayTrendsStrip'), row = document.getElementById('trendsStripRow');
+  if (!card || !row) return;
+  let data = null;
+  const cache = getStorage('trendsStripCache', null);
+  if (cache && Date.now() - cache.fetched < 30 * 60 * 1000) data = cache.data;
+  if (!data) {
+    try {
+      const res = await fetch('/api/trends?days=30', { headers: authHeaders() });
+      data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'trends failed');
+      setStorage('trendsStripCache', { data, fetched: Date.now() });
+    } catch (_) { return; }
+  }
+  const day7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const w = (data.weights || []);
+  const w7 = w.filter(x => x.date >= day7);
+  const wDelta = w7.length >= 2 ? w7[w7.length - 1].lbs - w7[0].lbs : null;
+
+  const calByDate = {};
+  for (const f of data.food || []) if (f.calories > 0) calByDate[f.date] = f.calories;
+  for (const c of data.checkins || []) if (c.calories_consumed > 0) calByDate[c.date] = c.calories_consumed;
+  const cals7 = Object.entries(calByDate).filter(([d]) => d >= day7).map(([, v]) => v);
+  const tdee = data.profile?.tdee || TDEE;
+  const avgDeficit = cals7.length ? Math.round(tdee - cals7.reduce((s, v) => s + v, 0) / cals7.length) : null;
+
+  const protTarget = data.profile?.protein || MACROS.protein;
+  const protByDate = {};
+  for (const f of data.food || []) if (f.protein > 0) protByDate[f.date] = f.protein;
+  for (const c of data.checkins || []) if (c.protein_g > 0) protByDate[c.date] = c.protein_g;
+  const protDays = Object.entries(protByDate).filter(([d, v]) => d >= day7 && v >= protTarget * 0.9).length;
+
+  const tss7 = (data.load || []).filter(l => l.date >= day7).reduce((s, l) => s + l.tss, 0);
+
+  const cell = (val, lbl, color) => `
+    <div style="text-align:center;background:var(--surface2);border-radius:10px;padding:8px 2px">
+      <div style="font-size:13px;font-weight:800;color:${color}">${val}</div>
+      <div style="font-size:8.5px;color:var(--text3);font-weight:700;letter-spacing:0.5px;text-transform:uppercase">${lbl}</div>
+    </div>`;
+  row.innerHTML =
+    cell(wDelta == null ? '—' : (wDelta > 0 ? '+' : '') + wDelta.toFixed(1) + ' lb', 'weight 7d', wDelta == null ? 'var(--text3)' : wDelta <= 0 ? '#22c55e' : '#f59e0b') +
+    cell(avgDeficit == null ? '—' : (avgDeficit >= 0 ? '−' : '+') + Math.abs(avgDeficit), 'avg deficit', avgDeficit == null ? 'var(--text3)' : avgDeficit > 0 ? '#22c55e' : '#ef4444') +
+    cell(`${protDays}/7`, 'protein hit', protDays >= 5 ? '#22c55e' : protDays >= 3 ? '#f59e0b' : '#ef4444') +
+    cell(Math.round(tss7), 'week tss', '#3b82f6');
+  card.style.display = 'block';
+}
+
 // ── Coach note (Tier 2, item 6) ──────────────────────────────────────────
 async function renderCoachNote(force) {
   if (!FLAGS.briefCoach) return;
@@ -2508,7 +2556,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   stopWorkoutTimer(); skipRestTimer();  // workout tab removed; timers are legacy no-ops
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); }
@@ -8894,6 +8942,21 @@ async function analyzeBloodReport() {
   }
 }
 
+// Global net: report uncaught errors (max 5/session, deduped)
+let _errReported = {};
+window.addEventListener('error', e => {
+  const key = String(e.message).slice(0, 80);
+  if (Object.keys(_errReported).length >= 5 || _errReported[key]) return;
+  _errReported[key] = true;
+  reportClientError('uncaught', { message: e.message, name: 'Error', stack: `${e.filename}:${e.lineno}:${e.colno}` }, {});
+});
+window.addEventListener('unhandledrejection', e => {
+  const msg = String(e.reason?.message || e.reason).slice(0, 80);
+  if (Object.keys(_errReported).length >= 5 || _errReported[msg]) return;
+  _errReported[msg] = true;
+  reportClientError('unhandled_rejection', e.reason instanceof Error ? e.reason : new Error(msg), {});
+});
+
 // Fire-and-forget error telemetry so failures on the phone are debuggable
 function reportClientError(kind, err, extra) {
   try {
@@ -9848,8 +9911,10 @@ function _initApp() {
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
+  setTimeout(() => safeCall(maybeSendUsageReport, 'usageReport'), 4000);
   safeCall(checkTPLifecycle, 'checkTPLifecycle');
   safeCall(renderReadinessCard, 'renderReadinessCard');
+  safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip');
   // Feature-flag gating (items 2–5)
   try {
     if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';
@@ -10582,6 +10647,15 @@ const CLAUDE_HISTORY_MAX = 20; // keep last 20 messages (10 exchanges)
 let claudeHistory = [];
 
 function getAppContext() {
+  try { return _getAppContextInner(); }
+  catch (e) {
+    reportClientError('app_context', e, {});
+    const m = getStorage('userMacros', MACROS);
+    return `You are Jeremy's personal AI fitness coach. (Context build failed: ${e.message}). Targets: ${m.calories} kcal, ${m.protein}g protein.`;
+  }
+}
+
+function _getAppContextInner() {
   const todayK = todayKey();
   const userMacros = getStorage('userMacros', MACROS);
   const tdee = getStorage('userTDEE', TDEE);
@@ -10876,6 +10950,30 @@ function renderEventList() {
 // ── End Events ──
 
 // ── Interaction Tracker ──
+// Weekly: upload a summarized usage profile so layout decisions use real data
+function maybeSendUsageReport() {
+  try {
+    const last = getStorage('usageReportSent', 0);
+    if (Date.now() - last < 7 * 86400000) return;
+    const log = getStorage('interactionLog', []);
+    if (log.length < 20) return;
+    const by = {};
+    for (const e of log) {
+      const k = e.type + (e.type === 'tab_visit' ? ':' + e.detail : '');
+      by[k] = (by[k] || 0) + 1;
+    }
+    const hours = {};
+    for (const e of log) hours[e.hour] = (hours[e.hour] || 0) + 1;
+    reportClientError('usage_report', new Error('ok'), {
+      events: log.length,
+      span_days: [...new Set(log.map(e => e.date))].length,
+      counts: Object.fromEntries(Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 20)),
+      peak_hours: Object.entries(hours).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([h, n]) => `${h}:00×${n}`),
+    });
+    setStorage('usageReportSent', Date.now());
+  } catch(_) {}
+}
+
 function logInteraction(type, detail) {
   try {
     const log = getStorage('interactionLog', []);
@@ -11057,7 +11155,8 @@ async function sendClaudeMessage() {
 
   } catch(e) {
     document.getElementById(typingId)?.remove();
-    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error'));
+    reportClientError('claude_chat', e, {});
+    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error') + ' — reported for debugging');
   }
 
   document.getElementById('claudeSendBtn').disabled = false;
