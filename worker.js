@@ -1489,6 +1489,35 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
 
+    // ── Google token mint: server-side refresh (kills the hourly chooser) ──
+    if (u.pathname === "/api/google/token" && req.method === "GET") {
+      const gUser = await getSessionUser(env.DB, req);
+      if (!gUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        if (!env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) {
+          return new Response(JSON.stringify({ ok: false, error: "server refresh not configured" }), { status: 501, headers: CORS });
+        }
+        const form = new URLSearchParams({
+          client_id: env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          refresh_token: env.GOOGLE_REFRESH_TOKEN,
+          grant_type: "refresh_token",
+        });
+        const r = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: form.toString(),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.access_token) {
+          return new Response(JSON.stringify({ ok: false, error: d.error_description || d.error || `google ${r.status}` }), { status: 502, headers: CORS });
+        }
+        return new Response(JSON.stringify({ ok: true, access_token: d.access_token, expires_in: d.expires_in || 3600, scope: d.scope || "" }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
     // ── Item 9: store browser timezone for local-time reminders ───────────
     if (u.pathname === "/api/user/tz" && req.method === "POST") {
       const tzUser = await getSessionUser(env.DB, req);

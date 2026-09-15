@@ -6148,6 +6148,8 @@ function initGoogleTokenClient() {
   _googleTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+    // Pin the account so Google never shows the 3-account chooser
+    hint: _currentUser?.email || 'jeremy@dronenerds.com',
     callback: (tokenResponse) => {
       if (tokenResponse.error) {
         console.warn('[Greeting] Token error:', tokenResponse.error);
@@ -6164,14 +6166,30 @@ function initGoogleTokenClient() {
     prompt: '',
   });
 
-  // Auto-request token (silently if already consented)
   requestGreetingToken();
 }
 
-function requestGreetingToken() {
-  if (!_googleTokenClient) return;
+async function requestGreetingToken() {
+  // 1st choice: server-minted token — zero UI, works when the worker has a
+  // valid GOOGLE_REFRESH_TOKEN (OAuth app must be in production status)
   try {
-    _googleTokenClient.requestAccessToken({ prompt: '' });
+    const res = await fetch('/api/google/token', { headers: authHeaders() });
+    const d = await res.json();
+    if (d.ok && d.access_token) {
+      _googleAccessToken = d.access_token;
+      localStorage.setItem('googleAccessToken', d.access_token);
+      localStorage.setItem('googleTokenExpiry', String(Date.now() + (d.expires_in || 3600) * 1000));
+      loadGreetingCalendar();
+      loadGreetingGmail();
+      return;
+    }
+  } catch(_) {}
+  // 2nd: GIS with the account hint — silent when Chrome holds the session,
+  // and at most once per app open (never a re-prompt loop)
+  if (!_googleTokenClient || requestGreetingToken._asked) { renderGreetingNoAuth(); return; }
+  requestGreetingToken._asked = true;
+  try {
+    _googleTokenClient.requestAccessToken({ prompt: '', hint: _currentUser?.email || 'jeremy@dronenerds.com' });
   } catch (e) {
     console.warn('[Greeting] Silent token request failed:', e);
     renderGreetingNoAuth();
@@ -6187,7 +6205,7 @@ function renderGreetingNoAuth() {
 
 function connectGreetingGoogle() {
   if (_googleTokenClient) {
-    _googleTokenClient.requestAccessToken({ prompt: 'consent' });
+    _googleTokenClient.requestAccessToken({ prompt: 'consent', hint: _currentUser?.email || 'jeremy@dronenerds.com' });
   } else {
     initGoogleTokenClient();
   }
@@ -8967,10 +8985,11 @@ function reportClientError(kind, err, extra) {
       online: navigator.onLine, swController: !!navigator.serviceWorker?.controller,
       ua: navigator.userAgent.slice(0, 120), ...extra,
     });
-    // sendBeacon rides on the session cookie and survives page churn
-    let sent = false;
-    try { sent = navigator.sendBeacon?.('/api/debug/client', new Blob([body], { type: 'application/json' })); } catch(_) {}
-    if (!sent) fetch('/api/debug/client', { method: 'POST', headers: authHeaders(), body }).catch(() => {});
+    // fetch first (carries the bearer token); beacon only if fetch can't run —
+    // a queued beacon that 401s server-side is silently lost
+    fetch('/api/debug/client', { method: 'POST', headers: authHeaders(), body, keepalive: true }).catch(() => {
+      try { navigator.sendBeacon?.('/api/debug/client', new Blob([body], { type: 'application/json' })); } catch(_) {}
+    });
   } catch(_) {}
 }
 
@@ -9912,6 +9931,12 @@ function _initApp() {
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
   setTimeout(() => safeCall(maybeSendUsageReport, 'usageReport'), 4000);
+  try {
+    if (Date.now() - getStorage('bootBeatSent', 0) > 86400000) {
+      setStorage('bootBeatSent', Date.now());
+      reportClientError('boot', new Error('ok'), { swController: !!navigator.serviceWorker?.controller });
+    }
+  } catch(_) {}
   safeCall(checkTPLifecycle, 'checkTPLifecycle');
   safeCall(renderReadinessCard, 'renderReadinessCard');
   safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip');
