@@ -94,6 +94,10 @@ async function getSessionUser(db, req) {
 }
 __name(getSessionUser, "getSessionUser");
 
+// Client build shipped with this worker — /api/version lets stale bundles
+// detect themselves and self-heal (bump alongside BUILD_ID in app.js)
+const EXPECTED_CLIENT_BUILD = "macrofix-2026-09-15-3";
+
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
 const SCHEMA_VERSION = 8;
 
@@ -791,6 +795,12 @@ var worker_default = {
           "access-control-allow-headers": "content-type,authorization",
           "access-control-max-age": "86400"
         }
+      });
+    }
+
+    if (u.pathname === "/api/version") {
+      return new Response(JSON.stringify({ ok: true, build: EXPECTED_CLIENT_BUILD }), {
+        headers: { ...CORS, "cache-control": "no-store" }
       });
     }
 
@@ -1832,6 +1842,14 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
       }
     }
 
+    // Shell files revalidate every load — a stale cached index.html/sw.js
+    // once pinned a device to a months-old bundle
+    if (u.pathname === "/" || u.pathname === "/index.html" || u.pathname === "/sw.js") {
+      const assetRes = await env.ASSETS.fetch(req);
+      const h = new Headers(assetRes.headers);
+      h.set("cache-control", "no-cache, must-revalidate");
+      return new Response(assetRes.body, { status: assetRes.status, headers: h });
+    }
     return env.ASSETS.fetch(req);
   },
 

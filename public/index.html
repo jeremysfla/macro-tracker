@@ -1376,6 +1376,16 @@ PROMISE ERROR:
           <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">g</div>
         </div>
       </div>
+      <div class="settings-row" style="margin-top:8px">
+        <div>
+          <div class="settings-row-label">Eat back run calories</div>
+          <div class="settings-row-sub">How much of a run's net burn raises the day's targets</div>
+        </div>
+        <div style="display:flex;background:var(--surface2);border-radius:14px;padding:3px;border:1px solid var(--border)">
+          <button id="eatback60" onclick="setEatBack(0.6,this)" style="padding:5px 12px;border-radius:11px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:var(--green);color:#fff">60%</button>
+          <button id="eatback100" onclick="setEatBack(1.0,this)" style="padding:5px 12px;border-radius:11px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:var(--text3)">100%</button>
+        </div>
+      </div>
       <button class="btn-green" onclick="saveGoalSettings()">💾 Save Goals &amp; Macros</button>
     </div>
 
@@ -1620,7 +1630,7 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=gauth2" defer></script>
+<script src="/app.js?v=macrofix3" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">

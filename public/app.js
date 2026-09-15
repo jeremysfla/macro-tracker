@@ -5317,6 +5317,7 @@ function openSettings() {
   // Reset auto-calc result
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+  try { setEatBack(getEatBackPct(), null); } catch(_) {}
   updateTPSettingsUI();
   updateSyncStatusUI();
   updateBackupStatusUI();
@@ -5341,6 +5342,14 @@ async function saveGoalSettings() {
   setStorage('userTDEE',   tdee);
   localStorage.removeItem('adaptiveMacros');
   localStorage.removeItem('garminAdjustedMacros');
+  // Re-apply today's run burn on top of the NEW base right away — clearing
+  // the old adjustment used to leave targets bump-less until the next TP sync
+  try {
+    const tp = getStorage('tpToday', null);
+    if (tp?.calories > 0 && getStorage('tpAutoAdjust', true)) {
+      adjustMacrosForBurn(Math.round(tp.calories * 0.75));
+    }
+  } catch(_) {}
 
   // Persist to D1 so a page refresh doesn't clobber these with the old server row.
   // The /api/user/profile endpoint expects a full profile body, so preserve the
@@ -5622,6 +5631,23 @@ function openTodayShoeAssign() {
   });
 }
 
+// How much of the net run burn gets added back to targets (0.6 keeps a
+// deficit on run days; 1.0 = eat back everything you burned)
+function getEatBackPct() { return getStorage('eatBackPct', 0.6); }
+
+function setEatBack(pct, btn) {
+  setStorage('eatBackPct', pct);
+  const b60 = document.getElementById('eatback60'), b100 = document.getElementById('eatback100');
+  for (const [el, active] of [[b60, pct === 0.6], [b100, pct === 1.0]]) {
+    if (el) { el.style.background = active ? 'var(--green)' : 'transparent'; el.style.color = active ? '#fff' : 'var(--text3)'; }
+  }
+  if (!btn) return;  // settings-open just reflects the stored choice
+  // Re-apply today's bump at the new ratio immediately
+  const tp = getStorage('tpToday', null);
+  if (tp?.calories > 0 && getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(Math.round(tp.calories * 0.75));
+  showToast(pct === 1 ? 'Eating back 100% of run burn' : 'Eating back 60% of run burn (keeps a deficit)');
+}
+
 function adjustMacrosForBurn(burnCalories) {
   const banner = document.getElementById('garminMacroBanner');
   const text   = document.getElementById('garminMacroText');
@@ -5641,8 +5667,8 @@ function adjustMacrosForBurn(burnCalories) {
     return;
   }
 
-  // Add ~60% of burn back as extra calories (don't eat back 100% — still want a deficit)
-  const extraCals  = Math.round(burnCalories * 0.6);
+  const eatBack    = getEatBackPct();
+  const extraCals  = Math.round(burnCalories * eatBack);
   const extraCarbs = Math.round(extraCals * 0.65 / 4); // 65% from carbs
 
   const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
@@ -5656,7 +5682,8 @@ function adjustMacrosForBurn(burnCalories) {
   setStorage('garminAdjustedMacros', adjusted);
 
   banner.style.display = 'flex';
-  text.textContent = `🟠 Run detected! +${extraCals} kcal → ${adjusted.calories} kcal target, ${adjusted.carbs}g carbs`;
+  const pctLabel = Math.round(getEatBackPct() * 100);
+  text.textContent = `🟠 Run: base ${base.calories} + ${extraCals} eaten back (${pctLabel}% of ${burnCalories} net burn) = ${adjusted.calories} kcal · carbs +${extraCarbs}g`;
 
   // Update rings, targets row, and weekly balance
   renderRings(adjusted);
@@ -9930,6 +9957,24 @@ function _initApp() {
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
+  // Self-heal stale bundles: if the server shipped a newer client, clear
+  // every cache + SW registration and reload (at most once per hour)
+  (async () => {
+    try {
+      const res = await fetch('/api/version', { cache: 'no-store' });
+      const v = await res.json();
+      if (v.build && v.build !== BUILD_ID && Date.now() - getStorage('staleReloadAt', 0) > 3600000) {
+        setStorage('staleReloadAt', Date.now());
+        reportClientError('stale_bundle', new Error(`running ${BUILD_ID}, server has ${v.build}`), {});
+        try {
+          const regs = await navigator.serviceWorker?.getRegistrations() || [];
+          for (const r of regs) await r.unregister();
+          for (const k of await caches.keys()) await caches.delete(k);
+        } catch(_) {}
+        location.reload();
+      }
+    } catch(_) {}
+  })();
   setTimeout(() => safeCall(maybeSendUsageReport, 'usageReport'), 4000);
   try {
     if (Date.now() - getStorage('bootBeatSent', 0) > 86400000) {
