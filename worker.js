@@ -8,9 +8,11 @@ const ALLOWED_EMAILS = new Set(['jeremy@dronenerds.com']);
 
 const CLAUDE_ALLOWED_MODELS = new Set([
   'claude-haiku-4-5-20251001',
-  'claude-sonnet-4-5-20250929',
+  'claude-opus-5',     // current generation (2026)
+  'claude-sonnet-5',   // current generation (2026) — cheaper than sonnet-4-6
+  'claude-sonnet-4-5-20250929',  // older bundles cached on devices still request these
   'claude-sonnet-4-6',
-  'claude-opus-4-6',   // older bundles cached on devices still request this
+  'claude-opus-4-6',
   'claude-opus-4-7',
 ]);
 const CLAUDE_MAX_TOKENS_CAP = 8192;  // bloodwork parsing legitimately needs 8k out
@@ -1039,9 +1041,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
             }
           }
         }
+        const claudeHeaders = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+        if (b.model === "claude-opus-5") {
+          claudeHeaders["anthropic-beta"] = "server-side-fallback-2026-07-01";
+          b.fallbacks = "default";  // auto-reroute on safety refusals
+        }
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+          headers: claudeHeaders,
           body: JSON.stringify(b)
         });
         const data = await r.json();
@@ -1090,9 +1097,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
 
         const run = (async () => {
           try {
+            const jobHeaders = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+            if (b.model === "claude-opus-5") {
+              jobHeaders["anthropic-beta"] = "server-side-fallback-2026-07-01";
+              b.fallbacks = "default";
+            }
             const r = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
-              headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+              headers: jobHeaders,
               body: JSON.stringify(b)
             });
             const data = await r.json();

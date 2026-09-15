@@ -3830,7 +3830,7 @@ async function scanNutritionLabel(barcode, productName) {
 
       try {
         const resp = await callClaudeAPI({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-5',
           max_tokens: 512,
           messages: [{role:'user', content:[
             {type:'image', source:{type:'base64', media_type:'image/jpeg', data:base64}},
@@ -4118,7 +4118,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     msgEl.textContent = 'Identifying food and calculating macros…';
 
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
       messages: [{role:'user', content:[
         {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
@@ -7944,7 +7944,7 @@ Closet shoes:\n`;
 
     try {
       const data = await callClaudeAPI({
-        model: 'claude-opus-4-7',
+        model: 'claude-opus-5',
         max_tokens: 400,
         messages:[{ role:'user', content: contentArr }]
       });
@@ -9598,7 +9598,7 @@ async function generateBloodAIInsights(entry) {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-7',
+      model: 'claude-opus-5',
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -9634,7 +9634,7 @@ async function analyzeBloodWithNutrition() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-7',
+      model: 'claude-opus-5',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -10340,7 +10340,7 @@ async function analyzeMealDescription() {
 
   try {
     const decompData = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 800,
       messages: [{ role: 'user', content: decompPrompt }]
     });
@@ -10392,7 +10392,7 @@ async function analyzeMealDescription() {
         'Ingredients: ' + notFound.map(r => r.ing.name + ' ' + r.ing.grams + 'g').join(', ');
       try {
         const estData = await callClaudeAPI({
-          model: 'claude-sonnet-4-6', max_tokens: 800,
+          model: 'claude-sonnet-5', max_tokens: 800,
           messages: [{ role: 'user', content: estimatePrompt }]
         });
         const estRaw = (estData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
@@ -11130,9 +11130,11 @@ async function sendClaudeMessage() {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({
-        model: 'claude-opus-4-7',
-        max_tokens: 1024,
-        system: getAppContext(),
+        model: 'claude-opus-5',
+        max_tokens: 4096,  // opus-5 thinks adaptively; thinking tokens count against this
+        // cache_control: the big app context (30d history) is cached across
+        // turns — later messages in a chat reuse it at 10% input cost
+        system: [{ type: 'text', text: getAppContext(), cache_control: { type: 'ephemeral' } }],
         messages: claudeHistory
       })
     });
@@ -11998,7 +12000,7 @@ ${JSON.stringify(days, null, 2)}
 Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 area to improve. Max 80 words.`;
 
   try {
-    const resp = await callClaudeAPI({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{role:'user',content:prompt}] });
+    const resp = await callClaudeAPI({ model:'claude-sonnet-5', max_tokens:200, messages:[{role:'user',content:prompt}] });
     el.textContent = resp?.content?.[0]?.text || 'Keep logging consistently for better insights!';
   } catch(e) {
     el.textContent = 'Unable to generate summary right now. Keep up the great work!';
@@ -12065,7 +12067,7 @@ async function getMealSuggestions() {
 
   try {
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 400,
       messages: [{
         role: 'user',
