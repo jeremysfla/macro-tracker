@@ -1,5 +1,8 @@
 
 
+const BUILD_ID = 'macrofix-2026-09-16-4';
+try { console.log('[build]', BUILD_ID); } catch(_) {}
+
 // ── Feature flags (Tier 1 items 2–5) — flip to false to disable without redeploying the rest ──
 const FLAGS = {
   voiceLog:     true,   // item 2: voice food entry
@@ -9963,9 +9966,11 @@ function _initApp() {
     try {
       const res = await fetch('/api/version', { cache: 'no-store' });
       const v = await res.json();
-      if (v.build && v.build !== BUILD_ID && Date.now() - getStorage('staleReloadAt', 0) > 3600000) {
-        setStorage('staleReloadAt', Date.now());
-        reportClientError('stale_bundle', new Error(`running ${BUILD_ID}, server has ${v.build}`), {});
+      let alreadyTried = false;
+      try { alreadyTried = sessionStorage.getItem('staleReloadTried') === '1'; } catch(_) {}
+      if (v.build && v.build !== BUILD_ID && !alreadyTried) {
+        try { sessionStorage.setItem('staleReloadTried', '1'); } catch(_) {}
+        reportClientError('stale_bundle', new Error('running ' + BUILD_ID + ', server has ' + v.build), {});
         try {
           const regs = await navigator.serviceWorker?.getRegistrations() || [];
           for (const r of regs) await r.unregister();
