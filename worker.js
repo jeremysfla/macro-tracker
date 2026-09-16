@@ -96,7 +96,7 @@ __name(getSessionUser, "getSessionUser");
 
 // Client build shipped with this worker — /api/version lets stale bundles
 // detect themselves and self-heal (bump alongside BUILD_ID in app.js)
-const EXPECTED_CLIENT_BUILD = "macrofix-2026-09-16-4";
+const EXPECTED_CLIENT_BUILD = "aiupgrade-2026-09-16-5";
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
 const SCHEMA_VERSION = 8;
@@ -1030,6 +1030,35 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
     }
 
     // ── Claude proxy (now auth-protected) ───────────────────────────────
+    if (u.pathname === "/api/claude/stream" && req.method === "POST") {
+      const suser = await getSessionUser(env.DB, req);
+      if (!suser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      try {
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
+        const b = await req.json();
+        if (!b || typeof b !== "object" || !CLAUDE_ALLOWED_MODELS.has(b.model)) {
+          return new Response(JSON.stringify({ error: { message: "model not allowed" } }), { status: 400, headers: CORS });
+        }
+        b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
+        b.stream = true;
+        delete b.metadata;
+        const h = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+        if (b.model === "claude-opus-5") { h["anthropic-beta"] = "server-side-fallback-2026-07-01"; b.fallbacks = "default"; }
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: h, body: JSON.stringify(b) });
+        if (!r.ok) {
+          const err = await r.text();
+          return new Response(err, { status: r.status, headers: CORS });
+        }
+        // Pipe the SSE stream straight through to the client
+        return new Response(r.body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "cache-control": "no-cache", "access-control-allow-origin": "*" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS });
+      }
+    }
+
     if (u.pathname === "/api/claude" && req.method === "POST") {
       const user = await getSessionUser(env.DB, req);
       if (!user) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });

@@ -1,6 +1,31 @@
 
 
-const BUILD_ID = 'macrofix-2026-09-16-4';
+const BUILD_ID = 'aiupgrade-2026-09-16-5';
+const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
+const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
+  entries:{ type:'array', items:{ type:'object', additionalProperties:false,
+    required:['name','calories','protein_g','carbs_g','fat_g','quality'],
+    properties:{ name:{type:'string'}, grams:{type:['number','null']}, calories:{type:'number'},
+      protein_g:{type:'number'}, carbs_g:{type:'number'}, fat_g:{type:'number'},
+      quality:{type:'string', enum:['full','partial','estimated']} } } } } };
+const SCHEMA_PHOTO = { type:'object', additionalProperties:false,
+  required:['meal_name','items','total_calories','total_protein','total_carbs','total_fat','confidence'],
+  properties:{ meal_name:{type:'string'},
+    items:{ type:'array', items:{ type:'object', additionalProperties:false,
+      required:['name','calories','protein','carbs','fat'],
+      properties:{ name:{type:'string'}, grams:{type:['number','null']}, calories:{type:'number'},
+        protein:{type:'number'}, carbs:{type:'number'}, fat:{type:'number'}, notes:{type:['string','null']} } } },
+    total_calories:{type:'number'}, total_protein:{type:'number'}, total_carbs:{type:'number'}, total_fat:{type:'number'},
+    confidence:{type:'string', enum:['high','medium','low']}, portion_notes:{type:['string','null']} } };
+const SCHEMA_BLOOD = { type:'object', additionalProperties:false, required:['test_date','markers'], properties:{
+  test_date:{type:['string','null']}, lab_name:{type:['string','null']},
+  markers:{ type:'array', items:{ type:'object', additionalProperties:false,
+    required:['name','value'],
+    properties:{ name:{type:'string'}, key:{type:['string','null']}, value:{type:['number','null']},
+      unit:{type:['string','null']}, ref_low:{type:['number','null']}, ref_high:{type:['number','null']},
+      flag:{type:['string','null']} } } } } };
+
+
 try { console.log('[build]', BUILD_ID); } catch(_) {}
 
 // ── Feature flags (Tier 1 items 2–5) — flip to false to disable without redeploying the rest ──
@@ -4123,6 +4148,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const resp = await callClaudeAPI({
       model: 'claude-sonnet-5',
       max_tokens: 1024,
+      output_config: _SO(SCHEMA_PHOTO),  // structured outputs
       messages: [{role:'user', content:[
         {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
         {type:'text', text:prompt}
@@ -5223,6 +5249,7 @@ Return ONLY valid JSON, no markdown:
     const resp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
+      output_config: _SO(SCHEMA_VOICE),  // structured outputs — guaranteed schema-valid JSON
       messages: [{ role: 'user', content: prompt }]
     });
     const raw = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
@@ -8862,6 +8889,7 @@ async function analyzeBloodPasteText() {
     const data = await callClaudeAPIAsync({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
+      output_config: _SO(SCHEMA_BLOOD),  // structured outputs — no more JSON parse failures
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
     }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
     if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
@@ -8940,6 +8968,7 @@ async function analyzeBloodReport() {
     const data = await callClaudeAPIAsync({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
+      output_config: _SO(SCHEMA_BLOOD),  // structured outputs
       messages: [{ role: 'user', content: msgContent }]
     }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
 
@@ -11200,34 +11229,64 @@ async function sendClaudeMessage() {
 
   document.getElementById('claudeSendBtn').disabled = true;
 
+  const body = JSON.stringify({
+    model: 'claude-opus-5',
+    max_tokens: 4096,  // opus-5 thinks adaptively; thinking tokens count against this
+    // cache_control: the big app context (30d history) is cached across turns
+    system: [{ type: 'text', text: getAppContext(), cache_control: { type: 'ephemeral' } }],
+    messages: claudeHistory
+  });
   try {
-    const resp = await fetch('/api/claude', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        model: 'claude-opus-5',
-        max_tokens: 4096,  // opus-5 thinks adaptively; thinking tokens count against this
-        // cache_control: the big app context (30d history) is cached across
-        // turns — later messages in a chat reuse it at 10% input cost
-        system: [{ type: 'text', text: getAppContext(), cache_control: { type: 'ephemeral' } }],
-        messages: claudeHistory
-      })
-    });
-
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    const reply = data.content?.[0]?.text || 'Sorry, I had trouble responding.';
-
-    // Remove typing indicator
+    // Stream the response so text appears live instead of after a long pause
+    const resp = await fetch('/api/claude/stream', { method: 'POST', headers: authHeaders(), body });
+    if (!resp.ok || !resp.body) {
+      let em = 'HTTP ' + resp.status;
+      try { em = (await resp.json()).error?.message || em; } catch(_) {}
+      throw new Error(em);
+    }
     document.getElementById(typingId)?.remove();
 
-    claudeHistory.push({ role: 'assistant', content: reply });
-    // Cap history to prevent unbounded token growth
-    if (claudeHistory.length > CLAUDE_HISTORY_MAX) {
-      claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
+    // Live bubble that we grow as deltas arrive
+    const liveId = 'live_' + Date.now();
+    appendClaudeMessage('assistant', '', liveId);
+    const liveInner = document.querySelector('#' + liveId + ' [data-live]');
+    const container = document.getElementById('claudeChatMessages');
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', reply = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();  // keep partial line
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(payload);
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+            reply += ev.delta.text;
+            if (liveInner) {
+              liveInner.innerHTML = esc(reply.replace(/REMEMBER:\s*.+/gi, '')).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
+              container.scrollTop = container.scrollHeight;
+            }
+          } else if (ev.type === 'error') {
+            throw new Error(ev.error?.message || 'stream error');
+          }
+        } catch (pe) { if (pe.message !== 'stream error') continue; else throw pe; }
+      }
     }
+    if (!reply) reply = 'Sorry, I had trouble responding.';
+
+    claudeHistory.push({ role: 'assistant', content: reply });
+    if (claudeHistory.length > CLAUDE_HISTORY_MAX) claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
     processClaudeMemory(reply);
+    // Final render with full markdown formatting, replacing the live bubble
     const displayReply = reply.replace(/REMEMBER:\s*.+/gi, '').trim();
+    document.getElementById(liveId)?.remove();
     appendClaudeMessage('assistant', displayReply);
 
   } catch(e) {
@@ -11275,6 +11334,7 @@ function appendClaudeMessage(role, text, id) {
     } else {
       // Simple response - styled bubble
       const inner = document.createElement('div');
+      inner.setAttribute('data-live', '1');
       inner.style.cssText = 'padding:11px 15px;border-radius:18px 18px 18px 4px;background:#111827;color:#e2e8f0;border:1px solid #1e293b';
       inner.innerHTML = esc(text).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
       bubble.appendChild(inner);
