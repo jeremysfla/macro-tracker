@@ -96,7 +96,7 @@ __name(getSessionUser, "getSessionUser");
 
 // Client build shipped with this worker — /api/version lets stale bundles
 // detect themselves and self-heal (bump alongside BUILD_ID in app.js)
-const EXPECTED_CLIENT_BUILD = "rearcam-2026-09-17-1";
+const EXPECTED_CLIENT_BUILD = "checkinedit-2026-09-17-2";
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
 const SCHEMA_VERSION = 8;

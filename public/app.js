@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'rearcam-2026-09-17-1';
+const BUILD_ID = 'checkinedit-2026-09-17-2';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -11897,15 +11897,20 @@ function skipWelcomeCheckin() {
 }
 
 function reopenCheckin() {
-  // Allow editing — clear the date lock and show modal with existing values
+  // Allow editing — show the modal pre-filled with today's existing answers
   const key = dateToKey(nowEST());
   const log = getMoodLog();
   const today = log[key] || {};
-  _wmState = { energy: today.energy || null, mood: today.mood || null };
+  _wmState = {
+    energy: today.energy || null,
+    mood: today.mood || null,
+    workedOut: (typeof today.workedOut === 'boolean') ? today.workedOut : null,
+  };
   showWelcomeModal();
   // Re-highlight existing selections
   if (_wmState.energy) wmSetMood('energy', _wmState.energy);
   if (_wmState.mood)   wmSetMood('mood',   _wmState.mood);
+  if (_wmState.workedOut !== null) wmSetWorkout(_wmState.workedOut);
 }
 
 function updateCheckinSummaryCard() {
@@ -11920,7 +11925,8 @@ function updateCheckinSummaryCard() {
     const mEmoji = today.mood   ? MOOD_EMOJIS_MAP[today.mood-1]     : '😐';
     const summaryEl = document.getElementById('moodSummaryText');
     const energyEl  = document.getElementById('moodSummaryEnergy');
-    if (summaryEl) summaryEl.textContent = `Energy ${eEmoji} ${today.energy || '–'}/5 · Mood ${mEmoji} ${today.mood || '–'}/5`;
+    const wk = today.workedOut === true ? ' · 💪 Worked out' : today.workedOut === false ? ' · 😴 Rest day' : ' · 💪 tap Edit to log workout';
+    if (summaryEl) summaryEl.textContent = `Energy ${eEmoji} ${today.energy || '–'}/5 · Mood ${mEmoji} ${today.mood || '–'}/5${wk}`;
     if (energyEl)  energyEl.textContent  = eEmoji;
     card.style.display = 'block';
   } else {
