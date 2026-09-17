@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'aiupgrade-2026-09-16-5';
+const BUILD_ID = 'rearcam-2026-09-17-1';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -4557,7 +4557,13 @@ function closePhotoModal() {
   resetPhoto();
 }
 
-function triggerCamera() { document.getElementById('cameraInput').click(); }
+function triggerCamera() {
+  // Some Android browsers ignore the static capture attribute and open the
+  // selfie camera — re-assert 'environment' (rear) as a property at click time
+  const inp = document.getElementById('cameraInput');
+  try { inp.setAttribute('capture', 'environment'); inp.capture = 'environment'; } catch(_) {}
+  inp.click();
+}
 function triggerGallery() { document.getElementById('galleryInput').click(); }
 
 // Downscale to ≤1024px max edge, JPEG q0.85 — keeps uploads small (worker caps ~2MB)
