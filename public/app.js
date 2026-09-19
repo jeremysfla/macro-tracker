@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'checkinedit-2026-09-17-2';
+const BUILD_ID = 'weightfix-2026-09-19-1';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -5929,6 +5929,18 @@ function renderWeightTrend() {
     statBlock.style.display = 'none';
     return;
   }
+
+  // Goal params come from userGoals now (the old GOAL_WEIGHT/START_WEIGHT/
+  // GOAL_DAYS constants were removed — referencing them threw a
+  // ReferenceError that aborted the whole Today render chain)
+  const _g = getStorage('userGoals', {});
+  const GOAL_WEIGHT  = Number(_g.goal) || 163;
+  const START_WEIGHT = Number(_g.weight) || entries[0].weight;
+  const GOAL_DAYS = (() => {
+    if (!_g.goalDate) return 84;  // ~12-week default when no target date set
+    const d = Math.round((new Date(_g.goalDate + 'T12:00:00') - new Date(entries[0].date + 'T12:00:00')) / 86400000);
+    return d > 0 ? d : 84;
+  })();
 
   // Latest weight
   const latest = entries[entries.length - 1];
