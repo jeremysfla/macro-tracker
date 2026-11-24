@@ -105,6 +105,37 @@ function _bodyRender() {
   _bodyMountCompare();
   _bodyMountThumbs();
   _bodySchedulePoll();
+  renderBodyHomeCard();
+}
+
+// ── Home-screen quick capture ───────────────────────────────────────────
+function renderBodyHomeCard() {
+  const el = document.getElementById('bodyHomeCard');
+  if (!el) return;
+  if (!_body.loaded && !_body.homeLoading) {
+    _body.homeLoading = true;
+    _bodyLoad().then(renderBodyHomeCard).catch(() => {}).finally(() => { _body.homeLoading = false; });
+  }
+  const last = _body.photos[_body.photos.length - 1];
+  const lastLine = !_body.loaded ? ''
+    : last ? `Last photo ${esc(_bodyFmtDate(last.date))}${last.est_bf_pct != null ? ' · ' + last.est_bf_pct + '% AI body fat' : (last.est_status === 'pending' ? ' · estimating…' : '')}`
+    : 'No photos yet — take your first one.';
+  el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div class="body-title">📸 Body photo</div>
+      <button class="body-link" style="padding:0" onclick="switchTab('history');switchHistoryTab('body')">View progress ›</button>
+    </div>
+    <div class="body-sub">${lastLine}</div>
+    <div class="body-chips" style="margin:10px 0">
+      ${BODY_POSES.map(([k, label]) => `<button class="body-chip${_body.addPose === k ? ' on' : ''}" onclick="bodySetAddPose('${k}')">${label}</button>`).join('')}
+    </div>
+    ${_body.uploading
+      ? `<div class="body-busy"><span class="body-spin"></span>${esc(_body.uploading)}</div>`
+      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button class="btn-scan" onclick="document.getElementById('bodyHomeCamInput').click()">📷 Camera</button>
+          <button class="btn-scan" onclick="document.getElementById('bodyHomeGalInput').click()">🖼️ Gallery</button>
+        </div>`}
+    <input type="file" id="bodyHomeCamInput" accept="image/*" capture="user" style="display:none" onchange="bodyHandleFile(this)">
+    <input type="file" id="bodyHomeGalInput" accept="image/*" style="display:none" onchange="bodyHandleFile(this)">`;
 }
 
 // ── Add photo ───────────────────────────────────────────────────────────
@@ -586,3 +617,5 @@ async function bodyDeletePhoto(id) {
 }
 
 window.addEventListener('resize', () => { if (_bodyVisible()) _bodyApplyLayout(); });
+// The home card needs a session; app.js re-renders it on every Today visit too
+document.addEventListener('DOMContentLoaded', () => setTimeout(renderBodyHomeCard, 1500));

@@ -841,3 +841,6 @@
 .body-thumb-date { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,0.75)); padding: 14px 6px 5px; text-align: left; text-transform: capitalize; }
 .body-sheet-bg { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,0.7); display: flex; align-items: flex-end; justify-content: center; }
 .body-sheet { width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; background: var(--surface); border-radius: 20px 20px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); }
+
+/* Home sections the user removed: kept in the DOM for the render code, never shown */
+.home-removed { display: none !important; }

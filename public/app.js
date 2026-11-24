@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'bodyphotos-2026-11-24-1';
+const BUILD_ID = 'homelayout-2026-11-24-2';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -35,7 +35,7 @@ const FLAGS = {
   trainingLoad: true,   // item 3: CTL/ATL/TSB
   fueling:      true,   // item 4: planned-workout fueling
   trends:       true,   // item 5: insights tab
-  briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
+  briefCoach:   false,  // item 6: coach note — removed from the home screen at the user's request
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          true,   // item 9: PWA install + web push
@@ -2584,7 +2584,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'today') { safeCall(renderBodyHomeCard, 'renderBodyHomeCard'); selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   stopWorkoutTimer(); skipRestTimer();  // workout tab removed; timers are legacy no-ops
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); }
