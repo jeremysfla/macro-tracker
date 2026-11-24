@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'weightfix-2026-09-19-1';
+const BUILD_ID = 'bodyphotos-2026-11-24-1';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -8367,7 +8367,7 @@ function onStravaRunSynced(runData) {
 // ═══════════════════════════════════════════════════════
 
 function switchHistoryTab(tab) {
-  ['blood','nutr','trends'].forEach(t => {
+  ['blood','nutr','trends','body'].forEach(t => {
     const el = document.getElementById('historyTab-'+t);
     const btn = document.getElementById('htab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
@@ -8375,6 +8375,7 @@ function switchHistoryTab(tab) {
   });
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
+  if (tab === 'body')   safeCall(renderBodyPage, 'renderBodyPage');
   if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
 }
 

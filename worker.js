@@ -1,3 +1,5 @@
+import { handleBody } from "./body.js";
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -96,10 +98,10 @@ __name(getSessionUser, "getSessionUser");
 
 // Client build shipped with this worker — /api/version lets stale bundles
 // detect themselves and self-heal (bump alongside BUILD_ID in app.js)
-const EXPECTED_CLIENT_BUILD = "weightfix-2026-09-19-1";
+const EXPECTED_CLIENT_BUILD = "bodyphotos-2026-11-24-1";
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -151,7 +153,7 @@ __name(logUpsertStmt, "logUpsertStmt");
 
 // ── Backups (Tier 2, item 7): nightly D1 → R2 NDJSON dumps ──────────────
 const BACKUP_TABLES = ["users", "sessions", "daily_checkin", "brief_cache", "tp_auth",
-  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences"];
+  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences", "body_photo", "body_analysis"];
 
 async function sha256Hex(buf) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -1107,6 +1109,13 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       } catch (e) {
         return new Response(JSON.stringify({ ok: false }), { status: 500, headers: CORS });
       }
+    }
+
+    // ── Body progress photos (R2 + AI estimate/analysis) — see body.js ──
+    if (u.pathname.startsWith("/api/body/")) {
+      const bodyUser = await getSessionUser(env.DB, req);
+      if (!bodyUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
+      return handleBody(req, env, ctx, bodyUser, u);
     }
 
     // ── Async Claude proxy: submit → poll (mobile-safe for long analyses) ──

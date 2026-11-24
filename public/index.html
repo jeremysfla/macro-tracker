@@ -663,7 +663,11 @@ PROMISE ERROR:
         <button id="htab-blood"   class="htab-btn htab-active" onclick="switchHistoryTab('blood')">🩸 Blood</button>
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
+        <button id="htab-body"    class="htab-btn"             onclick="switchHistoryTab('body')">📸 Body</button>
       </div>
+
+      <!-- BODY PROGRESS PHOTOS (rendered by body.js) -->
+      <div id="historyTab-body" style="display:none"><div id="bodyRoot"></div></div>
 
       <!-- LIFT HISTORY -->
       
@@ -1630,7 +1634,8 @@ PROMISE ERROR:
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js?v=weightfix1" defer></script>
+<script src="/app.js?v=bodyphotos1" defer></script>
+<script src="/body.js?v=bodyphotos1" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
