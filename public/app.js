@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'homelayout-2026-11-24-2';
+const BUILD_ID = 'nogreeting-2026-11-24-3';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -36,6 +36,7 @@ const FLAGS = {
   fueling:      true,   // item 4: planned-workout fueling
   trends:       true,   // item 5: insights tab
   briefCoach:   false,  // item 6: coach note — removed from the home screen at the user's request
+  greetingTile: false,  // "Good morning" tile (schedule, emails, quote) — removed at the user's request
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          true,   // item 9: PWA install + web push
@@ -6188,6 +6189,9 @@ function getTimeGreeting() {
 }
 
 function initGreetingTile() {
+  // Greeting tile removed from the home screen at the user's request: skip the
+  // quote, calendar and Gmail loads (and the Google token request behind them)
+  if (!FLAGS.greetingTile) return;
   // Set greeting and date
   const hello = document.getElementById('greetingHello');
   const dateEl = document.getElementById('greetingDate');
