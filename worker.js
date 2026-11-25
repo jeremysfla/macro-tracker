@@ -1,5 +1,5 @@
 import { handleBody } from "./body.js";
-import { handleGarmin } from "./garmin.js";
+import { handleGarmin, garminSync } from "./garmin.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -102,7 +102,7 @@ __name(getSessionUser, "getSessionUser");
 const EXPECTED_CLIENT_BUILD = "nogreeting-2026-11-24-3";
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -154,7 +154,7 @@ __name(logUpsertStmt, "logUpsertStmt");
 
 // ── Backups (Tier 2, item 7): nightly D1 → R2 NDJSON dumps ──────────────
 const BACKUP_TABLES = ["users", "sessions", "daily_checkin", "brief_cache", "tp_auth",
-  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences", "body_photo", "body_analysis"];
+  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences", "body_photo", "body_analysis", "garmin_daily", "garmin_activity"];
 
 async function sha256Hex(buf) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -1123,7 +1123,10 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
     if (u.pathname.startsWith("/api/garmin/")) {
       const garminUser = await getSessionUser(env.DB, req);
       if (!garminUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
-      return handleGarmin(req, env, ctx, garminUser, u);
+      return handleGarmin(req, env, ctx, garminUser, u, {
+        localDate: userLocalDate,
+        afterSync: (usr, date) => computeReadiness(env, usr.id, date),
+      });
     }
 
     // ── Async Claude proxy: submit → poll (mobile-safe for long analyses) ──
@@ -1923,6 +1926,17 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
         ctx.waitUntil((async () => {
           const full = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
           await computeReadiness(env, full.id, userLocalDate(full));
+        })().catch(() => {}));
+      }
+      // Every 30 min: pull the last 3 days from Garmin (the Personal API has no
+      // webhooks), then refresh today's readiness with whatever arrived
+      if (m % 30 === 0 && user && env.GARMIN_API_KEY) {
+        ctx.waitUntil((async () => {
+          const full = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
+          const end = userLocalDate(full);
+          const start = new Date(new Date(end + "T12:00:00Z").getTime() - 2 * 86400000).toISOString().slice(0, 10);
+          await garminSync(env, full.id, start, end);
+          await computeReadiness(env, full.id, end);
         })().catch(() => {}));
       }
       ctx.waitUntil(runPushScheduler(env).catch(() => {}));  // every 15 min

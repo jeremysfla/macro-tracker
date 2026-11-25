@@ -2,6 +2,9 @@ name = "macro"
 compatibility_date = "2026-02-27"
 workers_dev = true
 main = "worker.js"
+# Keep variables added in the Cloudflare dashboard: without this, every
+# `wrangler deploy` deletes any dashboard variable not listed below.
+keep_vars = true
 
 [assets]
 directory = "./public"
