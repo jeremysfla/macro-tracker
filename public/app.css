@@ -844,3 +844,8 @@
 
 /* Home sections the user removed: kept in the DOM for the render code, never shown */
 .home-removed { display: none !important; }
+
+/* Goal plan summary under the nutrition targets */
+.plan-banner { background: var(--blue-soft); border: 1px solid var(--blue); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+.plan-head { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.plan-line { font-size: 12px; line-height: 1.45; color: var(--text); opacity: 0.85; margin-top: 2px; }

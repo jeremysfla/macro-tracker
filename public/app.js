@@ -1,6 +1,6 @@
 
 
-const BUILD_ID = 'nogreeting-2026-11-24-3';
+const BUILD_ID = 'goalplan-2026-11-25-1';
 const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
 const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
   entries:{ type:'array', items:{ type:'object', additionalProperties:false,
@@ -2585,7 +2585,7 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { safeCall(renderBodyHomeCard, 'renderBodyHomeCard'); selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  if (name === 'today') { safeCall(renderBodyHomeCard, 'renderBodyHomeCard'); if (typeof refreshGoalPlan === 'function') refreshGoalPlan(); selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
   stopWorkoutTimer(); skipRestTimer();  // workout tab removed; timers are legacy no-ops
   if (name === 'program') { renderProgramPage(); renderEventList(); }
   if (name === 'history') { renderBloodWorkPage(); }
@@ -5421,6 +5421,15 @@ async function saveGoalSettings() {
   updateHeaderDate();
   renderEventCountdowns();
   showToast('✅ Goals & macros saved!');
+
+  // The goal plan follows the goal weight and date set here; it then recomputes
+  // the calorie and carb targets (protein and fat stay as entered)
+  if (typeof goalPlanActive === 'function' && goalPlanActive() && goalDate) {
+    try {
+      await fetch('/api/garmin/plan', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ goal_weight: g, goal_date: goalDate }) });
+      await refreshGoalPlan();
+    } catch (_) {}
+  }
 }
 
 function updateMacroTargetsRow() {
@@ -5704,7 +5713,10 @@ function adjustMacrosForBurn(burnCalories) {
     return;
   }
 
-  const eatBack    = getEatBackPct();
+  // Under the goal plan the deficit already lives in the base target, and the burn
+  // passed in is Garmin's net workout figure, so all of it is added back
+  const onPlan     = typeof goalPlanActive === 'function' && goalPlanActive();
+  const eatBack    = onPlan ? 1 : getEatBackPct();
   const extraCals  = Math.round(burnCalories * eatBack);
   const extraCarbs = Math.round(extraCals * 0.65 / 4); // 65% from carbs
 
@@ -5719,8 +5731,10 @@ function adjustMacrosForBurn(burnCalories) {
   setStorage('garminAdjustedMacros', adjusted);
 
   banner.style.display = 'flex';
-  const pctLabel = Math.round(getEatBackPct() * 100);
-  text.textContent = `🟠 Run: base ${base.calories} + ${extraCals} eaten back (${pctLabel}% of ${burnCalories} net burn) = ${adjusted.calories} kcal · carbs +${extraCarbs}g`;
+  const pctLabel = Math.round(eatBack * 100);
+  text.textContent = onPlan
+    ? `🟠 Workout: base ${base.calories} + ${extraCals} burned = ${adjusted.calories} kcal · carbs +${extraCarbs}g`
+    : `🟠 Run: base ${base.calories} + ${extraCals} eaten back (${pctLabel}% of ${burnCalories} net burn) = ${adjusted.calories} kcal · carbs +${extraCarbs}g`;
 
   // Update rings, targets row, and weekly balance
   renderRings(adjusted);
@@ -5801,7 +5815,9 @@ async function fetchTPToday() {
     // the run). Our TDEE already covers BMR for the full day, so we only add the
     // NET incremental burn: ~75% of gross is the standard correction.
     const netBurn = Math.round((data.calories || 0) * 0.75);
-    if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
+    // The goal plan sets today's target from Garmin's own workout numbers instead
+    if (typeof goalPlanActive === 'function' && goalPlanActive()) safeCall(refreshGoalPlan, 'refreshGoalPlan');
+    else if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
     setStorage('tpToday', { calories: data.calories, distance: data.distance, duration: data.duration, fetched: Date.now() });
     renderShoeStravaCard();
     // Items 3+4: server recomputes load in the background; refresh planned fueling now
@@ -6001,6 +6017,10 @@ function renderWeightTrend() {
 
 // ── Adaptive Macro Adjustment ──
 function checkAdaptiveMacros() {
+  // The goal plan already adjusts the target from the weight trend
+  if (typeof goalPlanActive === 'function' && goalPlanActive()) return;
+  // GOAL_WEEKLY_LB was a removed constant; referencing it threw once 14 weigh-ins existed
+  const GOAL_WEEKLY_LB = 1;
   const entries = getWeightTrend();
   if (entries.length < 7) return; // Need at least a week of data
 
@@ -10074,7 +10094,8 @@ function _initApp() {
   try {
     const burnLog = getStorage('burnLog', {});
     const burn = burnLog[todayKey()];
-    if (burn > 0) {
+    const planOn = typeof goalPlanActive === 'function' && goalPlanActive();   // plan.js restores its own target
+    if (burn > 0 && !planOn) {
       const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
       const extraCals  = Math.round(burn * 0.6);
       const extraCarbs = Math.round(extraCals * 0.65 / 4);

@@ -213,8 +213,121 @@ export async function garminSync(env, userId, startDate, endDate) {
   return { ok, wellness_days: Object.keys(wellness).length, daily_days: Object.keys(daily).length, activities: acts.length, errors };
 }
 
+// ── Goal plan: a daily calorie target that works backward from a goal weight and date ──
+// base target  = average non-exercise burn (Garmin all-day total minus net workout
+//                calories) minus the deficit the goal needs, within safety limits
+// today's target = base + today's net workout calories (eaten back in full, since
+//                the deficit is already built into the base)
+const KCAL_PER_LB = 3500;
+const MAX_DEFICIT_KCAL = 750;          // about 1.5 lb/week
+const MIN_BASE_KCAL = 1500;            // never plan a base intake below this
+const BURN_WINDOW_DAYS = 14;
+const WEIGHT_WINDOW_DAYS = 10;
+const round10 = (v) => Math.round(v / 10) * 10;
+const daysBetween = (a, b) => Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000);
+
+async function ensurePlanTable(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS goal_plan (id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, goal_weight REAL NOT NULL, goal_date TEXT NOT NULL, updated_at INTEGER NOT NULL)").run();
+}
+
+export async function computeGoalPlan(env, user, today) {
+  await ensurePlanTable(env.DB);
+  const cfg = await env.DB.prepare("SELECT enabled, goal_weight, goal_date FROM goal_plan WHERE id = 1").first();
+  if (!cfg || !cfg.enabled) return { ok: true, active: false, reason: cfg ? "off" : "not set up" };
+
+  // Trend weight: mean of the weigh-ins in the last 10 days (scale via Garmin, or logged by hand)
+  const since = addDays(today, -(WEIGHT_WINDOW_DAYS - 1));
+  const [wl, ml] = await Promise.all([
+    env.DB.prepare("SELECT date, weight_lbs FROM wellness WHERE user_id = ? AND weight_lbs IS NOT NULL AND date BETWEEN ? AND ?").bind(user.id, since, today).all(),
+    env.DB.prepare("SELECT date, weight_lbs FROM weight_log WHERE user_id = ? AND date BETWEEN ? AND ?").bind(user.id, since, today).all().catch(() => ({ results: [] })),
+  ]);
+  const byDate = {};
+  for (const r of ml.results || []) byDate[r.date] = r.weight_lbs;
+  for (const r of wl.results || []) byDate[r.date] = r.weight_lbs;      // the scale wins on a shared date
+  const weighIns = Object.entries(byDate).sort((a, b) => a[0].localeCompare(b[0])).slice(-5);
+  let trend = weighIns.length ? weighIns.reduce((s, [, w]) => s + w, 0) / weighIns.length : null;
+  let weightStale = false;
+  if (trend == null) {
+    const last = await env.DB.prepare("SELECT weight_lbs FROM wellness WHERE user_id = ? AND weight_lbs IS NOT NULL AND date <= ? ORDER BY date DESC LIMIT 1").bind(user.id, today).first();
+    trend = last?.weight_lbs ?? user.current_weight ?? null;
+    weightStale = true;
+  }
+  if (trend == null) return { ok: true, active: false, reason: "no weight on record" };
+
+  // Non-exercise burn over the last 14 complete days
+  const burnRows = await env.DB.prepare(`SELECT d.date, d.total_kcal,
+      (SELECT SUM(MAX(0, a.calories - COALESCE(a.bmr_calories, 0))) FROM garmin_activity a WHERE a.user_id = d.user_id AND a.date = d.date) AS ex_net
+    FROM garmin_daily d WHERE d.user_id = ? AND d.date BETWEEN ? AND ? AND d.total_kcal > 1200`)
+    .bind(user.id, addDays(today, -BURN_WINDOW_DAYS), addDays(today, -1)).all();
+  const nonEx = (burnRows.results || []).map(r => r.total_kcal - (r.ex_net || 0)).filter(v => v > 1200);
+  const burnFromGarmin = nonEx.length >= 5;
+  const baseBurn = burnFromGarmin ? nonEx.reduce((s, v) => s + v, 0) / nonEx.length : (user.tdee || 2200);
+
+  const todayEx = await env.DB.prepare("SELECT SUM(MAX(0, calories - COALESCE(bmr_calories, 0))) AS net, COUNT(*) AS n FROM garmin_activity WHERE user_id = ? AND date = ?").bind(user.id, today).first();
+  const exerciseNet = Math.round(todayEx?.net || 0);
+
+  const daysLeft = daysBetween(today, cfg.goal_date);
+  const toLose = trend - cfg.goal_weight;
+  let needed = 0, deficit = 0, limit = null;
+  if (toLose > 0 && daysLeft > 0) {
+    needed = toLose * KCAL_PER_LB / daysLeft;
+    deficit = needed;
+    if (deficit > MAX_DEFICIT_KCAL) { deficit = MAX_DEFICIT_KCAL; limit = "max_deficit"; }
+    if (baseBurn - deficit < MIN_BASE_KCAL) { deficit = Math.max(0, baseBurn - MIN_BASE_KCAL); limit = "min_intake"; }
+  }
+  const baseCalories = round10(baseBurn - deficit);
+  const realDeficit = baseBurn - baseCalories;
+  const projected = daysLeft > 0 ? trend - realDeficit * daysLeft / KCAL_PER_LB : trend;
+  const daysToGoal = toLose > 0 && realDeficit > 0 ? Math.ceil(toLose * KCAL_PER_LB / realDeficit) : (toLose <= 0 ? 0 : null);
+
+  const protein = user.protein || 165, fat = user.fat || 55;
+  const macros = { calories: baseCalories, protein, fat, carbs: Math.max(50, Math.round((baseCalories - protein * 4 - fat * 9) / 4)) };
+
+  return {
+    ok: true, active: true, date: today,
+    goal_weight: cfg.goal_weight, goal_date: cfg.goal_date, days_left: daysLeft,
+    trend_weight: Math.round(trend * 10) / 10, weigh_ins: weighIns.length, weight_stale: weightStale,
+    to_lose: Math.round(toLose * 10) / 10,
+    base_burn: Math.round(baseBurn), burn_from_garmin: burnFromGarmin, burn_days: nonEx.length,
+    needed_deficit: Math.round(needed), deficit: Math.round(realDeficit), limit,
+    lbs_per_week: Math.round(realDeficit * 7 / KCAL_PER_LB * 10) / 10,
+    on_track: toLose <= 0 || (limit === null && daysLeft > 0),
+    projected_weight: Math.round(projected * 10) / 10,
+    projected_goal_date: daysToGoal == null ? null : addDays(today, daysToGoal),
+    macros, exercise_net_today: exerciseNet, exercise_count_today: todayEx?.n || 0,
+    target_today: baseCalories + exerciseNet,
+  };
+}
+
+// Keep the stored profile in step with the plan so every screen and the
+// server-side features read the same base target
+export async function applyGoalPlanToProfile(env, user, today) {
+  const plan = await computeGoalPlan(env, user, today);
+  if (!plan.active) return plan;
+  await env.DB.prepare("UPDATE users SET calories = ?, protein = ?, carbs = ?, fat = ?, tdee = ?, goal_weight = ?, goal_date = ?, current_weight = ? WHERE id = ?")
+    .bind(plan.macros.calories, plan.macros.protein, plan.macros.carbs, plan.macros.fat, plan.base_burn, plan.goal_weight, plan.goal_date, plan.trend_weight, user.id).run();
+  return plan;
+}
+
 export async function handleGarmin(req, env, ctx, user, u, hooks = {}) {
   try {
+    if (u.pathname === "/api/garmin/plan" && req.method === "GET") {
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(u.searchParams.get("date") || "") ? u.searchParams.get("date") : new Date().toISOString().slice(0, 10);
+      return json(await applyGoalPlanToProfile(env, user, date));
+    }
+    if (u.pathname === "/api/garmin/plan" && req.method === "POST") {
+      const b = await req.json();
+      await ensurePlanTable(env.DB);
+      const cur = await env.DB.prepare("SELECT enabled, goal_weight, goal_date FROM goal_plan WHERE id = 1").first();
+      const goalWeight = Number.isFinite(Number(b.goal_weight)) && Number(b.goal_weight) > 80 && Number(b.goal_weight) < 400 ? Number(b.goal_weight) : cur?.goal_weight;
+      const goalDate = /^\d{4}-\d{2}-\d{2}$/.test(b.goal_date || "") ? b.goal_date : cur?.goal_date;
+      const enabled = b.enabled === undefined ? (cur?.enabled ?? 1) : (b.enabled ? 1 : 0);
+      if (!goalWeight || !goalDate) return json({ ok: false, error: "goal_weight and goal_date are required" }, 400);
+      await env.DB.prepare("INSERT INTO goal_plan (id, enabled, goal_weight, goal_date, updated_at) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, goal_weight = excluded.goal_weight, goal_date = excluded.goal_date, updated_at = excluded.updated_at")
+        .bind(enabled, goalWeight, goalDate, Date.now()).run();
+      return json({ ok: true, enabled: !!enabled, goal_weight: goalWeight, goal_date: goalDate });
+    }
+
     if (u.pathname === "/api/garmin/status" && req.method === "GET") {
       if (!env.GARMIN_API_KEY) return json({ ok: true, configured: false });
       const state = await env.DB.prepare("SELECT last_sync_at, last_ok_at, last_error FROM garmin_state WHERE id = 1").first().catch(() => null);

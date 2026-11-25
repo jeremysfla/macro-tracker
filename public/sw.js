@@ -1,10 +1,10 @@
 // Macro Tracker service worker (Tier 2, item 9)
 // Shell: stale-while-revalidate · API GETs: network-first (2s) with cache
 // fallback · push: fetch pending message from server, show notification.
-const VERSION = 'v23';
+const VERSION = 'v24';
 const SHELL_CACHE = 'shell-' + VERSION;
 const API_CACHE = 'api-' + VERSION;
-const SHELL = ['/', '/app.js', '/body.js', '/app.css', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL = ['/', '/app.js', '/body.js', '/plan.js', '/app.css', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL)).catch(() => {}));
@@ -44,7 +44,7 @@ self.addEventListener('fetch', e => {
 
   // Volatile endpoints: always live, never cached
   // (body photos: large images must not race the 2s API timeout)
-  if (/^\/api\/(tp\/status|readiness\/today|push\/pending|body\/)/.test(url.pathname)) return;
+  if (/^\/api\/(tp\/status|readiness\/today|push\/pending|body\/|garmin\/)/.test(url.pathname)) return;
   // Pose-detection model + wasm: big, versioned files — leave to the HTTP cache
   if (url.pathname.startsWith('/vendor/')) return;
 

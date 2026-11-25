@@ -1,5 +1,5 @@
 import { handleBody } from "./body.js";
-import { handleGarmin, garminSync } from "./garmin.js";
+import { handleGarmin, garminSync, applyGoalPlanToProfile } from "./garmin.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -99,7 +99,7 @@ __name(getSessionUser, "getSessionUser");
 
 // Client build shipped with this worker — /api/version lets stale bundles
 // detect themselves and self-heal (bump alongside BUILD_ID in app.js)
-const EXPECTED_CLIENT_BUILD = "nogreeting-2026-11-24-3";
+const EXPECTED_CLIENT_BUILD = "goalplan-2026-11-25-1";
 
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
 const SCHEMA_VERSION = 10;
@@ -1936,6 +1936,7 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
           const end = userLocalDate(full);
           const start = new Date(new Date(end + "T12:00:00Z").getTime() - 2 * 86400000).toISOString().slice(0, 10);
           await garminSync(env, full.id, start, end);
+          await applyGoalPlanToProfile(env, full, end).catch(() => {});
           await computeReadiness(env, full.id, end);
         })().catch(() => {}));
       }
