@@ -1,3 +1,6 @@
+import { handleBody } from "./body.js";
+import { handleGarmin, garminSync, applyGoalPlanToProfile } from "./garmin.js";
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -8,11 +11,14 @@ const ALLOWED_EMAILS = new Set(['jeremy@dronenerds.com']);
 
 const CLAUDE_ALLOWED_MODELS = new Set([
   'claude-haiku-4-5-20251001',
-  'claude-sonnet-4-5-20250929',
+  'claude-opus-5',     // current generation (2026)
+  'claude-sonnet-5',   // current generation (2026) — cheaper than sonnet-4-6
+  'claude-sonnet-4-5-20250929',  // older bundles cached on devices still request these
   'claude-sonnet-4-6',
+  'claude-opus-4-6',
   'claude-opus-4-7',
 ]);
-const CLAUDE_MAX_TOKENS_CAP = 4096;
+const CLAUDE_MAX_TOKENS_CAP = 8192;  // bloodwork parsing legitimately needs 8k out
 
 // ── Session helpers ─────────────────────────────────────────────────────
 function generateSessionToken() {
@@ -91,8 +97,12 @@ async function getSessionUser(db, req) {
 }
 __name(getSessionUser, "getSessionUser");
 
+// Client build shipped with this worker — /api/version lets stale bundles
+// detect themselves and self-heal (bump alongside BUILD_ID in app.js)
+const EXPECTED_CLIENT_BUILD = "goalplan-2026-11-25-1";
+
 // Bump when D1 schema changes; surfaced via /api/status (authed) to tell what's live.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 10;
 
 // ── Log sync tables (item 1: server-authoritative food/weight/shoes/lifts) ──
 const LOG_TABLES = {
@@ -100,6 +110,7 @@ const LOG_TABLES = {
   weight: { table: "weight_log",   kind: "weight" },
   shoes:  { table: "shoe_mileage", kind: "keyed" },
   lifts:  { table: "lift_log",     kind: "dated" },
+  blood:  { table: "blood_log",    kind: "dated" },
 };
 
 function logUpsertStmt(db, cfg, userId, e) {
@@ -107,7 +118,7 @@ function logUpsertStmt(db, cfg, userId, e) {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return null;
   const deleted = e.deleted ? 1 : 0;
   const payload = JSON.stringify(e.payload ?? {});
-  if (payload.length > 32768) return null;
+  if (payload.length > (cfg.table === "blood_log" ? 262144 : 32768)) return null;
 
   if (cfg.kind === "dated") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || "") || typeof e.entry_id !== "string" || !e.entry_id || e.entry_id.length > 128) return null;
@@ -143,7 +154,7 @@ __name(logUpsertStmt, "logUpsertStmt");
 
 // ── Backups (Tier 2, item 7): nightly D1 → R2 NDJSON dumps ──────────────
 const BACKUP_TABLES = ["users", "sessions", "daily_checkin", "brief_cache", "tp_auth",
-  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences"];
+  "food_log", "weight_log", "shoe_mileage", "lift_log", "training_load", "planned_workout", "user_preferences", "body_photo", "body_analysis", "garmin_daily", "garmin_activity"];
 
 async function sha256Hex(buf) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -245,7 +256,7 @@ async function tpGetAccessToken(env) {
     } catch(_) {}
     return { error: "cookie_expired" };
   }
-  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ?, updated_at = datetime('now') WHERE id = 1")
+  await env.DB.prepare("UPDATE tp_auth SET access_token = ?, token_expires_at = ?, status = 'active', last_refreshed_at = ? WHERE id = 1")
     .bind(tok.accessToken, new Date(tok.expiresAt).toISOString(), Date.now()).run();
   return { token: tok.accessToken, athleteId: row.athlete_id, athleteName: row.athlete_name };
 }
@@ -397,6 +408,13 @@ async function buildBriefContext(env, user) {
     training: { ctl: latest ? r1(latest.ctl) : null, atl: latest ? r1(latest.atl) : null, tsb: latest ? r1(latest.tsb) : null, tss_this_week: Math.round(tssThisWeek), tss_last_week: Math.round(tssLastWeek), days_since_workout: daysSince(lastWorkout?.date), days_since_hard: daysSince(lastHard?.date) },
     planned_7d: { sessions: planned.length, total_min: Math.round(planned.reduce((s, p) => s + (p.duration_min || 0), 0)), total_tss: Math.round(planned.reduce((s, p) => s + (p.tss_planned || 0), 0)), longest_min: Math.round(Math.max(0, ...planned.map(p => p.duration_min || 0))) },
     streaks: { logging: streak(foodDates), weigh_in: streak(weighDates) },
+    readiness: await (async () => {
+      try {
+        const today = await env.DB.prepare("SELECT score, band, narrative FROM readiness WHERE user_id = ? ORDER BY date DESC LIMIT 1").bind(uid).first();
+        const avg = await env.DB.prepare("SELECT AVG(score) AS a FROM readiness WHERE user_id = ? AND date >= date('now','-7 days')").bind(uid).first();
+        return today ? { score: today.score, band: today.band, drivers: today.narrative, avg_7d: avg?.a ? Math.round(avg.a) : null } : null;
+      } catch (_) { return null; }
+    })(),
   };
 }
 __name(buildBriefContext, "buildBriefContext");
@@ -407,10 +425,212 @@ Rules:
 - If training.tsb < -15: recommend recovery and do NOT push a calorie deficit.
 - If weight.rate_lb_per_wk is more than 0.3 lb/wk off what the plan needs: flag it with a specific direction.
 - If protein was hit on 12+ of 14 days, acknowledge the streak by number.
+- If readiness.band is "compromised" or "guarded": recommend rest/easy and dial the deficit back to maintenance today; verdict must be recover (compromised) or adjust (guarded).
+- If readiness.band is "primed" and training.tsb > 0: say today is a good day for a quality session.
+- Reference the readiness score and at least one of its drivers when readiness is present.
 - Cap at 80 words. Verdict is exactly one of: keep_going, adjust, recover.
 GOOD example: {"note":"Weight is down 0.8 lb/wk over 14 days vs the 1.0 you need — hold 1,500 kcal, no change. Protein ≥150g on 11/14 days; the misses were all weekends, front-load 40g at breakfast Sat/Sun. TSB -4 with 168 TSS this week: Thursday's 60-min run fits as planned.","verdict":"keep_going"}
 BAD example: {"note":"Great week! You're crushing protein and training hard. Keep up the awesome work!","verdict":"keep_going"}
 Return ONLY JSON: {"note":"...","verdict":"keep_going|adjust|recover"}`;
+
+// ── Wellness ingest (Tier 1.5A): Garmin-sourced metrics via TrainingPeaks ──
+// GET /metrics/v3/athletes/{id}/consolidatedtimedmetrics/{start}/{end}
+// Real detail types observed (uploadClient "Garmin Health"):
+//   2 %fat · 5 pulse/RHR · 6 sleep hrs · 9 weight kg · 14 BMI · 46 deep ·
+//   47 REM · 48 light · 50 awake · 56 water% · 57 muscle kg · 60 HRV ·
+//   62 stress [min,max,avg] · 64 body battery [low,high,avg]
+const KG_TO_LBS = 2.2046226;
+
+function tpMapWellnessRecord(rec) {
+  const f = {};
+  for (const det of rec.details || []) {
+    const v = det.value;
+    if (v == null) continue;
+    switch (det.type) {
+      case 9:  f.weight_lbs = Math.round(v * KG_TO_LBS * 100) / 100; break;
+      case 60: f.hrv_ms = v; break;
+      case 5:  f.resting_hr_bpm = v; break;
+      case 6:  f.sleep_total_hrs = Math.round(v * 100) / 100; break;
+      case 46: f.sleep_deep_hrs = Math.round(v * 100) / 100; break;
+      case 47: f.sleep_rem_hrs = Math.round(v * 100) / 100; break;
+      case 48: f.sleep_light_hrs = Math.round(v * 100) / 100; break;
+      case 50: f.sleep_awake_hrs = Math.round(v * 100) / 100; break;
+      case 62: f.stress_avg = Array.isArray(v) ? (v[2] ?? v[1] ?? null) : v; break;
+      case 64:
+        if (Array.isArray(v)) {
+          f.body_battery_low = v[0] ?? null;
+          f.body_battery_high = v[1] ?? null;
+          f.body_battery_wake = v[1] ?? null; // wake value not exposed; high ≈ post-sleep peak
+        } else f.body_battery_wake = v;
+        break;
+      case 2:  f.body_fat_pct = v; break;
+      case 57: f.muscle_mass_lbs = Math.round(v * KG_TO_LBS * 100) / 100; break;
+      case 56: f.body_water_pct = v; break;
+      case 14: f.bmi = v; break;
+    }
+  }
+  return f;
+}
+__name(tpMapWellnessRecord, "tpMapWellnessRecord");
+
+const WELLNESS_FIELDS = ["weight_lbs","hrv_ms","resting_hr_bpm","sleep_total_hrs","sleep_deep_hrs","sleep_light_hrs","sleep_rem_hrs","sleep_awake_hrs","sleep_score","body_battery_wake","body_battery_low","body_battery_high","stress_avg","muscle_mass_lbs","body_fat_pct","body_water_pct","bmi"];
+
+async function tpFetchWellness(env, userId, startDate, endDate) {
+  const auth = await tpGetAccessToken(env);
+  if (auth.error) return auth;
+  const r = await fetch(`${TP_API_BASE}/metrics/v3/athletes/${auth.athleteId}/consolidatedtimedmetrics/${startDate}/${endDate}`, {
+    headers: { "Authorization": `Bearer ${auth.token}`, "Accept": "application/json" }
+  });
+  if (r.status === 401) {
+    try { await env.DB.prepare("UPDATE tp_auth SET access_token = NULL WHERE id = 1").run(); } catch(_) {}
+    return { error: "cookie_expired" };
+  }
+  if (!r.ok) return { error: `TP metrics ${r.status}` };
+  const recs = await r.json();
+  if (!Array.isArray(recs)) return { ok: true, days: 0 };
+
+  const now = Date.now();
+  const rawCutoff = new Date(now - 90 * 86400000).toISOString().slice(0, 10);
+  const stmts = [];
+  for (const rec of recs) {
+    const date = (rec.timeStamp || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const f = tpMapWellnessRecord(rec);
+    if (!Object.keys(f).length) continue;
+    const raw = date >= rawCutoff ? JSON.stringify(rec).slice(0, 16384) : null;
+    // COALESCE keeps previously-ingested values when a later pull is partial
+    // (late-arriving scale/sleep data fills in, never blanks out)
+    stmts.push(env.DB.prepare(`INSERT INTO wellness (user_id, date, ${WELLNESS_FIELDS.join(", ")}, source, raw_json, updated_at)
+      VALUES (?, ?, ${WELLNESS_FIELDS.map(() => "?").join(", ")}, 'trainingpeaks', ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        ${WELLNESS_FIELDS.map(c => `${c} = COALESCE(excluded.${c}, wellness.${c})`).join(", ")},
+        raw_json = COALESCE(excluded.raw_json, wellness.raw_json),
+        updated_at = excluded.updated_at`)
+      .bind(userId, date, ...WELLNESS_FIELDS.map(c => f[c] ?? null), raw, now));
+  }
+  for (let i = 0; i < stmts.length; i += 40) await env.DB.batch(stmts.slice(i, i + 40));
+  return { ok: true, days: stmts.length };
+}
+__name(tpFetchWellness, "tpFetchWellness");
+
+// Effective wellness value for a date: override > wellness
+async function wellnessWithOverrides(env, userId, days) {
+  const [rows, ovs] = await Promise.all([
+    env.DB.prepare(`SELECT * FROM wellness WHERE user_id = ? AND date >= date('now','-' || ? || ' days') ORDER BY date DESC`).bind(userId, days).all().then(r => r.results),
+    env.DB.prepare(`SELECT date, field, value FROM wellness_override WHERE user_id = ? AND date >= date('now','-' || ? || ' days')`).bind(userId, days).all().then(r => r.results).catch(() => []),
+  ]);
+  const ovByDate = {};
+  for (const o of ovs) (ovByDate[o.date] = ovByDate[o.date] || {})[o.field] = o.value;
+  for (const r of rows) {
+    delete r.raw_json;
+    const o = ovByDate[r.date];
+    if (o) { r._overridden = Object.keys(o); Object.assign(r, o); }
+  }
+  return rows;
+}
+__name(wellnessWithOverrides, "wellnessWithOverrides");
+
+// ── Readiness (Tier 1.5C) + anomaly detection (1.5E) ─────────────────────
+function meanSd(vals) {
+  const v = vals.filter(x => x != null && isFinite(x));
+  if (v.length < 2) return { n: v.length, mean: v[0] ?? null, sd: null };
+  const mean = v.reduce((s, x) => s + x, 0) / v.length;
+  const sd = Math.sqrt(v.reduce((s, x) => s + (x - mean) ** 2, 0) / (v.length - 1));
+  return { n: v.length, mean, sd };
+}
+__name(meanSd, "meanSd");
+
+const READINESS_WEIGHTS = { hrv: 0.35, rhr: 0.20, sleep: 0.20, bb: 0.15, tsb: 0.10 };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+async function computeReadiness(env, userId, date) {
+  const rows = await wellnessWithOverrides(env, userId, 45);
+  const today = rows.find(r => r.date === date);
+  const base = rows.filter(r => r.date < date && r.date >= new Date(new Date(date + "T12:00:00Z").getTime() - 30 * 86400000).toISOString().slice(0, 10));
+
+  const hrvB = meanSd(base.map(r => r.hrv_ms));
+  if (hrvB.n < 14) return { ok: false, gathering: true, have: hrvB.n, need: 14 };
+  if (!today) return { ok: false, error: "no wellness row for " + date };
+
+  const rhrB = meanSd(base.map(r => r.resting_hr_bpm));
+  const scoreB = meanSd(base.map(r => r.sleep_score));
+  const sleepB = meanSd(base.map(r => r.sleep_total_hrs));
+
+  const z = (v, b, invert) => (v == null || !b.sd || b.sd < 0.01) ? null
+    : invert ? (b.mean - v) / b.sd : (v - b.mean) / b.sd;
+
+  const hrv_z = z(today.hrv_ms, hrvB);
+  const rhr_z = z(today.resting_hr_bpm, rhrB, true);
+  // Garmin sleep score isn't exposed via TP — fall back to total-hours z
+  const sleep_z = (scoreB.n >= 14 && today.sleep_score != null) ? z(today.sleep_score, scoreB) : z(today.sleep_total_hrs, sleepB);
+
+  const comps = {};
+  if (hrv_z != null) comps.hrv = clamp(50 + 20 * hrv_z, 0, 100);
+  if (rhr_z != null) comps.rhr = clamp(50 + 20 * rhr_z, 0, 100);
+  if (sleep_z != null) comps.sleep = clamp(clamp(50 + 15 * sleep_z, 0, 100) + ((today.sleep_deep_hrs ?? 0) >= 1.0 ? 10 : 0), 0, 100);
+  const bbVal = today.body_battery_wake ?? today.body_battery_high;
+  if (bbVal != null) comps.bb = clamp(bbVal, 0, 100);
+  const tl = await env.DB.prepare("SELECT tsb FROM training_load WHERE user_id = ? AND date <= ? ORDER BY date DESC LIMIT 1").bind(userId, date).first();
+  const tsbVal = tl?.tsb ?? null;
+  if (tsbVal != null) comps.tsb = tsbVal > 5 ? 100 : tsbVal <= -25 ? 0 : ((tsbVal + 25) / 30) * 100;
+
+  const keys = Object.keys(comps);
+  if (!keys.length) return { ok: false, error: "no scoreable components" };
+  const wSum = keys.reduce((s, k) => s + READINESS_WEIGHTS[k], 0);
+  const score = Math.round(keys.reduce((s, k) => s + comps[k] * READINESS_WEIGHTS[k], 0) / wSum);
+  const band = score >= 85 ? "primed" : score >= 70 ? "ready" : score >= 50 ? "guarded" : "compromised";
+
+  // Narrative from the two most extreme drivers
+  const drivers = [];
+  if (hrv_z != null) drivers.push({ k: "hrv", mag: Math.abs(hrv_z), txt: `HRV ${Math.round(today.hrv_ms)}ms (${hrv_z >= 0 ? "+" : ""}${hrv_z.toFixed(1)} SD)` });
+  if (rhr_z != null) drivers.push({ k: "rhr", mag: Math.abs(rhr_z), txt: `RHR ${Math.round(today.resting_hr_bpm)} bpm (${rhr_z >= 0 ? "+" : ""}${rhr_z.toFixed(1)} SD${rhr_z < 0 ? " elevated" : ""})` });
+  if (sleep_z != null) drivers.push({ k: "sleep", mag: Math.abs(sleep_z) * 0.9, txt: `sleep ${(today.sleep_total_hrs ?? 0).toFixed(1)}h (${sleep_z >= 0 ? "+" : ""}${sleep_z.toFixed(1)} SD)` });
+  if (bbVal != null) drivers.push({ k: "bb", mag: Math.abs(bbVal - 70) / 20, txt: `Body Battery ${Math.round(bbVal)}` });
+  if (tsbVal != null) drivers.push({ k: "tsb", mag: Math.abs(tsbVal) / 12, txt: `TSB ${tsbVal >= 0 ? "+" : ""}${Math.round(tsbVal)}` });
+  drivers.sort((a, b) => b.mag - a.mag);
+  const phrase = { primed: "go get it", ready: "solid day to train", guarded: "keep it moderate", compromised: "recovery day" }[band];
+  const narrative = `${drivers.slice(0, 2).map(d => d.txt).join(", ")} — ${phrase}.`;
+
+  const inputs = { date, hrv: today.hrv_ms, rhr: today.resting_hr_bpm, sleep_hrs: today.sleep_total_hrs, deep_hrs: today.sleep_deep_hrs, bb: bbVal, tsb: tsbVal, baselines: { hrv: hrvB, rhr: rhrB, sleep: sleepB }, components: comps };
+  await env.DB.prepare(`INSERT INTO readiness (user_id, date, score, band, hrv_z, rhr_z, sleep_z, body_battery_val, tsb_val, narrative, inputs_json, computed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, date) DO UPDATE SET score=excluded.score, band=excluded.band, hrv_z=excluded.hrv_z,
+      rhr_z=excluded.rhr_z, sleep_z=excluded.sleep_z, body_battery_val=excluded.body_battery_val,
+      tsb_val=excluded.tsb_val, narrative=excluded.narrative, inputs_json=excluded.inputs_json, computed_at=excluded.computed_at`)
+    .bind(userId, date, score, band, hrv_z, rhr_z, sleep_z, bbVal, tsbVal, narrative, JSON.stringify(inputs), Date.now()).run();
+
+  // ── Anomaly detection (1.5E) with a 3-day cooldown ──
+  try {
+    const recent = await env.DB.prepare("SELECT MAX(fired_at) AS last FROM anomaly_event WHERE user_id = ?").bind(userId).first();
+    const cooling = recent?.last && Date.now() - recent.last < 3 * 86400000;
+    if (!cooling) {
+      let kind = null, detail = null;
+      if (hrv_z != null && rhr_z != null && hrv_z < -1.5 && rhr_z < -1.5) {
+        kind = "hrv_rhr_combo";
+        detail = { hrv: today.hrv_ms, hrv_z, rhr: today.resting_hr_bpm, rhr_z, hrv_baseline: hrvB.mean, rhr_baseline: rhrB.mean };
+      } else if (rhr_z != null && rhr_z < -2.0) {
+        kind = "rhr_solo";
+        detail = { rhr: today.resting_hr_bpm, rhr_z, rhr_baseline: rhrB.mean };
+      } else if (hrvB.mean && today.hrv_ms != null && today.hrv_ms < hrvB.mean * 0.8) {
+        const yest = rows.find(r => r.date === new Date(new Date(date + "T12:00:00Z").getTime() - 86400000).toISOString().slice(0, 10));
+        if (yest?.hrv_ms != null && yest.hrv_ms < hrvB.mean * 0.8) {
+          kind = "hrv_trend";
+          detail = { hrv_today: today.hrv_ms, hrv_yesterday: yest.hrv_ms, baseline: hrvB.mean, drop_pct: Math.round((1 - today.hrv_ms / hrvB.mean) * 100) };
+        }
+      }
+      if (kind) {
+        await env.DB.prepare(`INSERT INTO anomaly_event (user_id, date, kind, detail_json, fired_at) VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, date, kind) DO NOTHING`).bind(userId, date, kind, JSON.stringify(detail), Date.now()).run();
+        await sendPushToUser(env, userId, "anomaly", "🫀 Recovery warning",
+          kind === "hrv_trend" ? `HRV ${detail.drop_pct}% below baseline two days running — treat today as recovery.`
+            : `HRV/RHR out of range (${drivers.slice(0, 2).map(d => d.txt).join(", ")}) — possible illness or overreach.`, "/");
+      }
+    }
+  } catch (_) {}
+
+  return { ok: true, score, band, narrative, drivers: drivers.slice(0, 3).map(d => d.txt), components: comps };
+}
+__name(computeReadiness, "computeReadiness");
 
 // ── TP cookie auto-refresh (Tier 2, item 10) ─────────────────────────────
 // Daily silent refresh: exchange the stored cookie for a fresh token so the
@@ -581,6 +801,12 @@ var worker_default = {
       });
     }
 
+    if (u.pathname === "/api/version") {
+      return new Response(JSON.stringify({ ok: true, build: EXPECTED_CLIENT_BUILD }), {
+        headers: { ...CORS, "cache-control": "no-store" }
+      });
+    }
+
     if (u.pathname === "/api/status") {
       // Key details only for an authenticated session — public callers get a bare health check
       const statusUser = await getSessionUser(env.DB, req).catch(() => null);
@@ -747,8 +973,8 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       try {
         const b = await req.json();
         if (!b.date || !env.DB) return new Response(JSON.stringify({ ok: false, error: "missing date or DB" }), { headers: CORS });
-        const sql = `INSERT INTO daily_checkin (date,user_id,energy,mood,water_oz,weight_lbs,sleep_hrs,sleep_deep,sleep_rem,sleep_score,calories_consumed,protein_g,carbs_g,fat_g,steps,active_cals,notes,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(date,user_id) DO UPDATE SET energy=excluded.energy,mood=excluded.mood,water_oz=excluded.water_oz,weight_lbs=excluded.weight_lbs,sleep_hrs=excluded.sleep_hrs,sleep_deep=excluded.sleep_deep,sleep_rem=excluded.sleep_rem,sleep_score=excluded.sleep_score,calories_consumed=excluded.calories_consumed,protein_g=excluded.protein_g,carbs_g=excluded.carbs_g,fat_g=excluded.fat_g,steps=excluded.steps,active_cals=excluded.active_cals,notes=excluded.notes,updated_at=datetime('now')`;
-        await env.DB.prepare(sql).bind(b.date,user.id,b.energy??null,b.mood??null,b.water_oz??null,b.weight_lbs??null,b.sleep_hrs??null,b.sleep_deep??null,b.sleep_rem??null,b.sleep_score??null,b.calories_consumed??null,b.protein_g??null,b.carbs_g??null,b.fat_g??null,b.steps??null,b.active_cals??null,b.notes??null).run();
+        const sql = `INSERT INTO daily_checkin (date,user_id,energy,mood,water_oz,weight_lbs,sleep_hrs,sleep_deep,sleep_rem,sleep_score,calories_consumed,protein_g,carbs_g,fat_g,steps,active_cals,notes,worked_out,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(date,user_id) DO UPDATE SET energy=excluded.energy,mood=excluded.mood,water_oz=excluded.water_oz,weight_lbs=excluded.weight_lbs,sleep_hrs=excluded.sleep_hrs,sleep_deep=excluded.sleep_deep,sleep_rem=excluded.sleep_rem,sleep_score=excluded.sleep_score,calories_consumed=excluded.calories_consumed,protein_g=excluded.protein_g,carbs_g=excluded.carbs_g,fat_g=excluded.fat_g,steps=excluded.steps,active_cals=excluded.active_cals,notes=excluded.notes,worked_out=COALESCE(excluded.worked_out,daily_checkin.worked_out),updated_at=datetime('now')`;
+        await env.DB.prepare(sql).bind(b.date,user.id,b.energy??null,b.mood??null,b.water_oz??null,b.weight_lbs??null,b.sleep_hrs??null,b.sleep_deep??null,b.sleep_rem??null,b.sleep_score??null,b.calories_consumed??null,b.protein_g??null,b.carbs_g??null,b.fat_g??null,b.steps??null,b.active_cals??null,b.notes??null,b.worked_out??null).run();
         return new Response(JSON.stringify({ ok: true }), { headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
     }
@@ -807,6 +1033,35 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
     }
 
     // ── Claude proxy (now auth-protected) ───────────────────────────────
+    if (u.pathname === "/api/claude/stream" && req.method === "POST") {
+      const suser = await getSessionUser(env.DB, req);
+      if (!suser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      try {
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
+        const b = await req.json();
+        if (!b || typeof b !== "object" || !CLAUDE_ALLOWED_MODELS.has(b.model)) {
+          return new Response(JSON.stringify({ error: { message: "model not allowed" } }), { status: 400, headers: CORS });
+        }
+        b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
+        b.stream = true;
+        delete b.metadata;
+        const h = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+        if (b.model === "claude-opus-5") { h["anthropic-beta"] = "server-side-fallback-2026-07-01"; b.fallbacks = "default"; }
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: h, body: JSON.stringify(b) });
+        if (!r.ok) {
+          const err = await r.text();
+          return new Response(err, { status: r.status, headers: CORS });
+        }
+        // Pipe the SSE stream straight through to the client
+        return new Response(r.body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "cache-control": "no-cache", "access-control-allow-origin": "*" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS });
+      }
+    }
+
     if (u.pathname === "/api/claude" && req.method === "POST") {
       const user = await getSessionUser(env.DB, req);
       if (!user) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
@@ -828,14 +1083,117 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
             }
           }
         }
+        const claudeHeaders = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+        if (b.model === "claude-opus-5") {
+          claudeHeaders["anthropic-beta"] = "server-side-fallback-2026-07-01";
+          b.fallbacks = "default";  // auto-reroute on safety refusals
+        }
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY },
+          headers: claudeHeaders,
           body: JSON.stringify(b)
         });
         const data = await r.json();
         return new Response(JSON.stringify(data), { status: r.ok?200:r.status, headers: CORS });
       } catch(e) { return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS }); }
+    }
+
+    // ── Client error telemetry (debugging mobile failures) ────────────────
+    if (u.pathname === "/api/debug/client" && req.method === "POST") {
+      const dbgUser = await getSessionUser(env.DB, req);
+      if (!dbgUser) return new Response(JSON.stringify({ ok: false }), { status: 401, headers: CORS });
+      try {
+        const b = await req.json();
+        await env.DB.prepare("INSERT OR REPLACE INTO client_log (user_id, ts, kind, detail_json) VALUES (?, ?, ?, ?)")
+          .bind(dbgUser.id, Date.now(), String(b.kind || "error").slice(0, 40), JSON.stringify(b).slice(0, 8000)).run();
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Body progress photos (R2 + AI estimate/analysis) — see body.js ──
+    if (u.pathname.startsWith("/api/body/")) {
+      const bodyUser = await getSessionUser(env.DB, req);
+      if (!bodyUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
+      return handleBody(req, env, ctx, bodyUser, u);
+    }
+
+    // ── Garmin Connect Personal API — see garmin.js ──
+    if (u.pathname.startsWith("/api/garmin/")) {
+      const garminUser = await getSessionUser(env.DB, req);
+      if (!garminUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
+      return handleGarmin(req, env, ctx, garminUser, u, {
+        localDate: userLocalDate,
+        afterSync: (usr, date) => computeReadiness(env, usr.id, date),
+      });
+    }
+
+    // ── Async Claude proxy: submit → poll (mobile-safe for long analyses) ──
+    if (u.pathname === "/api/claude/async" && req.method === "POST") {
+      const ajUser = await getSessionUser(env.DB, req);
+      if (!ajUser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      try {
+        if (!env.ANTHROPIC_KEY) return new Response(JSON.stringify({ error: { message: "no key" } }), { status: 500, headers: CORS });
+        const b = await req.json();
+        if (!b || typeof b !== "object" || !CLAUDE_ALLOWED_MODELS.has(b.model)) {
+          return new Response(JSON.stringify({ error: { message: "model not allowed" } }), { status: 400, headers: CORS });
+        }
+        b.max_tokens = Math.min(Number(b.max_tokens) || 1024, CLAUDE_MAX_TOKENS_CAP);
+        delete b.stream; delete b.metadata;
+        for (const m of (Array.isArray(b.messages) ? b.messages : [])) {
+          if (!Array.isArray(m?.content)) continue;
+          for (const block of m.content) {
+            const len = block?.source?.data?.length || 0;
+            if ((block?.type === "image" && len > 2800000) || (block?.type === "document" && len > 8000000)) {
+              return new Response(JSON.stringify({ error: { message: "file too large" } }), { status: 400, headers: CORS });
+            }
+          }
+        }
+        const jobId = crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO ai_job (user_id, id, status, created_at, updated_at) VALUES (?, ?, 'running', ?, ?)")
+          .bind(ajUser.id, jobId, Date.now(), Date.now()).run();
+
+        const run = (async () => {
+          try {
+            const jobHeaders = { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": env.ANTHROPIC_KEY };
+            if (b.model === "claude-opus-5") {
+              jobHeaders["anthropic-beta"] = "server-side-fallback-2026-07-01";
+              b.fallbacks = "default";
+            }
+            const r = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: jobHeaders,
+              body: JSON.stringify(b)
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data?.error?.message || `Anthropic ${r.status}`);
+            await env.DB.prepare("UPDATE ai_job SET status='done', result_json=?, updated_at=? WHERE user_id=? AND id=?")
+              .bind(JSON.stringify(data).slice(0, 200000), Date.now(), ajUser.id, jobId).run();
+          } catch (e) {
+            await env.DB.prepare("UPDATE ai_job SET status='error', error=?, updated_at=? WHERE user_id=? AND id=?")
+              .bind(String(e.message).slice(0, 500), Date.now(), ajUser.id, jobId).run().catch(() => {});
+          }
+        })();
+        if (ctx?.waitUntil) ctx.waitUntil(run);
+
+        return new Response(JSON.stringify({ ok: true, job_id: jobId }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: { message: e.message } }), { status: 500, headers: CORS });
+      }
+    }
+    if (u.pathname === "/api/claude/job" && req.method === "GET") {
+      const jUser = await getSessionUser(env.DB, req);
+      if (!jUser) return new Response(JSON.stringify({ error: { message: "Unauthorized" } }), { status: 401, headers: CORS });
+      const id = u.searchParams.get("id") || "";
+      const row = await env.DB.prepare("SELECT status, result_json, error FROM ai_job WHERE user_id = ? AND id = ?").bind(jUser.id, id).first();
+      if (!row) return new Response(JSON.stringify({ ok: false, error: "unknown job" }), { status: 404, headers: CORS });
+      // prune old jobs opportunistically
+      if (Math.random() < 0.1) ctx?.waitUntil?.(env.DB.prepare("DELETE FROM ai_job WHERE updated_at < ?").bind(Date.now() - 86400000).run().catch(() => {}));
+      const body = { ok: true, status: row.status };
+      if (row.status === "done") { try { body.result = JSON.parse(row.result_json); } catch(_) { body.status = "error"; body.error = "corrupt result"; } }
+      if (row.status === "error") body.error = row.error;
+      return new Response(JSON.stringify(body), { headers: CORS });
     }
 
     // ── USDA API proxy ──────────────────────────────────────────────────
@@ -885,9 +1243,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           if (!Array.isArray(entries) || entries.length > 500) {
             return new Response(JSON.stringify({ ok: false, error: "entries must be an array of ≤500" }), { status: 400, headers: CORS });
           }
-          const stmts = entries.map(e => logUpsertStmt(env.DB, cfg, logUser.id, e)).filter(Boolean);
+          const stmts = [], reasons = [];
+          for (const e of entries) {
+            const s = logUpsertStmt(env.DB, cfg, logUser.id, e);
+            if (s) stmts.push(s);
+            else reasons.push(`entry ${e.entry_id || e.date || "?"}: bad date/id/value or payload too large`);
+          }
           if (stmts.length) await env.DB.batch(stmts);
-          return new Response(JSON.stringify({ ok: true, applied: stmts.length, skipped: entries.length - stmts.length, now: Date.now() }), { headers: CORS });
+          return new Response(JSON.stringify({ ok: true, applied: stmts.length, skipped: entries.length - stmts.length, skipped_reasons: reasons.slice(0, 5), now: Date.now() }), { headers: CORS });
         } catch (e) {
           return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
         }
@@ -997,8 +1360,17 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           return { id: w.workoutId, title: w.title || "", type: w.workoutTypeValueId, calories: cal, distance: dist, duration: dur, tss: w.tssActual || null };
         });
 
-        // Item 3: refresh training load in the background after each sync
-        if (ctx?.waitUntil) ctx.waitUntil(tpRecomputeLoad(env, tpUser.id).catch(() => {}));
+        // Item 3: refresh training load in the background after each sync;
+        // Tier 1.5A: wellness (last 3 days) + today's readiness ride along
+        if (ctx?.waitUntil) {
+          ctx.waitUntil(tpRecomputeLoad(env, tpUser.id).catch(() => {}));
+          ctx.waitUntil((async () => {
+            const end = userLocalDate(tpUser);
+            const start = new Date(new Date(end + "T12:00:00Z").getTime() - 3 * 86400000).toISOString().slice(0, 10);
+            await tpFetchWellness(env, tpUser.id, start, end);
+            await computeReadiness(env, tpUser.id, end);
+          })().catch(() => {}));
+        }
 
         return new Response(JSON.stringify({ ok: true, date, count: workouts.length, calories, distance, duration, workouts }), { headers: CORS });
       } catch (e) {
@@ -1075,6 +1447,131 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
           .bind(coachUser.id, cacheKey, JSON.stringify({ hash, note, verdict, generated_at: Date.now() })).run();
 
         return new Response(JSON.stringify({ ok: true, note, verdict, cached: false, context }), { headers: CORS });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
+      }
+    }
+
+    // ── Tier 1.5A: wellness data ──────────────────────────────────────────
+    if (u.pathname === "/api/wellness" && req.method === "GET") {
+      const wUser = await getSessionUser(env.DB, req);
+      if (!wUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const days = Math.min(parseInt(u.searchParams.get("days") || "180") || 180, 400);
+        const rows = await wellnessWithOverrides(env, wUser.id, days);
+        return new Response(JSON.stringify({ ok: true, rows }), { headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+    if (u.pathname === "/api/wellness/latest" && req.method === "GET") {
+      const wlUser = await getSessionUser(env.DB, req);
+      if (!wlUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const rows = await wellnessWithOverrides(env, wlUser.id, 30);
+        const latest = {};
+        for (const field of WELLNESS_FIELDS) {
+          for (const r of rows) {  // rows are date DESC
+            if (r[field] != null) { latest[field] = { value: r[field], date: r.date }; break; }
+          }
+        }
+        return new Response(JSON.stringify({ ok: true, latest }), { headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+    if (u.pathname === "/api/wellness/refresh" && req.method === "POST") {
+      const wrUser = await getSessionUser(env.DB, req);
+      if (!wrUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const body = await req.json().catch(() => ({}));
+        const days = Math.min(Math.max(parseInt(body.days) || 3, 1), 200);
+        const end = userLocalDate(wrUser);
+        const start = new Date(new Date(end + "T12:00:00Z").getTime() - days * 86400000).toISOString().slice(0, 10);
+        const res = await tpFetchWellness(env, wrUser.id, start, end);
+        if (res.error) return new Response(JSON.stringify({ ok: false, error: res.error }), { status: 502, headers: CORS });
+        const readiness = await computeReadiness(env, wrUser.id, end).catch(e => ({ ok: false, error: e.message }));
+        return new Response(JSON.stringify({ ok: true, days: res.days, readiness }), { headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+    if (u.pathname === "/api/wellness/override" && req.method === "POST") {
+      const woUser = await getSessionUser(env.DB, req);
+      if (!woUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const { date, field, value } = await req.json();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "") || !WELLNESS_FIELDS.includes(field)) {
+          return new Response(JSON.stringify({ ok: false, error: "bad date or field" }), { status: 400, headers: CORS });
+        }
+        if (value == null) {
+          await env.DB.prepare("DELETE FROM wellness_override WHERE user_id = ? AND date = ? AND field = ?").bind(woUser.id, date, field).run();
+        } else {
+          const num = Number(value);
+          if (!isFinite(num)) return new Response(JSON.stringify({ ok: false, error: "bad value" }), { status: 400, headers: CORS });
+          await env.DB.prepare(`INSERT INTO wellness_override (user_id, date, field, value, updated_at) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date, field) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+            .bind(woUser.id, date, field, num, Date.now()).run();
+        }
+        await computeReadiness(env, woUser.id, date).catch(() => {});
+        return new Response(JSON.stringify({ ok: true }), { headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+
+    // ── Tier 1.5C: readiness ──────────────────────────────────────────────
+    if (u.pathname === "/api/readiness/today" && req.method === "GET") {
+      const rUser = await getSessionUser(env.DB, req);
+      if (!rUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const date = userLocalDate(rUser);
+        let row = await env.DB.prepare("SELECT * FROM readiness WHERE user_id = ? AND date = ?").bind(rUser.id, date).first();
+        if (!row) {
+          const res = await computeReadiness(env, rUser.id, date);
+          if (!res.ok) return new Response(JSON.stringify({ ok: true, gathering: !!res.gathering, have: res.have, need: res.need, error: res.error || null, row: null }), { headers: CORS });
+          row = await env.DB.prepare("SELECT * FROM readiness WHERE user_id = ? AND date = ?").bind(rUser.id, date).first();
+        }
+        if (row) { try { row.inputs = JSON.parse(row.inputs_json); } catch(_) {} delete row.inputs_json; }
+        const anomaly = await env.DB.prepare("SELECT kind, detail_json FROM anomaly_event WHERE user_id = ? AND date = ?").bind(rUser.id, date).all().then(r => r.results).catch(() => []);
+        return new Response(JSON.stringify({ ok: true, row, anomalies: anomaly }), { headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+    if (u.pathname === "/api/readiness" && req.method === "GET") {
+      const rsUser = await getSessionUser(env.DB, req);
+      if (!rsUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      const days = Math.min(parseInt(u.searchParams.get("days") || "90") || 90, 365);
+      const rows = (await env.DB.prepare(`SELECT date, score, band, hrv_z, rhr_z, sleep_z, body_battery_val, tsb_val, narrative FROM readiness
+        WHERE user_id = ? AND date >= date('now','-' || ? || ' days') ORDER BY date ASC`).bind(rsUser.id, days).all()).results;
+      return new Response(JSON.stringify({ ok: true, rows }), { headers: CORS });
+    }
+    if (u.pathname === "/api/readiness/compute" && req.method === "POST") {
+      const rcUser = await getSessionUser(env.DB, req);
+      if (!rcUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        const body = await req.json().catch(() => ({}));
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || "") ? body.date : userLocalDate(rcUser);
+        const res = await computeReadiness(env, rcUser.id, date);
+        return new Response(JSON.stringify(res), { status: res.ok || res.gathering ? 200 : 400, headers: CORS });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS }); }
+    }
+
+    // ── Google token mint: server-side refresh (kills the hourly chooser) ──
+    if (u.pathname === "/api/google/token" && req.method === "GET") {
+      const gUser = await getSessionUser(env.DB, req);
+      if (!gUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      try {
+        if (!env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) {
+          return new Response(JSON.stringify({ ok: false, error: "server refresh not configured" }), { status: 501, headers: CORS });
+        }
+        const form = new URLSearchParams({
+          client_id: env.GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          refresh_token: env.GOOGLE_REFRESH_TOKEN,
+          grant_type: "refresh_token",
+        });
+        const r = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: form.toString(),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.access_token) {
+          return new Response(JSON.stringify({ ok: false, error: d.error_description || d.error || `google ${r.status}` }), { status: 502, headers: CORS });
+        }
+        return new Response(JSON.stringify({ ok: true, access_token: d.access_token, expires_in: d.expires_in || 3600, scope: d.scope || "" }), { headers: CORS });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: CORS });
       }
@@ -1269,10 +1766,14 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
             FROM food_log WHERE user_id = ? AND deleted = 0 AND date >= ${cutoffSql}
             GROUP BY date ORDER BY date ASC`).bind(trUser.id, days).all(),
         ]);
-        // Weight: prefer explicit weight_log, fall back to check-in weigh-ins
+        // Coalesced weight (Tier 1.5): override > wellness > weight_log > legacy check-in
         const wmap = {};
         for (const c of checkins.results) if (c.weight_lbs > 0) wmap[c.date] = c.weight_lbs;
         for (const w of weights.results) wmap[w.date] = w.weight_lbs;
+        try {
+          const wellRows = await wellnessWithOverrides(env, trUser.id, days);
+          for (const r of wellRows) if (r.weight_lbs > 0) wmap[r.date] = r.weight_lbs;
+        } catch(_) {}
         const weightSeries = Object.entries(wmap).sort(([a], [b]) => a.localeCompare(b)).map(([date, lbs]) => ({ date, lbs }));
         const profile = {
           calories: trUser.calories, protein: trUser.protein, carbs: trUser.carbs, fat: trUser.fat,
@@ -1390,6 +1891,14 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
       }
     }
 
+    // Shell files revalidate every load — a stale cached index.html/sw.js
+    // once pinned a device to a months-old bundle
+    if (u.pathname === "/" || u.pathname === "/index.html" || u.pathname === "/sw.js") {
+      const assetRes = await env.ASSETS.fetch(req);
+      const h = new Headers(assetRes.headers);
+      h.set("cache-control", "no-cache, must-revalidate");
+      return new Response(assetRes.body, { status: assetRes.status, headers: h });
+    }
     return env.ASSETS.fetch(req);
   },
 
@@ -1400,9 +1909,37 @@ GOAL: ${tsUser.goal_weight || "?"} lbs by ${tsUser.goal_date || "?"}. This data 
     const h = t.getUTCHours(), m = t.getUTCMinutes();
     try {
       const user = await env.DB.prepare("SELECT id FROM users LIMIT 1").first();
-      if (h === 6 && m === 0) ctx.waitUntil(tpDailyRefresh(env).catch(() => {}));
-      if (h === 8 && m === 0 && user) ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
-      if (h === 8 && m === 15) ctx.waitUntil(runBackup(env).catch(() => {}));
+      // Every 6h: exchange the cookie to keep the TP session warm (sliding
+      // inactivity windows stay open when the session is used regularly)
+      if (h % 6 === 0 && m === 0) ctx.waitUntil(tpDailyRefresh(env).catch(() => {}));
+      if (h === 8 && m === 0 && user) {
+        ctx.waitUntil(tpRecomputeLoad(env, user.id).catch(() => {}));
+        ctx.waitUntil((async () => {
+          const full = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
+          const end = userLocalDate(full);
+          const start = new Date(new Date(end + "T12:00:00Z").getTime() - 14 * 86400000).toISOString().slice(0, 10);
+          await tpFetchWellness(env, full.id, start, end);
+        })().catch(() => {}));
+      }
+      if (h === 8 && m === 15 && user) {
+        ctx.waitUntil(runBackup(env).catch(() => {}));
+        ctx.waitUntil((async () => {
+          const full = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
+          await computeReadiness(env, full.id, userLocalDate(full));
+        })().catch(() => {}));
+      }
+      // Every 30 min: pull the last 3 days from Garmin (the Personal API has no
+      // webhooks), then refresh today's readiness with whatever arrived
+      if (m % 30 === 0 && user && env.GARMIN_API_KEY) {
+        ctx.waitUntil((async () => {
+          const full = await env.DB.prepare("SELECT * FROM users LIMIT 1").first();
+          const end = userLocalDate(full);
+          const start = new Date(new Date(end + "T12:00:00Z").getTime() - 2 * 86400000).toISOString().slice(0, 10);
+          await garminSync(env, full.id, start, end);
+          await applyGoalPlanToProfile(env, full, end).catch(() => {});
+          await computeReadiness(env, full.id, end);
+        })().catch(() => {}));
+      }
       ctx.waitUntil(runPushScheduler(env).catch(() => {}));  // every 15 min
     } catch (_) {}
   }

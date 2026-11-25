@@ -2,6 +2,9 @@ name = "macro"
 compatibility_date = "2026-02-27"
 workers_dev = true
 main = "worker.js"
+# Keep variables added in the Cloudflare dashboard: without this, every
+# `wrangler deploy` deletes any dashboard variable not listed below.
+keep_vars = true
 
 [assets]
 directory = "./public"
@@ -24,6 +27,10 @@ crons = ["*/15 * * * *"]
 [[r2_buckets]]
 binding = "BACKUPS"
 bucket_name = "macro-tracker-backups"
+
+[[r2_buckets]]
+binding = "BODY_PHOTOS"
+bucket_name = "macro-tracker-body-photos"
 
 [vars]
 USDA_API_KEY = "73A0UOQRNjRewH4w9aLpYtkXCjQVoLY8BD7hIG4F"

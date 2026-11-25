@@ -1,5 +1,33 @@
 
 
+const BUILD_ID = 'goalplan-2026-11-25-1';
+const _SO = (schema) => ({ format: { type: 'json_schema', schema } });
+const SCHEMA_VOICE = { type:'object', additionalProperties:false, required:['entries'], properties:{
+  entries:{ type:'array', items:{ type:'object', additionalProperties:false,
+    required:['name','calories','protein_g','carbs_g','fat_g','quality'],
+    properties:{ name:{type:'string'}, grams:{type:['number','null']}, calories:{type:'number'},
+      protein_g:{type:'number'}, carbs_g:{type:'number'}, fat_g:{type:'number'},
+      quality:{type:'string', enum:['full','partial','estimated']} } } } } };
+const SCHEMA_PHOTO = { type:'object', additionalProperties:false,
+  required:['meal_name','items','total_calories','total_protein','total_carbs','total_fat','confidence'],
+  properties:{ meal_name:{type:'string'},
+    items:{ type:'array', items:{ type:'object', additionalProperties:false,
+      required:['name','calories','protein','carbs','fat'],
+      properties:{ name:{type:'string'}, grams:{type:['number','null']}, calories:{type:'number'},
+        protein:{type:'number'}, carbs:{type:'number'}, fat:{type:'number'}, notes:{type:['string','null']} } } },
+    total_calories:{type:'number'}, total_protein:{type:'number'}, total_carbs:{type:'number'}, total_fat:{type:'number'},
+    confidence:{type:'string', enum:['high','medium','low']}, portion_notes:{type:['string','null']} } };
+const SCHEMA_BLOOD = { type:'object', additionalProperties:false, required:['test_date','markers'], properties:{
+  test_date:{type:['string','null']}, lab_name:{type:['string','null']},
+  markers:{ type:'array', items:{ type:'object', additionalProperties:false,
+    required:['name','value'],
+    properties:{ name:{type:'string'}, key:{type:['string','null']}, value:{type:['number','null']},
+      unit:{type:['string','null']}, ref_low:{type:['number','null']}, ref_high:{type:['number','null']},
+      flag:{type:['string','null']} } } } } };
+
+
+try { console.log('[build]', BUILD_ID); } catch(_) {}
+
 // ── Feature flags (Tier 1 items 2–5) — flip to false to disable without redeploying the rest ──
 const FLAGS = {
   voiceLog:     true,   // item 2: voice food entry
@@ -7,11 +35,17 @@ const FLAGS = {
   trainingLoad: true,   // item 3: CTL/ATL/TSB
   fueling:      true,   // item 4: planned-workout fueling
   trends:       true,   // item 5: insights tab
-  briefCoach:   true,   // item 6: trend-grounded coach note in daily brief
+  briefCoach:   false,  // item 6: coach note — removed from the home screen at the user's request
+  greetingTile: false,  // "Good morning" tile (schedule, emails, quote) — removed at the user's request
   backups:      true,   // item 7: nightly D1 → R2 backups tile
   quickAdd:     true,   // item 8: copy-yesterday + favorites carousel
   pwa:          true,   // item 9: PWA install + web push
   tpAutoRefresh:true,   // item 10: TP cookie auto-refresh + expiry banner
+  wellness:     true,   // 1.5A/B: TP wellness ingest + slim check-in + Today tile
+  readiness:    true,   // 1.5C: morning readiness score card
+  bodyComp:     true,   // 1.5D: fat vs lean mass charts under Trends
+  anomalyAlert: true,   // 1.5E: HRV/RHR anomaly banner
+  readinessActions: true, // 1.5F: fueling shift + deficit dial-back
 };
 
 // ── Auth & Onboarding ──
@@ -474,6 +508,7 @@ function setStorage(key, val) {
     return true;
   } catch(e) {
     console.error('setStorage failed for key:', key, e);
+    setStorage._lastError = e;
     return false;
   }
 }
@@ -486,8 +521,8 @@ function setStorage(key, val) {
 // Tombstones are only emitted for recent dates so the 90-day prune sweep
 // never deletes server history.
 // ═══════════════════════════════════════════════════════════════════════
-const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts'];
-const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts' };
+const SYNC_TABLES = ['food', 'weight', 'shoes', 'lifts', 'blood'];
+const SYNC_KEY_MAP = { foodEntries: 'food', weightLog: 'weight', shoeGarage: 'shoes', shoeRuns: 'shoes', liftLog2: 'lifts', bloodResults: 'blood' };
 const SYNC_MERGE_DAYS = 90;      // only merge server rows this recent into local cache
 const SYNC_TOMBSTONE_DAYS = 30;  // only report deletions this recent (older = prune, not delete)
 let _syncApplying = false;       // guard: writes made by the sync engine itself
@@ -710,6 +745,12 @@ function _syncRebuildShadow(table) {
     for (const s of getStorage('shoeGarage', [])) if (s.id) sh['shoe:' + s.id] = { h: JSON.stringify({ ...s, _u: 0 }) };
     for (const r of getStorage('shoeRuns', [])) if (r._id) sh['run:' + r._id] = { h: JSON.stringify({ ...r, _u: 0 }) };
     _syncSet('_syncShadow_shoes', sh);
+  } else if (table === 'blood') {
+    const sh = {};
+    for (const e of getStorage('bloodResults', [])) {
+      if (e?.id) sh[String(e.id)] = { h: JSON.stringify({ ...e, _u: 0 }), d: e.date };
+    }
+    _syncSet('_syncShadow_blood', sh);
   } else if (table === 'lifts') {
     const sh = {};
     for (const [key, val] of Object.entries(getStorage('liftLog2', {}))) {
@@ -721,7 +762,51 @@ function _syncRebuildShadow(table) {
   }
 }
 
+function _syncBloodRows() {
+  const results = getStorage('bloodResults', []);
+  const shadow = getStorage('_syncShadow_blood', {});
+  const rows = []; let mutated = false;
+  for (const e of results) {
+    if (!e || !e.date) continue;
+    if (!e.id) { e.id = Date.now() + Math.random(); mutated = true; }
+    const key = String(e.id);
+    const h = JSON.stringify({ ...e, _u: 0 });
+    if (shadow[key]?.h !== h) {
+      e._u = Date.now(); mutated = true;
+      rows.push({ date: e.date, entry_id: key, payload: e, updated_at: e._u, deleted: 0 });
+    }
+  }
+  const liveIds = new Set(results.map(e => String(e.id)));
+  for (const [key, sh] of Object.entries(shadow)) {
+    if (!liveIds.has(key)) rows.push({ date: sh.d || '1970-01-01', entry_id: key, payload: {}, updated_at: Date.now(), deleted: 1 });
+  }
+  if (mutated) _syncSet('bloodResults', results);
+  return rows;
+}
+
+function _syncApplyBlood(rows) {
+  const results = getStorage('bloodResults', []);
+  let changed = false;
+  for (const r of rows) {
+    const idx = results.findIndex(e => String(e.id) === r.entry_id);
+    const localU = idx >= 0 ? (results[idx]._u || 0) : 0;
+    if (r.updated_at <= localU) continue;
+    if (r.deleted) { if (idx >= 0) { results.splice(idx, 1); changed = true; } }
+    else if (r.payload?.date) {
+      const entry = { ...r.payload, _u: r.updated_at };
+      if (idx >= 0) results[idx] = entry; else results.push(entry);
+      changed = true;
+    }
+  }
+  if (changed) {
+    results.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    _syncSet('bloodResults', results);
+    try { renderBloodWorkPage(); } catch(_) {}
+  }
+}
+
 const _SYNC_IMPL = {
+  blood:  { toRows: _syncBloodRows,  apply: _syncApplyBlood },
   food:   { toRows: _syncFoodRows,   apply: _syncApplyFood },
   weight: { toRows: _syncWeightRows, apply: _syncApplyWeight },
   shoes:  { toRows: _syncShoeRows,   apply: _syncApplyShoes },
@@ -778,14 +863,209 @@ async function forceBackfillSync() {
   showToast(dirty.length ? '⚠️ Backfill incomplete for: ' + dirty.join(', ') : '✅ Backfill complete — all data on server');
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// WELLNESS + READINESS (Tier 1.5) — Garmin data via TP drives the morning
+// card, slim check-in, body-comp charts, anomaly banner, and deficit policy.
+// ═══════════════════════════════════════════════════════════════════════
+
+async function renderReadinessCard() {
+  if (!FLAGS.readiness) return;
+  const card = document.getElementById('readinessCard');
+  if (!card || !getStorage('tpConnected', null)) return;
+  try {
+    const res = await fetch('/api/readiness/today', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) return;
+    card.style.display = 'block';
+    const scoreEl = document.getElementById('rdScore'), bandEl = document.getElementById('rdBand'), narrEl = document.getElementById('rdNarrative');
+
+    if (!d.row) {
+      scoreEl.textContent = '…';
+      bandEl.textContent = 'GATHERING';
+      bandEl.style.color = 'var(--text3)';
+      narrEl.textContent = d.gathering ? `Building your baseline — ${d.have || 0}/${d.need || 14} days of HRV data so far.` : 'No wellness data yet today.';
+      renderWellnessRow();
+      return;
+    }
+    const colors = { primed: '#22c55e', ready: '#4ade80', guarded: '#f59e0b', compromised: '#ef4444' };
+    const c = colors[d.row.band] || 'var(--text)';
+    scoreEl.textContent = d.row.score;
+    scoreEl.style.color = c;
+    bandEl.textContent = d.row.band.toUpperCase();
+    bandEl.style.color = c;
+    narrEl.textContent = d.row.narrative || '';
+    setStorage('readinessToday', { date: d.row.date, score: d.row.score, band: d.row.band, narrative: d.row.narrative, fetched: Date.now() });
+
+    // Anomaly banner (1.5E)
+    const ab = document.getElementById('rdAnomalyBanner');
+    if (FLAGS.anomalyAlert && d.anomalies?.length) {
+      const kinds = { hrv_rhr_combo: 'HRV low + RHR elevated', rhr_solo: 'Resting HR well above baseline', hrv_trend: 'HRV >20% below baseline two days running' };
+      ab.textContent = '⚠️ ' + d.anomalies.map(a => kinds[a.kind] || a.kind).join(' · ') + ' — treat today as recovery.';
+      ab.style.display = 'block';
+    } else ab.style.display = 'none';
+
+    // Detail: per-component bars
+    const detail = document.getElementById('rdDetail');
+    const comps = d.row.inputs?.components || {};
+    const labels = { hrv: 'HRV', rhr: 'RHR', sleep: 'Sleep', bb: 'Body Battery', tsb: 'Form (TSB)' };
+    detail.innerHTML = Object.entries(comps).map(([k, v]) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="width:82px;font-size:10px;font-weight:700;color:var(--text2)">${labels[k] || k}</div>
+        <div style="flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
+          <div style="width:${Math.round(v)}%;height:100%;background:${v >= 70 ? '#22c55e' : v >= 45 ? '#f59e0b' : '#ef4444'}"></div>
+        </div>
+        <div style="width:28px;text-align:right;font-size:10px;font-weight:700">${Math.round(v)}</div>
+      </div>`).join('');
+
+    // 30-day sparkline
+    try {
+      const hres = await fetch('/api/readiness?days=30', { headers: authHeaders() });
+      const h = await hres.json();
+      const rows = h.rows || [];
+      if (rows.length >= 2) {
+        const W = 200, H = 26;
+        const pt = (r, i) => `${(i / (rows.length - 1) * W).toFixed(1)},${(H - 2 - (r.score / 100) * (H - 4)).toFixed(1)}`;
+        document.getElementById('rdSparkline').innerHTML =
+          `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:220px;height:${H}px"><polyline points="${rows.map(pt).join(' ')}" fill="none" stroke="${c}" stroke-width="1.5" opacity="0.7"/></svg>`;
+      }
+    } catch(_) {}
+
+    renderWellnessRow();
+    applyReadinessDeficitPolicy();
+    renderTPBanners();
+  } catch (e) { console.warn('[readiness]', e.message); }
+}
+
+function toggleReadinessDetail() {
+  const d = document.getElementById('rdDetail');
+  if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
+}
+
+// Wellness metric grid with 7-day deltas (1.5B Today tile)
+async function renderWellnessRow() {
+  if (!FLAGS.wellness) return;
+  const row = document.getElementById('wellnessRow');
+  if (!row) return;
+  try {
+    const res = await fetch('/api/wellness?days=9', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok || !d.rows?.length) return;
+    const rows = d.rows; // date DESC
+    const today = rows[0];
+    const baseline = f => {
+      const vals = rows.slice(1).map(r => r[f]).filter(v => v != null);
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    };
+    const mood = getMoodLog()[todayKey()] || {};
+    const fmt = (v, dec) => v == null ? '—' : (+v).toFixed(dec);
+    const delta = (v, b, invert, dec) => {
+      if (v == null || b == null) return '';
+      const dv = v - b;
+      if (Math.abs(dv) < Math.pow(10, -dec) / 2) return '';
+      const good = invert ? dv < 0 : dv > 0;
+      return `<span style="color:${good ? '#22c55e' : '#f59e0b'};font-size:8.5px"> ${dv > 0 ? '▲' : '▼'}${Math.abs(dv).toFixed(dec)}</span>`;
+    };
+    const cells = [
+      { l: 'Weight', v: fmt(today.weight_lbs, 1), d: delta(today.weight_lbs, baseline('weight_lbs'), true, 1), c: '#f59e0b' },
+      { l: 'Sleep', v: fmt(today.sleep_total_hrs, 1) + (today.sleep_total_hrs != null ? 'h' : ''), d: delta(today.sleep_total_hrs, baseline('sleep_total_hrs'), false, 1), c: '#a78bfa' },
+      { l: 'HRV', v: fmt(today.hrv_ms, 0), d: delta(today.hrv_ms, baseline('hrv_ms'), false, 0), c: '#22c55e' },
+      { l: 'RHR', v: fmt(today.resting_hr_bpm, 0), d: delta(today.resting_hr_bpm, baseline('resting_hr_bpm'), true, 0), c: '#ef4444' },
+      { l: 'Battery', v: fmt(today.body_battery_wake, 0), d: delta(today.body_battery_wake, baseline('body_battery_wake'), false, 0), c: '#3b82f6' },
+      { l: 'Stress', v: fmt(today.stress_avg, 0), d: delta(today.stress_avg, baseline('stress_avg'), true, 0), c: '#f97316' },
+      { l: 'Mood', v: mood.mood ? mood.mood + '/5' : '—', d: '', c: '#eab308' },
+      { l: 'Energy', v: mood.energy ? mood.energy + '/5' : '—', d: '', c: '#14b8a6' },
+    ];
+    row.innerHTML = cells.map(x => `
+      <div style="text-align:center;background:var(--surface2);border-radius:10px;padding:7px 2px">
+        <div style="font-size:12.5px;font-weight:800;color:${x.c}">${x.v}${x.d}</div>
+        <div style="font-size:8.5px;color:var(--text3);font-weight:700;letter-spacing:0.5px;text-transform:uppercase">${x.l}</div>
+      </div>`).join('');
+  } catch(_) {}
+}
+
+// Override sheet (1.5B advanced affordance)
+function openOverrideModal() {
+  document.getElementById('ovDate').value = todayKey();
+  document.getElementById('ovValue').value = '';
+  document.getElementById('overrideModal').classList.add('open');
+}
+async function saveOverride() {
+  const date = document.getElementById('ovDate').value;
+  const field = document.getElementById('ovField').value;
+  const raw = document.getElementById('ovValue').value.trim();
+  try {
+    const res = await fetch('/api/wellness/override', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ date, field, value: raw === '' ? null : parseFloat(raw) })
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'failed');
+    document.getElementById('overrideModal').classList.remove('open');
+    showToast(raw === '' ? 'Override removed' : '✅ Override saved');
+    renderReadinessCard();
+    setStorage('trendsCache', null);
+  } catch (e) { showToast('⚠️ ' + e.message); }
+}
+
+// Deficit dial-back (1.5F): policy strict|soft|adaptive, default soft
+function applyReadinessDeficitPolicy() {
+  if (!FLAGS.readinessActions) return;
+  const banner = document.getElementById('readinessDeficitBanner');
+  if (!banner) return;
+  const rd = getStorage('readinessToday', null);
+  const policy = getStorage('readinessDeficitPolicy', 'soft');
+  const undone = getStorage('readinessDeficitUndo_' + todayKey(), false);
+  let bump = null;
+  if (rd?.date === todayKey() && policy !== 'strict' && !undone) {
+    const tdee = getStorage('userTDEE', null) || TDEE;
+    const base = getStorage('userMacros', null) || MACROS;
+    if (rd.band === 'compromised') bump = { calories: tdee, label: `Readiness ${rd.score} (compromised) → target set to maintenance today` };
+    else if (rd.band === 'guarded' && policy === 'adaptive') {
+      const deficit = tdee - base.calories;
+      bump = { calories: base.calories + Math.round(deficit * 0.25), label: `Readiness ${rd.score} (guarded) → deficit reduced 25% today` };
+    }
+  }
+  setStorage('readinessDeficitBump', bump);
+  if (bump) {
+    document.getElementById('readinessDeficitText').textContent = '🛌 ' + bump.label;
+    banner.style.display = 'flex';
+  } else banner.style.display = 'none';
+  scheduleRender(renderRings);
+  try { updateMacroTargetsRow(); } catch(_) {}
+}
+
+function applyReadinessBump(m) {
+  if (!FLAGS.readinessActions || !m) return m;
+  const bump = getStorage('readinessDeficitBump', null);
+  if (!bump) return m;
+  const extra = bump.calories - m.calories;
+  if (extra <= 0) return m;
+  // Recovery-day surplus goes to carbs
+  return { ...m, calories: bump.calories, carbs: m.carbs + Math.round(extra / 4), _readiness: true };
+}
+
+function undoReadinessDeficit() {
+  setStorage('readinessDeficitUndo_' + todayKey(), true);
+  applyReadinessDeficitPolicy();
+  showToast('Keeping the normal deficit today');
+}
+
 // ── TP lifecycle banners (Tier 2, item 10) ───────────────────────────────
 async function checkTPLifecycle() {
-  if (!FLAGS.tpAutoRefresh || !getStorage('tpConnected', null)) return;
+  if (!FLAGS.tpAutoRefresh) return;
   try {
-    const res = await fetch('/api/tp/status', { headers: authHeaders() });
+    const res = await fetch('/api/tp/status?nocache=' + Date.now(), { headers: authHeaders(), cache: 'no-store' });
     const d = await res.json();
     const expired = d.status === 'expired' || d.error === 'cookie_expired';
     setStorage('tpLifecycle', { status: expired ? 'expired' : d.status || 'active', last_refreshed_at: d.last_refreshed_at || null, expired_at: d.expired_at || null, checked: Date.now() });
+    // Self-heal: local flag was wiped but the server connection is alive
+    if (d.connected && !getStorage('tpConnected', null)) {
+      setStorage('tpConnected', { athlete: d.athlete, connectedAt: Date.now() });
+      updateTPSettingsUI();
+      setStorage('tpToday', null);        // force a fresh pull
+      fetchTPToday();
+      renderReadinessCard && renderReadinessCard();
+    }
     renderTPBanners();
   } catch(_) {}
 }
@@ -1105,6 +1385,54 @@ function findMealCopySource() {
   return null;
 }
 
+// ── 7-day trends strip on Today (tap → full Trends tab) ─────────────────
+async function renderTodayTrendsStrip() {
+  const card = document.getElementById('todayTrendsStrip'), row = document.getElementById('trendsStripRow');
+  if (!card || !row) return;
+  let data = null;
+  const cache = getStorage('trendsStripCache', null);
+  if (cache && Date.now() - cache.fetched < 30 * 60 * 1000) data = cache.data;
+  if (!data) {
+    try {
+      const res = await fetch('/api/trends?days=30', { headers: authHeaders() });
+      data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'trends failed');
+      setStorage('trendsStripCache', { data, fetched: Date.now() });
+    } catch (_) { return; }
+  }
+  const day7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const w = (data.weights || []);
+  const w7 = w.filter(x => x.date >= day7);
+  const wDelta = w7.length >= 2 ? w7[w7.length - 1].lbs - w7[0].lbs : null;
+
+  const calByDate = {};
+  for (const f of data.food || []) if (f.calories > 0) calByDate[f.date] = f.calories;
+  for (const c of data.checkins || []) if (c.calories_consumed > 0) calByDate[c.date] = c.calories_consumed;
+  const cals7 = Object.entries(calByDate).filter(([d]) => d >= day7).map(([, v]) => v);
+  const tdee = data.profile?.tdee || TDEE;
+  const avgDeficit = cals7.length ? Math.round(tdee - cals7.reduce((s, v) => s + v, 0) / cals7.length) : null;
+
+  const protTarget = data.profile?.protein || MACROS.protein;
+  const protByDate = {};
+  for (const f of data.food || []) if (f.protein > 0) protByDate[f.date] = f.protein;
+  for (const c of data.checkins || []) if (c.protein_g > 0) protByDate[c.date] = c.protein_g;
+  const protDays = Object.entries(protByDate).filter(([d, v]) => d >= day7 && v >= protTarget * 0.9).length;
+
+  const tss7 = (data.load || []).filter(l => l.date >= day7).reduce((s, l) => s + l.tss, 0);
+
+  const cell = (val, lbl, color) => `
+    <div style="text-align:center;background:var(--surface2);border-radius:10px;padding:8px 2px">
+      <div style="font-size:13px;font-weight:800;color:${color}">${val}</div>
+      <div style="font-size:8.5px;color:var(--text3);font-weight:700;letter-spacing:0.5px;text-transform:uppercase">${lbl}</div>
+    </div>`;
+  row.innerHTML =
+    cell(wDelta == null ? '—' : (wDelta > 0 ? '+' : '') + wDelta.toFixed(1) + ' lb', 'weight 7d', wDelta == null ? 'var(--text3)' : wDelta <= 0 ? '#22c55e' : '#f59e0b') +
+    cell(avgDeficit == null ? '—' : (avgDeficit >= 0 ? '−' : '+') + Math.abs(avgDeficit), 'avg deficit', avgDeficit == null ? 'var(--text3)' : avgDeficit > 0 ? '#22c55e' : '#ef4444') +
+    cell(`${protDays}/7`, 'protein hit', protDays >= 5 ? '#22c55e' : protDays >= 3 ? '#f59e0b' : '#ef4444') +
+    cell(Math.round(tss7), 'week tss', '#3b82f6');
+  card.style.display = 'block';
+}
+
 // ── Coach note (Tier 2, item 6) ──────────────────────────────────────────
 async function renderCoachNote(force) {
   if (!FLAGS.briefCoach) return;
@@ -1166,14 +1494,24 @@ async function runBackupNow() {
   } catch (e) { showToast('⚠️ Backup failed: ' + e.message); }
 }
 
+// Settings: clear regenerable caches and report what's left
+function freeUpSpace() {
+  const before = _localStorageTopKeys(5);
+  _freeCacheSpace();
+  const after = _localStorageTopKeys(5);
+  reportClientError('storage_report', new Error('manual free-up'), { before, after });
+  showToast(`🧹 Freed ${Math.max(0, (before?.totalKB || 0) - (after?.totalKB || 0))}KB — now ${after?.totalKB}KB. Biggest: ${(after?.top || []).slice(0, 3).join(', ')}`);
+  syncAllLogs();
+}
+
 function updateSyncStatusUI() {
   const el = document.getElementById('syncStatusLine');
   if (!el) return;
   const last = getStorage('_syncLastOk', 0);
   const dirty = SYNC_TABLES.filter(t => getStorage('_syncDirty_' + t, 0));
-  el.textContent = !last ? 'Never synced'
+  el.textContent = (!last ? 'Never synced'
     : dirty.length ? `⚠️ Pending: ${dirty.join(', ')} — retries automatically`
-    : `Last synced ${new Date(last).toLocaleTimeString()}`;
+    : `Last synced ${new Date(last).toLocaleTimeString()}`) + ` · build ${BUILD_ID}`;
 }
 // ═══ End D1 log sync ═══
 
@@ -2247,11 +2585,10 @@ function switchTab(name, btn) {
   document.getElementById('page-'+name).classList.add('active');
   if (btn) btn.classList.add('active');
   logInteraction('tab_visit', name);
-  if (name === 'today') { selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
-  if (name === 'lift') { renderWorkoutPage(); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
-  else { stopWorkoutTimer(); skipRestTimer(); }
+  if (name === 'today') { safeCall(renderBodyHomeCard, 'renderBodyHomeCard'); if (typeof refreshGoalPlan === 'function') refreshGoalPlan(); selectedDateKey = todayKey(); updateDateNavBar(); scheduleRender(renderRings); renderWeekStrip(); renderStreakCard(); renderEventCountdowns(); renderQuickRecs(); renderUsualFoods(); safeCall(renderFavChips, 'renderFavChips'); safeCall(renderReadinessCard, 'renderReadinessCard'); safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip'); renderWorkoutNutritionBanner(); renderFuelingBanner(); scheduleRender(renderFoodLog); scheduleRender(renderProteinPace); renderWeightTrend(); checkCopyYesterday(); scheduleRender(renderWeeklyBalance); renderWater(); renderSleepCard(); updateCheckinSummaryCard(); }
+  stopWorkoutTimer(); skipRestTimer();  // workout tab removed; timers are legacy no-ops
   if (name === 'program') { renderProgramPage(); renderEventList(); }
-  if (name === 'history') { renderBloodWorkPage(); renderHistoryPage(); }
+  if (name === 'history') { renderBloodWorkPage(); }
   if (name === 'trends') renderTrendChart();
   if (name === 'shoes')  renderShoePage();
 }
@@ -2378,8 +2715,10 @@ function renderStreakCard() {
   const now = nowEST();
 
   // Helper: did the user complete a workout on a given YYYY-MM-DD key?
-  // Counts: any liftLog entry for that date OR any shoeRun logged on that date
+  // Counts: check-in "worked out: YES", any legacy lift entry, or a logged run
+  const moodLog = getMoodLog();
   function hasActivityOn(key) {
+    if (moodLog[key]?.workedOut === true) return true;
     const hasLift = Object.keys(liftLog).some(k => k.startsWith(key));
     const hasRun  = shoeRuns.some(r => r.date === key);
     return hasLift || hasRun;
@@ -3520,7 +3859,7 @@ async function scanNutritionLabel(barcode, productName) {
 
       try {
         const resp = await callClaudeAPI({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-5',
           max_tokens: 512,
           messages: [{role:'user', content:[
             {type:'image', source:{type:'base64', media_type:'image/jpeg', data:base64}},
@@ -3808,8 +4147,9 @@ Return ONLY valid JSON (no markdown, no explanation):
     msgEl.textContent = 'Identifying food and calculating macros…';
 
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 1024,
+      output_config: _SO(SCHEMA_PHOTO),  // structured outputs
       messages: [{role:'user', content:[
         {type:'image', source:{type:'base64', media_type:'image/jpeg', data:photoBase64}},
         {type:'text', text:prompt}
@@ -4218,7 +4558,13 @@ function closePhotoModal() {
   resetPhoto();
 }
 
-function triggerCamera() { document.getElementById('cameraInput').click(); }
+function triggerCamera() {
+  // Some Android browsers ignore the static capture attribute and open the
+  // selfie camera — re-assert 'environment' (rear) as a property at click time
+  const inp = document.getElementById('cameraInput');
+  try { inp.setAttribute('capture', 'environment'); inp.capture = 'environment'; } catch(_) {}
+  inp.click();
+}
 function triggerGallery() { document.getElementById('galleryInput').click(); }
 
 // Downscale to ≤1024px max edge, JPEG q0.85 — keeps uploads small (worker caps ~2MB)
@@ -4447,6 +4793,11 @@ async function fetchTPPlanned() {
     let bump = null;
     if (race) bump = { extraCarbs: 100, extraCals: 400, label: `Race day tomorrow (${desc}) → +100g carbs tonight` };
     else if (dur >= 75 || tss >= 90) bump = { extraCarbs: 60, extraCals: 240, label: `Tomorrow: ${desc} → +60g carbs tonight` };
+    // 1.5F: hard day planned but readiness is shot → surface both options
+    const rdf = getStorage('readinessToday', null);
+    if (bump && FLAGS.readinessActions && rdf?.date === todayKey() && rdf.band === 'compromised') {
+      bump.label = `Readiness ${rdf.score} (compromised) — consider moving tomorrow's ${desc}; if keeping it, ` + bump.label.replace(/^Tomorrow: |^Race day tomorrow \(/, '').replace(') → ', ' → ');
+    }
 
     setStorage('fuelingBump', bump ? { date: todayKey(), ...bump } : null);
     renderFuelingBanner();
@@ -4544,6 +4895,8 @@ async function renderInsights() {
   _insRenderSleep(data);
   _insRenderLoad(data);
   _insRenderProtein(data);
+  if (FLAGS.bodyComp) safeCall(_insRenderBodyComp, '_insRenderBodyComp');
+  else { const bc = document.getElementById('bodyCompCard'); if (bc) bc.style.display = 'none'; }
 
   // Weekly AI summary (server-cached per ISO week)
   try {
@@ -4703,6 +5056,114 @@ function _insRenderLoad(data) {
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}${_insLine(ctlPts, '#f59e0b', 2)}</svg>`;
 }
 
+// ── Body composition (Tier 1.5D): fat mass vs lean mass from wellness ────
+async function _insRenderBodyComp() {
+  const card = document.getElementById('bodyCompCard');
+  if (!card) return;
+  let rows;
+  const cache = getStorage('bodyCompCache', null);
+  if (cache && Date.now() - cache.fetched < 10 * 60 * 1000) rows = cache.rows;
+  if (!rows) {
+    try {
+      const res = await fetch('/api/wellness?days=90', { headers: authHeaders() });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'wellness fetch failed');
+      rows = (d.rows || []).slice().reverse(); // ASC
+      setStorage('bodyCompCache', { rows, fetched: Date.now() });
+    } catch (e) {
+      document.getElementById('bcChart1').innerHTML = _insEmpty('Could not load body comp — ' + esc(e.message));
+      return;
+    }
+  }
+  const days = rows.filter(r => r.weight_lbs != null).map(r => {
+    const fat = r.body_fat_pct != null ? r.weight_lbs * r.body_fat_pct / 100 : null;
+    const lean = fat != null ? r.weight_lbs - fat : (r.muscle_mass_lbs ?? null);
+    return { date: r.date, w: r.weight_lbs, fat, lean };
+  });
+  if (days.length < 3) {
+    document.getElementById('bcChart1').innerHTML = _insEmpty('Need a few smart-scale readings for body comp');
+    document.getElementById('bcChart2').innerHTML = ''; document.getElementById('bcCallout').textContent = '';
+    return;
+  }
+
+  // Chart 1: weight (gray) + fat (red) + lean (green), 7d MAs; dashed gaps where comp missing
+  const W = 320, H = 150, P = 8;
+  const t0 = new Date(days[0].date).getTime(), t1 = new Date(days[days.length - 1].date).getTime();
+  const X = d => P + (new Date(d).getTime() - t0) / Math.max(t1 - t0, 1) * (W - 2 * P);
+  const allVals = days.flatMap(x => [x.w, x.fat, x.lean]).filter(v => v != null);
+  const lo = Math.min(...allVals) - 2, hi = Math.max(...allVals) + 2;
+  const Y = v => H - P - (v - lo) / (hi - lo || 1) * (H - 2 * P);
+  const maOf = key => {
+    const out = [];
+    for (let i = 0; i < days.length; i++) {
+      const win = days.slice(Math.max(0, i - 6), i + 1).map(x => x[key]).filter(v => v != null);
+      out.push(win.length ? win.reduce((s, v) => s + v, 0) / win.length : null);
+    }
+    return out;
+  };
+  const seg = (key, ma, color, w) => {
+    // contiguous runs solid; bridge gaps dashed
+    let svg = '', run = [];
+    let lastIdx = null;
+    for (let i = 0; i < days.length; i++) {
+      if (days[i][key] == null) continue;
+      const pt = [X(days[i].date), Y(ma[i])];
+      if (lastIdx != null && i - lastIdx > 1) {
+        svg += _insLine([run[run.length - 1], pt], color, w, '3,4');
+        svg += _insLine(run, color, w);
+        run = [pt];
+      } else run.push(pt);
+      lastIdx = i;
+    }
+    if (run.length > 1) svg += _insLine(run, color, w);
+    return svg;
+  };
+  document.getElementById('bcChart1').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    ${seg('w', maOf('w'), '#64748b', 1.2)}${seg('fat', maOf('fat'), '#ef4444', 2)}${seg('lean', maOf('lean'), '#22c55e', 2)}
+  </svg>`;
+
+  // Chart 2: weekly change in fat vs lean
+  const byWeek = {};
+  for (const x of days) {
+    if (x.fat == null || x.lean == null) continue;
+    const wk = _insWeekKey(x.date);
+    (byWeek[wk] = byWeek[wk] || { fat: [], lean: [] }).fat.push(x.fat);
+    byWeek[wk].lean.push(x.lean);
+  }
+  const weeks = Object.keys(byWeek).sort().slice(-9);
+  const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
+  const deltas = [];
+  for (let i = 1; i < weeks.length; i++) {
+    deltas.push({ wk: weeks[i], dFat: avg(byWeek[weeks[i]].fat) - avg(byWeek[weeks[i - 1]].fat), dLean: avg(byWeek[weeks[i]].lean) - avg(byWeek[weeks[i - 1]].lean) });
+  }
+  if (deltas.length) {
+    const W2 = 320, H2 = 110, P2 = 8, bw = (W2 - 2 * P2) / deltas.length, zero = H2 / 2;
+    const maxD = Math.max(...deltas.flatMap(x => [Math.abs(x.dFat), Math.abs(x.dLean)]), 0.5);
+    const bars = deltas.map((x, i) => {
+      const bx = P2 + i * bw;
+      const fh = Math.abs(x.dFat) / maxD * (H2 / 2 - P2), lh = Math.abs(x.dLean) / maxD * (H2 / 2 - P2);
+      return `<rect x="${(bx + 2).toFixed(1)}" y="${(x.dFat >= 0 ? zero - fh : zero).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(fh, 1).toFixed(1)}" rx="2" fill="#ef4444" opacity="0.85"/>` +
+             `<rect x="${(bx + bw / 2 + 1).toFixed(1)}" y="${(x.dLean >= 0 ? zero - lh : zero).toFixed(1)}" width="${(bw / 2 - 3).toFixed(1)}" height="${Math.max(lh, 1).toFixed(1)}" rx="2" fill="#22c55e" opacity="0.85"/>`;
+    }).join('');
+    document.getElementById('bcChart2').innerHTML = `<svg viewBox="0 0 ${W2} ${H2}" style="width:100%;height:auto"><line x1="${P2}" y1="${zero}" x2="${W2 - P2}" y2="${zero}" stroke="#334155"/>${bars}</svg>`;
+  } else document.getElementById('bcChart2').innerHTML = '';
+
+  // Callout: 28-day rates + sustained lean-loss warning
+  const cut = t1 - 28 * 86400000;
+  const recent = days.filter(x => new Date(x.date).getTime() >= cut && x.fat != null);
+  const callout = document.getElementById('bcCallout');
+  if (recent.length >= 6) {
+    const rate = key => {
+      const pts = recent.map(x => [(new Date(x.date).getTime() - cut) / 86400000, x[key]]);
+      return _insFit(pts)[0] * 7;
+    };
+    const fatRate = rate('fat'), leanRate = rate('lean');
+    let html = `28-day rates: <b style="color:#ef4444">fat ${fatRate > 0 ? '+' : ''}${fatRate.toFixed(2)} lb/wk</b> · <b style="color:#22c55e">lean ${leanRate > 0 ? '+' : ''}${leanRate.toFixed(2)} lb/wk</b>`;
+    if (leanRate < -0.15) html += `<div style="color:#f59e0b;margin-top:4px">⚠️ Losing lean mass — consider more protein or a smaller deficit.</div>`;
+    callout.innerHTML = html;
+  } else callout.textContent = '';
+}
+
 function _insRenderProtein(data) {
   const el = document.getElementById('insProtein');
   const target = data.profile?.protein || MACROS.protein;
@@ -4795,6 +5256,7 @@ Return ONLY valid JSON, no markdown:
     const resp = await callClaudeAPI({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
+      output_config: _SO(SCHEMA_VOICE),  // structured outputs — guaranteed schema-valid JSON
       messages: [{ role: 'user', content: prompt }]
     });
     const raw = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
@@ -4892,6 +5354,7 @@ function openSettings() {
   // Reset auto-calc result
   const res = document.getElementById('tdeeCalcResult');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+  try { setEatBack(getEatBackPct(), null); } catch(_) {}
   updateTPSettingsUI();
   updateSyncStatusUI();
   updateBackupStatusUI();
@@ -4916,6 +5379,14 @@ async function saveGoalSettings() {
   setStorage('userTDEE',   tdee);
   localStorage.removeItem('adaptiveMacros');
   localStorage.removeItem('garminAdjustedMacros');
+  // Re-apply today's run burn on top of the NEW base right away — clearing
+  // the old adjustment used to leave targets bump-less until the next TP sync
+  try {
+    const tp = getStorage('tpToday', null);
+    if (tp?.calories > 0 && getStorage('tpAutoAdjust', true)) {
+      adjustMacrosForBurn(Math.round(tp.calories * 0.75));
+    }
+  } catch(_) {}
 
   // Persist to D1 so a page refresh doesn't clobber these with the old server row.
   // The /api/user/profile endpoint expects a full profile body, so preserve the
@@ -4950,6 +5421,15 @@ async function saveGoalSettings() {
   updateHeaderDate();
   renderEventCountdowns();
   showToast('✅ Goals & macros saved!');
+
+  // The goal plan follows the goal weight and date set here; it then recomputes
+  // the calorie and carb targets (protein and fat stay as entered)
+  if (typeof goalPlanActive === 'function' && goalPlanActive() && goalDate) {
+    try {
+      await fetch('/api/garmin/plan', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ goal_weight: g, goal_date: goalDate }) });
+      await refreshGoalPlan();
+    } catch (_) {}
+  }
 }
 
 function updateMacroTargetsRow() {
@@ -4957,7 +5437,7 @@ function updateMacroTargetsRow() {
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const adaptive   = getStorage('adaptiveMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const m = applyFuelingBump(garminAdj || adaptive || userMacros || MACROS);
+  const m = applyReadinessBump(applyFuelingBump(garminAdj || adaptive || userMacros || MACROS));
 
   const tdee   = getStorage('userTDEE', null) || TDEE;
   const goals  = getStorage('userGoals', {});
@@ -5197,6 +5677,23 @@ function openTodayShoeAssign() {
   });
 }
 
+// How much of the net run burn gets added back to targets (0.6 keeps a
+// deficit on run days; 1.0 = eat back everything you burned)
+function getEatBackPct() { return getStorage('eatBackPct', 0.6); }
+
+function setEatBack(pct, btn) {
+  setStorage('eatBackPct', pct);
+  const b60 = document.getElementById('eatback60'), b100 = document.getElementById('eatback100');
+  for (const [el, active] of [[b60, pct === 0.6], [b100, pct === 1.0]]) {
+    if (el) { el.style.background = active ? 'var(--green)' : 'transparent'; el.style.color = active ? '#fff' : 'var(--text3)'; }
+  }
+  if (!btn) return;  // settings-open just reflects the stored choice
+  // Re-apply today's bump at the new ratio immediately
+  const tp = getStorage('tpToday', null);
+  if (tp?.calories > 0 && getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(Math.round(tp.calories * 0.75));
+  showToast(pct === 1 ? 'Eating back 100% of run burn' : 'Eating back 60% of run burn (keeps a deficit)');
+}
+
 function adjustMacrosForBurn(burnCalories) {
   const banner = document.getElementById('garminMacroBanner');
   const text   = document.getElementById('garminMacroText');
@@ -5216,8 +5713,11 @@ function adjustMacrosForBurn(burnCalories) {
     return;
   }
 
-  // Add ~60% of burn back as extra calories (don't eat back 100% — still want a deficit)
-  const extraCals  = Math.round(burnCalories * 0.6);
+  // Under the goal plan the deficit already lives in the base target, and the burn
+  // passed in is Garmin's net workout figure, so all of it is added back
+  const onPlan     = typeof goalPlanActive === 'function' && goalPlanActive();
+  const eatBack    = onPlan ? 1 : getEatBackPct();
+  const extraCals  = Math.round(burnCalories * eatBack);
   const extraCarbs = Math.round(extraCals * 0.65 / 4); // 65% from carbs
 
   const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
@@ -5231,7 +5731,10 @@ function adjustMacrosForBurn(burnCalories) {
   setStorage('garminAdjustedMacros', adjusted);
 
   banner.style.display = 'flex';
-  text.textContent = `🟠 Run detected! +${extraCals} kcal → ${adjusted.calories} kcal target, ${adjusted.carbs}g carbs`;
+  const pctLabel = Math.round(eatBack * 100);
+  text.textContent = onPlan
+    ? `🟠 Workout: base ${base.calories} + ${extraCals} burned = ${adjusted.calories} kcal · carbs +${extraCarbs}g`
+    : `🟠 Run: base ${base.calories} + ${extraCals} eaten back (${pctLabel}% of ${burnCalories} net burn) = ${adjusted.calories} kcal · carbs +${extraCarbs}g`;
 
   // Update rings, targets row, and weekly balance
   renderRings(adjusted);
@@ -5278,6 +5781,19 @@ async function fetchTPToday() {
 
     if (!res.ok || !data.ok) {
       if (data.error === 'cookie_expired') {
+        // Verify before alarming — transient TP 401s and stale SW caches happen.
+        let confirmed = false;
+        try {
+          const v = await fetch('/api/tp/status?nocache=' + Date.now(), { headers: authHeaders(), cache: 'no-store' });
+          const vd = await v.json();
+          confirmed = vd.status === 'expired' || vd.error === 'cookie_expired';
+          if (!confirmed && vd.connected) {
+            setStorage('tpLifecycle', { status: 'active', checked: Date.now() });
+            renderTPBanners();
+            setTimeout(() => fetchTPToday(), 1500);  // retry the sync once
+            return;
+          }
+        } catch(_) { return; }  // network blip — don't touch state
         document.getElementById('garminActivitySub').textContent = '⚠️ TrainingPeaks session expired — reconnect in Settings';
         setStorage('tpLifecycle', { status: 'expired', checked: Date.now() });
         renderTPBanners();
@@ -5293,11 +5809,15 @@ async function fetchTPToday() {
     }
 
     renderGarminCard(data.calories, data.distance, data.duration, data.count);
+    const lc = getStorage('tpLifecycle', null);
+    if (lc && lc.status !== 'active') { setStorage('tpLifecycle', { status: 'active', checked: Date.now() }); renderTPBanners(); }
     // Device-reported workout calories are gross expenditure (include BMR during
     // the run). Our TDEE already covers BMR for the full day, so we only add the
     // NET incremental burn: ~75% of gross is the standard correction.
     const netBurn = Math.round((data.calories || 0) * 0.75);
-    if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
+    // The goal plan sets today's target from Garmin's own workout numbers instead
+    if (typeof goalPlanActive === 'function' && goalPlanActive()) safeCall(refreshGoalPlan, 'refreshGoalPlan');
+    else if (getStorage('tpAutoAdjust', true)) adjustMacrosForBurn(netBurn);
     setStorage('tpToday', { calories: data.calories, distance: data.distance, duration: data.duration, fetched: Date.now() });
     renderShoeStravaCard();
     // Items 3+4: server recomputes load in the background; refresh planned fueling now
@@ -5427,6 +5947,18 @@ function renderWeightTrend() {
     return;
   }
 
+  // Goal params come from userGoals now (the old GOAL_WEIGHT/START_WEIGHT/
+  // GOAL_DAYS constants were removed — referencing them threw a
+  // ReferenceError that aborted the whole Today render chain)
+  const _g = getStorage('userGoals', {});
+  const GOAL_WEIGHT  = Number(_g.goal) || 163;
+  const START_WEIGHT = Number(_g.weight) || entries[0].weight;
+  const GOAL_DAYS = (() => {
+    if (!_g.goalDate) return 84;  // ~12-week default when no target date set
+    const d = Math.round((new Date(_g.goalDate + 'T12:00:00') - new Date(entries[0].date + 'T12:00:00')) / 86400000);
+    return d > 0 ? d : 84;
+  })();
+
   // Latest weight
   const latest = entries[entries.length - 1];
   document.getElementById('weightTrendVal').textContent = latest.weight;
@@ -5485,6 +6017,10 @@ function renderWeightTrend() {
 
 // ── Adaptive Macro Adjustment ──
 function checkAdaptiveMacros() {
+  // The goal plan already adjusts the target from the weight trend
+  if (typeof goalPlanActive === 'function' && goalPlanActive()) return;
+  // GOAL_WEEKLY_LB was a removed constant; referencing it threw once 14 weigh-ins existed
+  const GOAL_WEEKLY_LB = 1;
   const entries = getWeightTrend();
   if (entries.length < 7) return; // Need at least a week of data
 
@@ -5539,7 +6075,7 @@ function renderRings(overrideMacros) {
   const adaptive   = getStorage('adaptiveMacros', null);
   const garminAdj  = getStorage('garminAdjustedMacros', null);
   const userMacros = getStorage('userMacros', null);
-  const targets    = applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS);
+  const targets    = applyReadinessBump(applyFuelingBump(overrideMacros || garminAdj || adaptive || userMacros || MACROS));
   const macroLog  = getStorage('macroLog', {});
   const dayData   = macroLog[getSelectedDateKey()] || { calories:0, protein:0, carbs:0, fat:0 };
   document.getElementById('ringsRow').innerHTML =
@@ -5558,7 +6094,6 @@ function renderRings(overrideMacros) {
   if (tPro) tPro.textContent  = targets.protein + 'g';
   if (tCarb) tCarb.textContent = targets.carbs + 'g';
   if (tFat) tFat.textContent  = targets.fat + 'g';
-  safeCall(renderWhoopDayBadge, "whoopDayBadge");
   if (tSrc) {
     if (garminAdj || overrideMacros) {
       tSrc.textContent = '⛰️ TrainingPeaks';
@@ -5571,39 +6106,6 @@ function renderRings(overrideMacros) {
       tSrc.style.color = 'var(--text3)';
     }
   }
-}
-
-// ── WHOOP Day Badge on Today Page ──
-function renderWhoopDayBadge() {
-  const el = document.getElementById('whoopDayBadge');
-  if (!el) return;
-  const dateKey = getSelectedDateKey();
-  const w = getWhoopForDate(dateKey);
-  if (!w || (w.recovery == null && w.hrv == null)) {
-    el.style.display = 'none';
-    return;
-  }
-  el.style.display = 'block';
-  const c = wrecoveryColor(w.recovery || 0);
-  const rec = w.recovery != null ? w.recovery + '%' : '--';
-  const hrv = w.hrv != null ? w.hrv + 'ms' : '--';
-  const rhr = w.rhr != null ? w.rhr + 'bpm' : '--';
-  const strain = w.strain != null ? w.strain.toFixed(1) : '--';
-  const sleep = w.sleepPerf != null ? w.sleepPerf + '%' : '--';
-  const debt = w.sleepDebt != null ? (w.sleepDebt/60).toFixed(1)+'h debt' : '';
-  el.innerHTML = `<div style="background:${c.bg};border:1.5px solid ${c.border};border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="switchTab('history');switchHistoryTab('whoop')">
-    <div style="text-align:center;flex-shrink:0">
-      <div style="font-size:18px;font-weight:900;color:${c.text}">${rec}</div>
-      <div style="font-size:9px;font-weight:700;color:${c.text};text-transform:uppercase">Recovery</div>
-    </div>
-    <div style="flex:1;display:flex;gap:12px;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--text2)">💚 HRV <b style="color:#22c55e">${hrv}</b></span>
-      <span style="font-size:11px;color:var(--text2)">❤️ RHR <b style="color:#ef4444">${rhr}</b></span>
-      <span style="font-size:11px;color:var(--text2)">⚡ Strain <b style="color:#3b82f6">${strain}</b></span>
-      <span style="font-size:11px;color:var(--text2)">😴 Sleep <b style="color:#f59e0b">${sleep}</b>${debt?' · '+debt:''}</span>
-    </div>
-    <div style="font-size:9px;color:${c.text};opacity:0.7">💍</div>
-  </div>`;
 }
 
 // ── Copy Yesterday's Meals ──
@@ -5707,6 +6209,9 @@ function getTimeGreeting() {
 }
 
 function initGreetingTile() {
+  // Greeting tile removed from the home screen at the user's request: skip the
+  // quote, calendar and Gmail loads (and the Google token request behind them)
+  if (!FLAGS.greetingTile) return;
   // Set greeting and date
   const hello = document.getElementById('greetingHello');
   const dateEl = document.getElementById('greetingDate');
@@ -5742,6 +6247,8 @@ function initGoogleTokenClient() {
   _googleTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+    // Pin the account so Google never shows the 3-account chooser
+    hint: _currentUser?.email || 'jeremy@dronenerds.com',
     callback: (tokenResponse) => {
       if (tokenResponse.error) {
         console.warn('[Greeting] Token error:', tokenResponse.error);
@@ -5758,14 +6265,30 @@ function initGoogleTokenClient() {
     prompt: '',
   });
 
-  // Auto-request token (silently if already consented)
   requestGreetingToken();
 }
 
-function requestGreetingToken() {
-  if (!_googleTokenClient) return;
+async function requestGreetingToken() {
+  // 1st choice: server-minted token — zero UI, works when the worker has a
+  // valid GOOGLE_REFRESH_TOKEN (OAuth app must be in production status)
   try {
-    _googleTokenClient.requestAccessToken({ prompt: '' });
+    const res = await fetch('/api/google/token', { headers: authHeaders() });
+    const d = await res.json();
+    if (d.ok && d.access_token) {
+      _googleAccessToken = d.access_token;
+      localStorage.setItem('googleAccessToken', d.access_token);
+      localStorage.setItem('googleTokenExpiry', String(Date.now() + (d.expires_in || 3600) * 1000));
+      loadGreetingCalendar();
+      loadGreetingGmail();
+      return;
+    }
+  } catch(_) {}
+  // 2nd: GIS with the account hint — silent when Chrome holds the session,
+  // and at most once per app open (never a re-prompt loop)
+  if (!_googleTokenClient || requestGreetingToken._asked) { renderGreetingNoAuth(); return; }
+  requestGreetingToken._asked = true;
+  try {
+    _googleTokenClient.requestAccessToken({ prompt: '', hint: _currentUser?.email || 'jeremy@dronenerds.com' });
   } catch (e) {
     console.warn('[Greeting] Silent token request failed:', e);
     renderGreetingNoAuth();
@@ -5781,7 +6304,7 @@ function renderGreetingNoAuth() {
 
 function connectGreetingGoogle() {
   if (_googleTokenClient) {
-    _googleTokenClient.requestAccessToken({ prompt: 'consent' });
+    _googleTokenClient.requestAccessToken({ prompt: 'consent', hint: _currentUser?.email || 'jeremy@dronenerds.com' });
   } else {
     initGoogleTokenClient();
   }
@@ -6329,6 +6852,52 @@ function selectWeekDay(key) {
 
 // All Claude API calls route through the Cloudflare worker proxy at /api/claude
 // The actual API key lives in Cloudflare environment secrets (never in code)
+// Long analyses on mobile: hold a screen wake lock so Android doesn't kill
+// the connection when the display dims, and retry once if the network drops.
+async function callClaudeAPIWithRetry(payload) {
+  let wakeLock = null;
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch(_) {}
+  try {
+    try {
+      return await callClaudeAPI(payload);
+    } catch (e) {
+      const netFail = e instanceof TypeError || /failed to fetch|load failed|network/i.test(e.message);
+      if (!netFail) throw e;
+      showToast('⚠️ Connection dropped — retrying…');
+      return await callClaudeAPI(payload);
+    }
+  } finally {
+    try { await wakeLock?.release(); } catch(_) {}
+  }
+}
+
+// Submit to the async proxy and poll with short requests every 2.5s.
+// Poll-time network blips are ignored — the job keeps running server-side.
+async function callClaudeAPIAsync(payload, onProgress) {
+  let sub;
+  try {
+    sub = await fetch('/api/claude/async', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+  } catch (e) {
+    reportClientError('claude_async_submit', e, { payloadKB: Math.round(JSON.stringify(payload).length / 1024) });
+    throw new Error('Could not reach the server to start the analysis (submit leg) — ' + e.message);
+  }
+  const sd = await sub.json().catch(() => ({}));
+  if (!sub.ok || !sd.ok) throw new Error(sd.error?.message || ('submit failed: ' + sub.status));
+  const t0 = Date.now();
+  while (Date.now() - t0 < 180000) {
+    await new Promise(r => setTimeout(r, 2500));
+    if (onProgress) onProgress(Math.round((Date.now() - t0) / 1000));
+    let d = null;
+    try {
+      const res = await fetch('/api/claude/job?id=' + sd.job_id, { headers: authHeaders() });
+      d = await res.json();
+    } catch (_) { continue; }  // blip — job is still running server-side
+    if (d?.status === 'done') return d.result;
+    if (d?.status === 'error') throw new Error(d.error || 'analysis failed');
+  }
+  throw new Error('analysis timed out after 3 minutes — try again');
+}
+
 async function callClaudeAPI(payload) {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -6985,7 +7554,7 @@ const BACKUP_KEYS = [
   'adaptiveMacros', 'garminAdjustedMacros', 'dailyQuote',
   'tpToday',
   'tpAutoAdjust',
-  'shoeGarage', 'shoeRuns',
+  'shoeGarage', 'shoeRuns', 'bloodResults',
 ];
 
 function exportData() {
@@ -7058,6 +7627,50 @@ function getShoePhoto(shoeId) {
   if (!_shoePhotoCache) _shoePhotoCache = getStorage('shoePhotos', {});
   return _shoePhotoCache[shoeId] || null;
 }
+// Dedupe blood records: keep the newest per (date, lab)
+function dedupeBloodResults() {
+  const results = getStorage('bloodResults', []);
+  const seen = {};
+  const kept = [];
+  // newest first by uploadedAt so the first seen wins
+  for (const r of [...results].sort((a, b) => (b.uploadedAt || '').localeCompare(a.uploadedAt || ''))) {
+    const key = r.date + '|' + (r.lab || '');
+    if (seen[key]) continue;
+    seen[key] = true;
+    kept.push(r);
+  }
+  if (kept.length !== results.length) {
+    kept.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    setStorage('bloodResults', kept);   // sync engine tombstones the dropped ones
+    console.log('[blood] deduped', results.length - kept.length, 'duplicate record(s)');
+  }
+}
+
+// One-time: recompress stored shoe photos to thumbnails (they were 800px
+// JPEGs totalling ~4MB — the main localStorage quota hog on mobile)
+async function recompressShoePhotos() {
+  if (getStorage('shoePhotosCompressedV1', false)) return;
+  const photos = getStorage('shoePhotos', {});
+  const keys = Object.keys(photos);
+  if (!keys.length) { setStorage('shoePhotosCompressedV1', true); return; }
+  const before = JSON.stringify(photos).length;
+  for (const k of keys) {
+    try { photos[k] = await resizeImage(photos[k], 320, 0.72); } catch(_) {}
+  }
+  _invalidateShoePhotoCache();
+  const ok = setStorage('shoePhotos', photos);
+  const after = JSON.stringify(photos).length;
+  if (ok) {
+    setStorage('shoePhotosCompressedV1', true);
+    const freedKB = Math.round((before - after) / 1024);
+    if (freedKB > 50) {
+      showToast(`🧹 Shoe photos compressed — freed ${freedKB}KB`);
+      reportClientError('storage_recompress', new Error('ok'), { freedKB, photos: keys.length });
+      syncAllLogs();  // room now — pull any cloud-only records (e.g. blood) down
+    }
+  }
+}
+
 // Migration: if old shoes have photoData embedded, move it out
 function migrateShoePhotos() {
   const shoes  = getShoes();
@@ -7360,7 +7973,7 @@ async function updateShoePhoto(shoeId, input) {
   reader.onload = async (e) => {
     const dataUrl = e.target.result;
     // Resize to reduce storage footprint
-    const resized = await resizeImage(dataUrl, 800);
+    const resized = await resizeImage(dataUrl, 320, 0.72);  // thumbnail-size — quota matters more than pixels
     const photos = getStorage('shoePhotos', {});
     photos[shoeId] = resized;
     _invalidateShoePhotoCache();
@@ -7379,7 +7992,7 @@ async function updateShoePhoto(shoeId, input) {
 }
 
 // ── Resize image helper (returns base64 dataUrl) ─────────────
-function resizeImage(dataUrl, maxSize) {
+function resizeImage(dataUrl, maxSize, quality) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
@@ -7389,8 +8002,9 @@ function resizeImage(dataUrl, maxSize) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      resolve(canvas.toDataURL('image/jpeg', quality || 0.82));
     };
+    img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
 }
@@ -7447,7 +8061,7 @@ Closet shoes:\n`;
 
     try {
       const data = await callClaudeAPI({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5',
         max_tokens: 400,
         messages:[{ role:'user', content: contentArr }]
       });
@@ -7777,751 +8391,17 @@ function onStravaRunSynced(runData) {
 // ═══════════════════════════════════════════════════════
 
 function switchHistoryTab(tab) {
-  ['lift','blood','nutr','trends','whoop'].forEach(t => {
+  ['blood','nutr','trends','body'].forEach(t => {
     const el = document.getElementById('historyTab-'+t);
     const btn = document.getElementById('htab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
     if (btn) btn.classList.toggle('htab-active', t === tab);
   });
-  if (tab === 'lift')   renderHistoryPage();
   if (tab === 'blood')  renderBloodWorkPage();
   if (tab === 'nutr')   renderNutritionReport(7);
-  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); }
-  if (tab === 'whoop')  renderWhoopDashboard();
+  if (tab === 'body')   safeCall(renderBodyPage, 'renderBodyPage');
+  if (tab === 'trends') { renderTrendChart(); safeCall(renderInsights, 'renderInsights'); safeCall(renderTrainingLoad, 'renderTrainingLoad'); renderTPBanners(); }
 }
-
-// ═══════════════════════════════════════════════════════
-// ── WHOOP INTEGRATION ──────────────────────────────────
-// ═══════════════════════════════════════════════════════
-
-// ── Storage helpers ──
-function getWhoopData() { return getStorage('whoopData', null); }
-function setWhoopData(d) { setStorage('whoopData', d); }
-
-// ── ZIP Parser — reads WHOOP export ZIP client-side ──
-async function handleWhoopUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const statusEl = document.getElementById('whoopUploadStatus');
-  const progressEl = document.getElementById('whoopParseProgress');
-  statusEl.textContent = 'Reading ZIP…';
-  progressEl.style.display = 'block';
-  progressEl.textContent = '⏳ Loading JSZip…';
-
-  try {
-    // Load JSZip dynamically
-    if (!window.JSZip) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-
-    progressEl.textContent = '📦 Extracting ZIP…';
-    const arrayBuffer = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(arrayBuffer);
-
-    // Find the CSVs — they may be nested in a folder
-    const findFile = name => {
-      const keys = Object.keys(zip.files);
-      const key = keys.find(k => k.endsWith(name));
-      return key ? zip.files[key] : null;
-    };
-
-    const cyclesFile   = findFile('physiological_cycles.csv');
-    const sleepsFile   = findFile('sleeps.csv');
-    const workoutsFile = findFile('workouts.csv');
-
-    if (!cyclesFile || !sleepsFile || !workoutsFile) {
-      progressEl.textContent = '❌ Missing CSVs. Expected: physiological_cycles.csv, sleeps.csv, workouts.csv';
-      return;
-    }
-
-    progressEl.textContent = '📊 Parsing cycles…';
-    const cyclesCSV   = await cyclesFile.async('text');
-    const sleepsCSV   = await sleepsFile.async('text');
-    const workoutsCSV = await workoutsFile.async('text');
-
-    progressEl.textContent = '🔢 Processing data…';
-    const data = parseWhoopCSVs(cyclesCSV, sleepsCSV, workoutsCSV);
-
-    setWhoopData(data);
-    progressEl.textContent = `✅ Imported ${data.cycles.length} days, ${data.sleeps.length} sleeps, ${data.workouts.length} workouts`;
-    statusEl.textContent = `Last import: ${new Date().toLocaleDateString()}`;
-    document.getElementById('whoopDropZone').style.borderColor = '#7c3aed';
-
-    setTimeout(renderWhoopDashboard, 300);
-  } catch(e) {
-    progressEl.textContent = '❌ Error: ' + e.message;
-    console.error('WHOOP upload error:', e);
-  }
-}
-
-// ── Parse CSV text into array of objects ──
-function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
-  return lines.slice(1).map(line => {
-    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
-    const obj = {};
-    headers.forEach((h,i) => obj[h] = vals[i] || '');
-    return obj;
-  }).filter(r => r[headers[0]]);
-}
-
-// ── Parse and normalize all three CSVs ──
-function parseWhoopCSVs(cyclesCSV, sleepsCSV, workoutsCSV) {
-  const rawCycles   = parseCSV(cyclesCSV);
-  const rawSleeps   = parseCSV(sleepsCSV);
-  const rawWorkouts = parseCSV(workoutsCSV);
-
-  const num = (v, fallback=null) => { const n = parseFloat(v); return isNaN(n) ? fallback : n; };
-  const dateStr = v => v ? v.slice(0,10) : null;
-
-  const cycles = rawCycles.map(r => ({
-    date:        dateStr(r['Cycle start time']),
-    recovery:    num(r['Recovery score %']),
-    hrv:         num(r['Heart rate variability (ms)']),
-    rhr:         num(r['Resting heart rate (bpm)']),
-    skinTemp:    num(r['Skin temp (celsius)']),
-    spo2:        num(r['Blood oxygen %']),
-    strain:      num(r['Day Strain']),
-    calories:    num(r['Energy burned (cal)']),
-    sleepPerf:   num(r['Sleep performance %']),
-    deepMin:     num(r['Deep (SWS) duration (min)']),
-    remMin:      num(r['REM duration (min)']),
-    lightMin:    num(r['Light sleep duration (min)']),
-    asleepMin:   num(r['Asleep duration (min)']),
-    awakeMin:    num(r['Awake duration (min)']),
-    sleepDebt:   num(r['Sleep debt (min)']),
-    respRate:    num(r['Respiratory rate (rpm)']),
-    sleepConsistency: num(r['Sleep consistency %']),
-  })).filter(r => r.date && r.recovery !== null);
-
-  const sleeps = rawSleeps.filter(r => r['Nap']?.toLowerCase() !== 'true').map(r => ({
-    date:      dateStr(r['Sleep onset']),
-    onset:     r['Sleep onset'],
-    wake:      r['Wake onset'],
-    perf:      num(r['Sleep performance %']),
-    asleepMin: num(r['Asleep duration (min)']),
-    deepMin:   num(r['Deep (SWS) duration (min)']),
-    remMin:    num(r['REM duration (min)']),
-    lightMin:  num(r['Light sleep duration (min)']),
-    debt:      num(r['Sleep debt (min)']),
-    respRate:  num(r['Respiratory rate (rpm)']),
-    efficiency: num(r['Sleep efficiency %']),
-    consistency: num(r['Sleep consistency %']),
-    isNap:     false,
-  })).filter(r => r.date && r.asleepMin);
-
-  const workouts = rawWorkouts.map(r => ({
-    date:     dateStr(r['Workout start time']),
-    activity: r['Activity name'],
-    strain:   num(r['Activity Strain']),
-    calories: num(r['Energy burned (cal)']),
-    duration: num(r['Duration (min)']),
-    maxHR:    num(r['Max HR (bpm)']),
-    avgHR:    num(r['Average HR (bpm)']),
-    z1: num(r['HR Zone 1 %']), z2: num(r['HR Zone 2 %']),
-    z3: num(r['HR Zone 3 %']), z4: num(r['HR Zone 4 %']),
-    z5: num(r['HR Zone 5 %']),
-  })).filter(r => r.date && r.activity);
-
-  return { cycles, sleeps, workouts, importedAt: Date.now() };
-}
-
-// ── Main render function ──
-function renderWhoopDashboard() {
-  const data = getWhoopData();
-  const uploadCard = document.getElementById('whoopUploadCard');
-  const dashboard  = document.getElementById('whoopDashboard');
-  if (!dashboard) return;
-
-  if (!data || !data.cycles?.length) {
-    uploadCard.style.display = 'block';
-    dashboard.style.display  = 'none';
-    return;
-  }
-
-  uploadCard.style.display = 'block'; // keep upload available for re-import
-  dashboard.style.display  = 'block';
-
-  renderWhoopToday(data);
-  renderWhoopSparklines(data);
-  renderWhoopSleep(data);
-  renderWhoopWorkouts(data);
-}
-
-// ── Helper: average ──
-function wavg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
-function wrecoveryColor(r) {
-  if (r >= 67) return { bg:'#052e1e', border:'#16a34a', text:'#22c55e' };
-  if (r >= 34) return { bg:'#2d2005', border:'#ca8a04', text:'#eab308' };
-  return { bg:'#2a0a0a', border:'#dc2626', text:'#ef4444' };
-}
-function wrecoveryEmoji(r) { return r>=67 ? '🟢' : r>=34 ? '🟡' : '🔴'; }
-
-// ── Today's Status card ──
-function renderWhoopToday(data) {
-  const el = document.getElementById('whoopTodayCard');
-  if (!el) return;
-  const today = data.cycles[0]; // most recent
-  const c = wrecoveryColor(today.recovery || 0);
-  const rec = today.recovery || 0;
-  const hrv = today.hrv || 0;
-  const rhr = today.rhr || 0;
-  const strain = today.strain || 0;
-  const sleepDebt = today.sleepDebt || 0;
-  const spo2 = today.spo2 || 0;
-
-  // 30-day baselines
-  const last30 = data.cycles.slice(0,30);
-  const avgHRV = wavg(last30.map(r=>r.hrv).filter(Boolean));
-  const avgRHR = wavg(last30.map(r=>r.rhr).filter(Boolean));
-
-  el.innerHTML = `
-    <div style="font-size:11px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">💍 Today's Recovery Status · ${today.date}</div>
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-      <div style="width:80px;height:80px;border-radius:50%;background:${c.bg};border:3px solid ${c.border};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
-        <div style="font-size:22px;font-weight:900;color:${c.text}">${rec}%</div>
-        <div style="font-size:9px;color:${c.text};font-weight:700;text-transform:uppercase">Recovery</div>
-      </div>
-      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${wStatTile('HRV', hrv + 'ms', hrv >= avgHRV ? '↑' : '↓', hrv >= avgHRV ? '#22c55e' : '#f59e0b', `avg ${avgHRV.toFixed(0)}ms`)}
-        ${wStatTile('RHR', rhr + ' bpm', rhr <= avgRHR ? '↓' : '↑', rhr <= avgRHR ? '#22c55e' : '#f59e0b', `avg ${avgRHR.toFixed(0)}bpm`)}
-        ${wStatTile('Strain', strain.toFixed(1), '', '#3b82f6', 'day strain')}
-        ${wStatTile('SpO2', spo2 ? spo2.toFixed(1)+'%' : '--', '', spo2>=95?'#22c55e':'#f59e0b', 'blood O₂')}
-      </div>
-    </div>
-    ${sleepDebt > 0 ? `<div style="background:#1c1008;border:1px solid #78350f;border-radius:10px;padding:8px 12px;font-size:12px;color:#f59e0b;font-weight:600">⚠️ Sleep debt: ${(sleepDebt/60).toFixed(1)}h behind — prioritize sleep tonight</div>` : '<div style="background:#052e1e;border:1px solid #166534;border-radius:10px;padding:8px 12px;font-size:12px;color:#22c55e;font-weight:600">✅ No significant sleep debt</div>'}`;
-}
-
-function wStatTile(label, val, arrow, color, sub) {
-  return `<div style="background:var(--surface2);border-radius:10px;padding:8px 10px">
-    <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:2px">${label}</div>
-    <div style="font-size:16px;font-weight:800;color:${color}">${arrow} ${val}</div>
-    <div style="font-size:10px;color:var(--text3)">${sub}</div>
-  </div>`;
-}
-
-// ── 7-day sparkline tiles ──
-function renderWhoopSparklines(data) {
-  const el = document.getElementById('whoopSparkRow');
-  if (!el) return;
-  const days = data.cycles.slice(0,14).reverse(); // oldest→newest for chart
-
-  const metrics = [
-    { key:'recovery', label:'Recovery', unit:'%', color:'#a78bfa' },
-    { key:'hrv',      label:'HRV',      unit:'ms', color:'#22c55e' },
-    { key:'strain',   label:'Strain',   unit:'',  color:'#3b82f6' },
-    { key:'sleepPerf',label:'Sleep',    unit:'%', color:'#f59e0b' },
-  ];
-
-  el.innerHTML = metrics.map(m => {
-    const vals = days.map(d => d[m.key] || 0);
-    const max  = Math.max(...vals) || 1;
-    const latest = data.cycles[0][m.key] || 0;
-    const sparkBars = vals.map(v => {
-      const h = Math.max(4, Math.round((v/max)*36));
-      const fill = m.key==='recovery' ? wrecoveryColor(v).text : m.color;
-      return `<div style="width:10px;height:${h}px;background:${fill};border-radius:2px;align-self:flex-end;opacity:0.85"></div>`;
-    }).join('');
-    return `<div class="card" style="padding:12px 14px">
-      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${m.label} (14d)</div>
-      <div style="font-size:20px;font-weight:900;color:${m.key==='recovery'?wrecoveryColor(latest).text:m.color};margin-bottom:8px">${typeof latest==='number'?latest.toFixed(m.key==='hrv'?0:1):latest}${m.unit}</div>
-      <div style="display:flex;gap:3px;align-items:flex-end;height:40px">${sparkBars}</div>
-    </div>`;
-  }).join('');
-}
-
-// ── Sleep breakdown ──
-function renderWhoopSleep(data) {
-  const el = document.getElementById('whoopSleepCard');
-  if (!el) return;
-  const recent = data.sleeps.slice(0,30).filter(s=>s.asleepMin);
-  if (!recent.length) { el.innerHTML='<div style="color:var(--text3);font-size:13px">No sleep data</div>'; return; }
-
-  const avgAsleep = wavg(recent.map(s=>s.asleepMin));
-  const avgDeep   = wavg(recent.map(s=>s.deepMin||0));
-  const avgREM    = wavg(recent.map(s=>s.remMin||0));
-  const avgLight  = wavg(recent.map(s=>s.lightMin||0));
-  const avgPerf   = wavg(recent.map(s=>s.perf||0));
-  const avgDebt   = wavg(recent.map(s=>s.debt||0));
-  const avgResp   = wavg(recent.map(s=>s.respRate||0));
-
-  // Recent 7 nights mini table
-  const nights = data.sleeps.slice(0,7).map(s => {
-    const emoji = s.perf>=85?'🟢':s.perf>=65?'🟡':'🔴';
-    const hrs = s.asleepMin ? (s.asleepMin/60).toFixed(1) : '--';
-    const deep = s.deepMin ? Math.round(s.deepMin) : '--';
-    const rem  = s.remMin  ? Math.round(s.remMin)  : '--';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-      <span style="color:var(--text3);width:80px">${s.date}</span>
-      <span>${emoji} ${s.perf||'--'}%</span>
-      <span style="color:var(--text2)">${hrs}h</span>
-      <span style="color:#3b82f6">💤${deep}m</span>
-      <span style="color:#8b5cf6">🌙${rem}m</span>
-    </div>`;
-  }).join('');
-
-  el.innerHTML = `
-    <div style="font-size:11px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">😴 Sleep Quality · 30-Day Average</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      ${wBigStat((avgAsleep/60).toFixed(1)+'h', 'Avg Sleep', '#e2e8f0')}
-      ${wBigStat(avgPerf.toFixed(0)+'%', 'Performance', avgPerf>=80?'#22c55e':avgPerf>=65?'#eab308':'#ef4444')}
-      ${wBigStat((avgDebt/60).toFixed(1)+'h', 'Avg Debt', avgDebt<30?'#22c55e':avgDebt<60?'#eab308':'#ef4444')}
-    </div>
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Sleep Architecture (avg)</div>
-      <div style="display:flex;gap:4px;height:20px;border-radius:6px;overflow:hidden;margin-bottom:6px">
-        ${wSleepBar(avgDeep,  avgAsleep, '#3b82f6', 'Deep')}
-        ${wSleepBar(avgREM,   avgAsleep, '#8b5cf6', 'REM')}
-        ${wSleepBar(avgLight, avgAsleep, '#1e3a5f', 'Light')}
-      </div>
-      <div style="display:flex;gap:14px;font-size:11px;font-weight:600">
-        <span style="color:#3b82f6">💤 Deep ${avgDeep.toFixed(0)}m (${(100*avgDeep/avgAsleep).toFixed(0)}%)</span>
-        <span style="color:#8b5cf6">🌙 REM ${avgREM.toFixed(0)}m (${(100*avgREM/avgAsleep).toFixed(0)}%)</span>
-        <span style="color:#475569">Light ${avgLight.toFixed(0)}m</span>
-      </div>
-    </div>
-    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Last 7 Nights</div>
-    ${nights}
-    <div style="margin-top:10px;display:flex;gap:12px;font-size:11px;color:var(--text3)">
-      <span>Resp: ${avgResp.toFixed(1)} rpm avg</span>
-    </div>`;
-}
-
-function wBigStat(val, label, color) {
-  return `<div style="text-align:center;background:var(--surface2);border-radius:12px;padding:10px 8px">
-    <div style="font-size:20px;font-weight:900;color:${color}">${val}</div>
-    <div style="font-size:10px;color:var(--text3);font-weight:600;margin-top:2px">${label}</div>
-  </div>`;
-}
-function wSleepBar(val, total, color, label) {
-  const pct = total>0 ? (val/total)*100 : 0;
-  return `<div style="flex:${pct};background:${color};min-width:4px" title="${label}: ${val.toFixed(0)}min"></div>`;
-}
-
-// ── Workout breakdown ──
-function renderWhoopWorkouts(data) {
-  const el = document.getElementById('whoopWorkoutCard');
-  if (!el) return;
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-90);
-  const cutoffStr = cutoff.toISOString().slice(0,10);
-  const recent = data.workouts.filter(w=>w.date>=cutoffStr);
-  if (!recent.length) { el.innerHTML='<div style="color:var(--text3);font-size:13px">No workout data</div>'; return; }
-
-  // Group by activity
-  const byType = {};
-  recent.forEach(w => {
-    if (!byType[w.activity]) byType[w.activity]={count:0,totalCal:0,totalDur:0,totalStrain:0};
-    byType[w.activity].count++;
-    byType[w.activity].totalCal += w.calories||0;
-    byType[w.activity].totalDur += w.duration||0;
-    byType[w.activity].totalStrain += w.strain||0;
-  });
-  const sorted = Object.entries(byType).sort((a,b)=>b[1].count-a[1].count);
-  const totalStrain = wavg(recent.filter(w=>w.strain).map(w=>w.strain));
-  const totalCal = recent.reduce((s,w)=>s+(w.calories||0),0);
-
-  const actEmoji = {Running:'🏃',Cycling:'🚴',Weightlifting:'🏋️',Powerlifting:'🏋️',Softball:'⚾',Baseball:'⚾',Golf:'⛳',Tennis:'🎾',Swimming:'🏊',Activity:'💪'};
-
-  el.innerHTML = `
-    <div style="font-size:11px;font-weight:700;color:#3b82f6;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">🏃 Workouts · Last 90 Days</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      ${wBigStat(recent.length, 'Sessions', '#e2e8f0')}
-      ${wBigStat(totalStrain.toFixed(1), 'Avg Strain', '#3b82f6')}
-      ${wBigStat(Math.round(totalCal/1000)+'k', 'Total Cal', '#f59e0b')}
-    </div>
-    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">By Activity</div>
-    ${sorted.map(([act,s])=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <span style="font-weight:700;color:var(--text)">${actEmoji[act]||'💪'} ${act}</span>
-        <span style="color:var(--text3)">${s.count}x · ${(s.totalDur/s.count).toFixed(0)}min avg</span>
-        <span style="color:#f59e0b;font-weight:700">${(s.totalCal/s.count).toFixed(0)} cal</span>
-      </div>`).join('')}`;
-}
-
-// ── AI Analysis ──
-async function runWhoopAI() {
-  const data = getWhoopData();
-  if (!data) { showToast('Upload WHOOP data first'); return; }
-
-  const btn = document.querySelector('#whoopAICard button');
-  const result = document.getElementById('whoopAIResult');
-  btn.disabled = true; btn.textContent = '⏳ Analyzing…';
-  result.innerHTML = '<div style="color:var(--text3);font-size:13px">Analyzing your WHOOP data…</div>';
-
-  // Build context from last 30 days
-  const last30 = data.cycles.slice(0,30);
-  const last7  = data.cycles.slice(0,7);
-  const mean   = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
-
-  const avgRec = mean(last30.map(r=>r.recovery||0));
-  const avgHRV = mean(last30.map(r=>r.hrv||0));
-  const avgRHR = mean(last30.map(r=>r.rhr||0));
-  const avgSleep = mean(data.sleeps.slice(0,30).map(s=>s.asleepMin||0));
-  const avgDeep  = mean(data.sleeps.slice(0,30).map(s=>s.deepMin||0));
-  const avgREM   = mean(data.sleeps.slice(0,30).map(s=>s.remMin||0));
-  const sleepDebt = data.cycles[0]?.sleepDebt || 0;
-  const recentStrain = mean(last7.filter(r=>r.strain).map(r=>r.strain));
-
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
-  const recentWorkouts = data.workouts.filter(w=>w.date>=cutoff.toISOString().slice(0,10));
-  const wTypes = {};
-  recentWorkouts.forEach(w=>{ wTypes[w.activity]=(wTypes[w.activity]||0)+1; });
-
-  const last14Snapshot = last7.map(r=>
-    `${r.date}: rec=${r.recovery}% HRV=${r.hrv}ms RHR=${r.rhr}bpm strain=${r.strain||'--'} sleep=${r.sleepPerf||'--'}%`
-  ).join('\n');
-
-  const prompt = `You are a recovery and performance coach analyzing Jeremy's WHOOP biometric data. Jeremy is 52, an avid runner training for Grandma's Marathon (June 2026), lifting weights, and trying to lose weight (goal: 163 lbs).
-
-=== 30-DAY AVERAGES ===
-Recovery score: ${avgRec.toFixed(1)}% (Green=67+, Yellow=34-66, Red=<34)
-HRV: ${avgHRV.toFixed(1)}ms  
-RHR: ${avgRHR.toFixed(1)} bpm
-Sleep: ${(avgSleep/60).toFixed(1)}h avg, Deep SWS: ${avgDeep.toFixed(0)}min, REM: ${avgREM.toFixed(0)}min
-Current sleep debt: ${(sleepDebt/60).toFixed(1)}h
-7-day avg strain: ${recentStrain.toFixed(1)}/21
-
-=== WORKOUT MIX (last 30d) ===
-${Object.entries(wTypes).map(([k,v])=>`${k}: ${v}x`).join(', ')}
-
-=== LAST 7 DAYS DAILY ===
-${last14Snapshot}
-
-=== GOALS ===
-- Marathon training (June 2026)
-- Weight loss to 163 lbs
-- Optimize recovery between hard runs
-- Manage stress
-
-Please analyze and provide:
-1. **Recovery Assessment** — what his scores mean for a 52-year-old athlete
-2. **Sleep Quality** — SWS and REM are the key recovery stages, how is he doing?
-3. **Training Load vs Recovery** — is he overreaching? What strain level should he target?
-4. **Top 3 Actionable Recommendations** — specific things to change this week
-5. **Marathon Readiness** — is his recovery trending the right direction for June?
-
-Be direct, data-driven, and specific to his numbers. No fluff.`;
-
-  try {
-    const resp = await fetch('/api/claude', {
-      method:'POST', headers:authHeaders(),
-      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user',content:prompt}] })
-    });
-    const d = await resp.json();
-    if (d.error) throw new Error(d.error.message);
-    const text = d.content?.[0]?.text || 'No response';
-    result.innerHTML = formatAIResponse(text);
-  } catch(e) {
-    result.textContent = '❌ Error: ' + e.message;
-  }
-  btn.disabled = false; btn.textContent = 'Re-analyze';
-}
-
-// ── Add WHOOP context to AI Coach ──
-function getWhoopContext() {
-  const data = getWhoopData();
-  if (!data?.cycles?.length) return '';
-  const today = data.cycles[0];
-  const last7  = data.cycles.slice(0,7);
-  const mean   = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
-  const avgHRV = mean(last7.map(r=>r.hrv||0));
-  const avgRec = mean(last7.map(r=>r.recovery||0));
-  return `\n=== WHOOP BIOMETRICS (latest) ===
-Today: Recovery=${today.recovery}% HRV=${today.hrv}ms RHR=${today.rhr}bpm Strain=${today.strain||'--'} SpO2=${today.spo2||'--'}%
-7-day avg: Recovery=${avgRec.toFixed(0)}% HRV=${avgHRV.toFixed(0)}ms
-Sleep debt: ${today.sleepDebt ? (today.sleepDebt/60).toFixed(1)+'h' : 'unknown'}
-Sleep last night: ${today.sleepPerf||'--'}% performance, ${today.deepMin||'--'}min deep, ${today.remMin||'--'}min REM`;
-}
-
-
-// ══════════════════════════════════════════════════════════════
-// ── WHOOP DATE-INDEXED INTEGRATION ────────────────────────────
-// ══════════════════════════════════════════════════════════════
-
-// Build a date-keyed lookup index from WHOOP data for fast access
-function buildWhoopIndex(data) {
-  if (!data) return {};
-  const idx = {};
-  // Index cycles by date
-  (data.cycles || []).forEach(c => {
-    if (!c.date) return;
-    if (!idx[c.date]) idx[c.date] = { recovery: null, hrv: null, rhr: null, strain: null, spo2: null, skinTemp: null, sleepPerf: null, deepMin: null, remMin: null, lightMin: null, asleepMin: null, sleepDebt: null, respRate: null, sleepConsistency: null };
-    const d = idx[c.date];
-    if (c.recovery != null) d.recovery = c.recovery;
-    if (c.hrv != null) d.hrv = c.hrv;
-    if (c.rhr != null) d.rhr = c.rhr;
-    if (c.strain != null) d.strain = c.strain;
-    if (c.spo2 != null) d.spo2 = c.spo2;
-    if (c.skinTemp != null) d.skinTemp = c.skinTemp;
-    if (c.sleepPerf != null) d.sleepPerf = c.sleepPerf;
-    if (c.deepMin != null) d.deepMin = c.deepMin;
-    if (c.remMin != null) d.remMin = c.remMin;
-    if (c.lightMin != null) d.lightMin = c.lightMin;
-    if (c.asleepMin != null) d.asleepMin = c.asleepMin;
-    if (c.sleepDebt != null) d.sleepDebt = c.sleepDebt;
-    if (c.respRate != null) d.respRate = c.respRate;
-    if (c.sleepConsistency != null) d.sleepConsistency = c.sleepConsistency;
-  });
-  // Index workouts by date (array — multiple workouts per day)
-  (data.workouts || []).forEach(w => {
-    if (!w.date) return;
-    if (!idx[w.date]) idx[w.date] = {};
-    if (!idx[w.date].workouts) idx[w.date].workouts = [];
-    idx[w.date].workouts.push(w);
-  });
-  return idx;
-}
-
-// Get cached index (rebuild on demand)
-let _whoopIndex = null;
-let _whoopIndexVersion = null;
-function getWhoopIndex() {
-  const data = getWhoopData();
-  if (!data) return {};
-  const version = data.importedAt;
-  if (!_whoopIndex || _whoopIndexVersion !== version) {
-    _whoopIndex = buildWhoopIndex(data);
-    _whoopIndexVersion = version;
-  }
-  return _whoopIndex;
-}
-
-// Get WHOOP data for a specific date key (YYYY-MM-DD)
-function getWhoopForDate(dateKey) {
-  const idx = getWhoopIndex();
-  return idx[dateKey] || null;
-}
-
-// Get WHOOP summary for date range — used in AI context
-function getWhoopRangeSummary(days) {
-  const data = getWhoopData();
-  if (!data?.cycles?.length) return null;
-  const idx = getWhoopIndex();
-  const summaries = [];
-  const today = nowEST();
-  for (let i = 0; i < days; i++) {
-    const d = nowEST();
-    d.setDate(today.getDate() - i);
-    const key = dateToKey(d);
-    const w = idx[key];
-    if (w && (w.recovery != null || w.hrv != null)) {
-      const parts = [];
-      if (w.recovery != null) parts.push(`rec=${w.recovery}%`);
-      if (w.hrv != null) parts.push(`HRV=${w.hrv}ms`);
-      if (w.rhr != null) parts.push(`RHR=${w.rhr}bpm`);
-      if (w.strain != null) parts.push(`strain=${w.strain.toFixed(1)}`);
-      if (w.sleepPerf != null) parts.push(`sleep=${w.sleepPerf}%`);
-      if (w.deepMin != null) parts.push(`deep=${Math.round(w.deepMin)}m`);
-      if (w.asleepMin != null) parts.push(`slept=${(w.asleepMin/60).toFixed(1)}h`);
-      summaries.push(`${key}: ${parts.join(' ')}`);
-    }
-  }
-  return summaries;
-}
-
-// ── Enhanced getAppContext to include WHOOP per-date data ──
-// This replaces the simple getWhoopContext() call with rich per-day data
-function getWhoopContextFull() {
-  const data = getWhoopData();
-  if (!data?.cycles?.length) return '';
-
-  const today = data.cycles[0];
-  const last30 = data.cycles.slice(0, 30);
-  const wavg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
-  const avgHRV = wavg(last30.map(r=>r.hrv||0).filter(Boolean));
-  const avgRHR = wavg(last30.map(r=>r.rhr||0).filter(Boolean));
-  const avgRec = wavg(last30.map(r=>r.recovery||0).filter(Boolean));
-  const avgSleep = wavg(last30.map(r=>r.asleepMin||0).filter(Boolean));
-  const avgDeep = wavg(last30.map(r=>r.deepMin||0).filter(Boolean));
-  const avgREM = wavg(last30.map(r=>r.remMin||0).filter(Boolean));
-
-  const last30Days = getWhoopRangeSummary(30) || [];
-  const daysSinceImport = today?.date
-    ? Math.round((Date.now() - new Date(today.date).getTime()) / 86400000)
-    : null;
-
-  // Workout breakdown
-  const cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate()-30);
-  const cutoffStr = cutoff30.toISOString().slice(0,10);
-  const recentWorkouts = data.workouts.filter(w=>w.date>=cutoffStr);
-  const wTypes = {};
-  recentWorkouts.forEach(w=>{ wTypes[w.activity]=(wTypes[w.activity]||0)+1; });
-
-  return `
-=== WHOOP BIOMETRICS (${data.cycles.length} days of data, imported ${daysSinceImport != null ? daysSinceImport+'d ago' : 'recently'}) ===
-LATEST: Recovery=${today.recovery}% HRV=${today.hrv}ms RHR=${today.rhr}bpm Strain=${today.strain!=null?today.strain.toFixed(1):'--'} SpO2=${today.spo2||'--'}%
-Sleep debt: ${today.sleepDebt!=null?(today.sleepDebt/60).toFixed(1)+'h':'unknown'} | Sleep: ${today.sleepPerf||'--'}% perf, ${today.deepMin?Math.round(today.deepMin):'--'}min deep, ${today.remMin?Math.round(today.remMin):'--'}min REM
-
-30-DAY WHOOP AVERAGES:
-Recovery: ${avgRec.toFixed(1)}% | HRV: ${avgHRV.toFixed(1)}ms | RHR: ${avgRHR.toFixed(1)}bpm
-Sleep: ${(avgSleep/60).toFixed(1)}h avg | Deep SWS: ${avgDeep.toFixed(0)}min (${avgSleep>0?(100*avgDeep/avgSleep).toFixed(0):0}%) | REM: ${avgREM.toFixed(0)}min (${avgSleep>0?(100*avgREM/avgSleep).toFixed(0):0}%)
-Workout mix (30d): ${Object.entries(wTypes).map(([k,v])=>k+':'+v+'x').join(', ')||'none'}
-
-DAILY WHOOP LOG (last 30d) — use to correlate with food/weight/workouts:
-${last30Days.slice(0,30).join('\n') || 'No data'}`;
-}
-
-// ── 30-Day WHOOP Reminder ──
-function checkWhoopUpdateReminder() {
-  const data = getWhoopData();
-  const snoozeKey = 'whoopReminderSnooze';
-  const snooze = getStorage(snoozeKey, null);
-  if (snooze && new Date(snooze) > new Date()) return; // snoozed
-
-  if (!data) {
-    // Never imported — show once after a delay
-    const firstOpen = getStorage('whoopReminderFirstOpen', null);
-    if (!firstOpen) {
-      setStorage('whoopReminderFirstOpen', new Date().toISOString());
-      return; // First ever open — don't bug them immediately
-    }
-    const daysSinceFirst = (Date.now() - new Date(firstOpen).getTime()) / 86400000;
-    if (daysSinceFirst > 3) {
-      showWhoopReminder('never');
-    }
-    return;
-  }
-
-  // Imported — check age
-  const importDate = data.importedAt ? new Date(data.importedAt) : null;
-  if (!importDate) return;
-  const daysSince = (Date.now() - importDate.getTime()) / 86400000;
-
-  if (daysSince >= 30) {
-    showWhoopReminder('stale', Math.round(daysSince));
-  }
-}
-
-function showWhoopReminder(type, daysSince) {
-  // Don't show if already visible
-  if (document.getElementById('whoopReminderBanner')) return;
-
-  const msg = type === 'never'
-    ? '💍 Connect your WHOOP data for deeper health insights. Export from WHOOP app → History tab.'
-    : `💍 Your WHOOP data is ${daysSince} days old. Export a fresh copy from WHOOP app for accurate AI analysis.`;
-
-  const banner = document.createElement('div');
-  banner.id = 'whoopReminderBanner';
-  banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);width:calc(100%-32px);max-width:480px;background:linear-gradient(135deg,#1e0a3c,#2d1556);border:1.5px solid #7c3aed;border-radius:16px;padding:12px 16px;z-index:9000;box-shadow:0 4px 24px rgba(124,58,237,0.35);display:flex;align-items:center;gap:12px;animation:slideUp 0.3s ease';
-  banner.innerHTML = `
-    <div style="flex:1;font-size:13px;color:#e2d9f3;font-weight:600;line-height:1.4">${msg}</div>
-    <button onclick="switchTab('history');switchHistoryTab('whoop');dismissWhoopReminder()" style="background:#7c3aed;border:none;border-radius:10px;padding:7px 12px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">Update</button>
-    <button onclick="snoozeWhoopReminder()" style="background:transparent;border:1px solid #4c1d95;border-radius:10px;padding:7px 10px;color:#a78bfa;font-size:11px;cursor:pointer;font-family:inherit">Later</button>
-    <button onclick="dismissWhoopReminder()" style="background:none;border:none;color:#6b7280;font-size:16px;cursor:pointer;line-height:1;padding:0 2px">×</button>`;
-
-  document.body.appendChild(banner);
-  setTimeout(() => {
-    if (banner.parentNode) banner.style.opacity = '0';
-    setTimeout(() => banner.remove(), 500);
-  }, 12000);
-}
-
-function dismissWhoopReminder() {
-  const b = document.getElementById('whoopReminderBanner');
-  if (b) b.remove();
-  // Mark as seen today
-  setStorage('whoopReminderSnooze', new Date(Date.now() + 86400000).toISOString());
-}
-
-function snoozeWhoopReminder() {
-  const b = document.getElementById('whoopReminderBanner');
-  if (b) b.remove();
-  // Snooze 7 days
-  setStorage('whoopReminderSnooze', new Date(Date.now() + 7*86400000).toISOString());
-}
-
-// ── Add WHOOP metrics to Trends chart ──
-// Extend existing setTrendMetric to support WHOOP metrics
-const _origSetTrendMetric = setTrendMetric;
-function setTrendMetric(metric, btn) {
-  if (['recovery','hrv','rhr','strain','sleepPerf'].includes(metric)) {
-    currentTrendMetric = metric;
-    document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    renderWhoopTrendChart(metric);
-    return;
-  }
-  _origSetTrendMetric(metric, btn);
-}
-
-function renderWhoopTrendChart(metric) {
-  const container = document.getElementById('monthChartContainer');
-  const summaryRow = document.getElementById('trendSummaryRow');
-  if (!container) return;
-
-  const idx = getWhoopIndex();
-  const today = nowEST();
-  const days = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = nowEST();
-    d.setDate(today.getDate() - i);
-    const key = dateToKey(d);
-    const w = idx[key];
-    const val = w ? w[metric] : null;
-    days.push({ key, label: d.getDate(), val: val != null ? parseFloat(val) : null });
-  }
-
-  const logged = days.filter(d => d.val !== null);
-  if (!logged.length) {
-    container.innerHTML = `<div class="empty-state" style="padding:30px 0;text-align:center">No WHOOP ${metric} data for last 30 days.<br><small style="color:var(--text3)">Upload WHOOP data in History → 💍 WHOOP</small></div>`;
-    summaryRow.innerHTML = '';
-    return;
-  }
-
-  const maxVal = Math.max(...logged.map(v=>v.val));
-  const minVal = Math.min(...logged.map(v=>v.val));
-  const avgVal = logged.reduce((s,v)=>s+v.val,0)/logged.length;
-  const colors = { recovery:'#a78bfa', hrv:'#22c55e', rhr:'#ef4444', strain:'#3b82f6', sleepPerf:'#f59e0b' };
-  const labels = { recovery:'Recovery %', hrv:'HRV (ms)', rhr:'RHR (bpm)', strain:'Day Strain', sleepPerf:'Sleep Perf %' };
-  const color = colors[metric];
-
-  const bars = days.map(d => {
-    const hasVal = d.val !== null;
-    const pct = hasVal ? Math.max(4, Math.round(((d.val - minVal*0.9) / ((maxVal*1.05) - minVal*0.9)) * 100)) : 2;
-    const isToday = d.key === todayKey();
-    const barColor = hasVal
-      ? (metric==='recovery' ? wrecoveryColor(d.val).text : color)
-      : 'var(--surface2)';
-    const showLabel = d.label === 1 || d.label % 7 === 1;
-    return `<div class="month-bar-wrap" title="${d.key}: ${d.val!=null?d.val.toFixed(1):'no data'}">
-      <div class="month-bar" style="height:${pct}%;background:${barColor};${isToday?'outline:2px solid #3b82f6;border-radius:5px 5px 0 0':''}${!hasVal?';opacity:0.2':''}"></div>
-      <div class="month-bar-lbl">${showLabel?d.label:''}</div>
-    </div>`;
-  }).join('');
-
-  container.innerHTML = `<div class="month-bar-chart">${bars}</div>`;
-
-  const trend30 = logged.length >= 7 ? (logged[logged.length-1].val - logged[0].val).toFixed(1) : null;
-  const trendStr = trend30 === null ? '—' : (parseFloat(trend30)>0?'+':'')+trend30;
-  const unit = metric==='hrv'?'ms':metric==='rhr'?'bpm':metric==='strain'?'':' %';
-  const trendGood = (['recovery','hrv','sleepPerf'].includes(metric) && parseFloat(trendStr)>0) ||
-                    (['rhr'].includes(metric) && parseFloat(trendStr)<0);
-
-  summaryRow.innerHTML = `
-    <div class="weekly-stat" style="border-color:${color}30">
-      <div class="weekly-stat-val" style="color:${color}">${avgVal.toFixed(1)}${unit}</div>
-      <div class="weekly-stat-lbl">30-Day Avg</div>
-    </div>
-    <div class="weekly-stat">
-      <div class="weekly-stat-val">${maxVal.toFixed(1)}</div>
-      <div class="weekly-stat-lbl">Peak</div>
-    </div>
-    <div class="weekly-stat">
-      <div class="weekly-stat-val">${minVal.toFixed(1)}</div>
-      <div class="weekly-stat-lbl">Low</div>
-    </div>
-    <div class="weekly-stat">
-      <div class="weekly-stat-val" style="color:${trend30!==null?(trendGood?'var(--green)':'var(--red)'):'var(--text)'}">${trendStr}</div>
-      <div class="weekly-stat-lbl">30d Trend</div>
-    </div>`;
-}
-
 
 // ═══════════════════════════════════════════════════════
 // ── BLOOD WORK ─────────────────────────────────────────
@@ -8949,6 +8829,27 @@ function buildBloodParsePrompt() {
   ].join(' ');
 }
 
+function _freeCacheSpace() {
+  // Safe-to-drop caches, largest first — regenerated automatically
+  ['trendsCache', 'bodyCompCache', 'favCache', 'trainingLoadCache', 'dailyQuote',
+   'greetingCache', 'weeklyNarrative', 'brief_cache', 'tpToday'].forEach(k => {
+    try { localStorage.removeItem(k); } catch(_) {}
+  });
+}
+
+function _localStorageTopKeys(n) {
+  try {
+    const sizes = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      sizes.push([k, (localStorage.getItem(k) || '').length]);
+    }
+    sizes.sort((a, b) => b[1] - a[1]);
+    const total = sizes.reduce((s, x) => s + x[1], 0);
+    return { totalKB: Math.round(total / 1024), top: sizes.slice(0, n).map(([k, v]) => `${k}:${Math.round(v / 1024)}KB`) };
+  } catch(_) { return null; }
+}
+
 async function saveBloodEntry(parsed) {
   const testDate = parsed.test_date || new Date().toISOString().slice(0,10);
   const results = getBloodResults();
@@ -8959,9 +8860,56 @@ async function saveBloodEntry(parsed) {
     markers: normalizeBloodMarkers(parsed.markers || []),
     uploadedAt: new Date().toISOString(),
   };
+  // Re-uploading the same report replaces it instead of duplicating —
+  // same date + same lab is the same panel
+  const dupIdx = results.findIndex(r => r.date === newEntry.date && r.lab === newEntry.lab);
+  if (dupIdx >= 0) {
+    newEntry.id = results[dupIdx].id;  // keep sync identity so the server row updates in place
+    results.splice(dupIdx, 1);
+  }
   results.unshift(newEntry);
-  saveBloodResults(results);
+  let ok = saveBloodResults(results);
+  if (!ok) {
+    // Device storage full — drop regenerable caches and retry
+    _freeCacheSpace();
+    ok = saveBloodResults(results);
+  }
+  if (!ok) {
+    // Last resort: persist server-side directly so the record is never lost
+    const usage = _localStorageTopKeys(5);
+    const errName = setStorage._lastError?.name || 'unknown';
+    reportClientError('blood_quota', new Error('localStorage write failed: ' + errName), usage || {});
+    const hogs = usage ? ` [used ${usage.totalKB}KB — biggest: ${usage.top.join(', ')}]` : '';
+    let lastErr = 'no attempt';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch('/api/log/blood', {
+          method: 'POST', headers: authHeaders(),
+          body: JSON.stringify({ entries: [{ date: newEntry.date, entry_id: String(newEntry.id), payload: newEntry, updated_at: Date.now(), deleted: 0 }] })
+        });
+        const d = await res.json();
+        if (d.ok && d.applied >= 1) {
+          throw new Error('SAVED_CLOUD');
+        }
+        lastErr = (d.skipped_reasons || []).join('; ') || ('server said applied=0, http ' + res.status);
+        break;  // server answered but rejected — retrying won't help
+      } catch (e) {
+        if (e.message === 'SAVED_CLOUD') throw new Error('Phone storage is full (' + errName + ') — record SAVED TO CLOUD ✓. Free up space, then Settings → Sync now.' + hogs);
+        lastErr = e.message;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    throw new Error('Phone storage full (' + errName + ') AND cloud save failed (' + lastErr + ').' + hogs);
+  }
   return newEntry;
+}
+
+function toggleBloodUpload() {
+  const up = document.getElementById('bloodUploadCard');
+  if (!up) return;
+  up._userToggled = true;
+  up.style.display = up.style.display === 'none' ? 'block' : 'none';
+  if (up.style.display === 'block') up.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function toggleBloodPaste() {
@@ -8981,11 +8929,12 @@ async function analyzeBloodPasteText() {
   status.textContent = 'AI is reading your pasted lab results…';
 
   try {
-    const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+    const data = await callClaudeAPIAsync({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
+      output_config: _SO(SCHEMA_BLOOD),  // structured outputs — no more JSON parse failures
       messages: [{ role: 'user', content: buildBloodParsePrompt() + '\n\nLAB REPORT TEXT:\n' + text }]
-    });
+    }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
     if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
     const rawText = data.content?.[0]?.text || '';
     // Sanitize common Claude JSON quirks before parsing
@@ -9059,11 +9008,12 @@ async function analyzeBloodReport() {
       ];
     }
 
-    const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+    const data = await callClaudeAPIAsync({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
+      output_config: _SO(SCHEMA_BLOOD),  // structured outputs
       messages: [{ role: 'user', content: msgContent }]
-    });
+    }, s => { status.textContent = `⏳ Analyzing on the server… ${s}s (safe to keep waiting)`; });
 
     // Surface API-level errors
     if (data.error) throw new Error('API: ' + (data.error.message || JSON.stringify(data.error)));
@@ -9101,18 +9051,58 @@ async function analyzeBloodReport() {
 
   } catch(e) {
     console.error('Blood parse error:', e);
+    reportClientError('blood_analyze', e, { fileType: _bloodFileData?.mediaType, hasText: !!_bloodFileData?.extractedText, textLen: (_bloodFileData?.extractedText || '').length, b64Len: (_bloodFileData?.base64 || '').length });
     btn.disabled = false;
     btn.textContent = '🤖 Analyze with AI';
     status.style.color = '#ef4444';
-    status.textContent = '❌ ' + (e.message || 'Unknown error');
-    status.style.color = '#ef4444';
+    const netFail = e instanceof TypeError || /failed to fetch|load failed/i.test(e.message || '');
+    status.textContent = netFail
+      ? '❌ Network error [build ' + BUILD_ID + '] — details reported, tap Analyze to retry'
+      : '❌ ' + (e.message || 'Unknown error');
   }
+}
+
+// Global net: report uncaught errors (max 5/session, deduped)
+let _errReported = {};
+window.addEventListener('error', e => {
+  const key = String(e.message).slice(0, 80);
+  if (Object.keys(_errReported).length >= 5 || _errReported[key]) return;
+  _errReported[key] = true;
+  reportClientError('uncaught', { message: e.message, name: 'Error', stack: `${e.filename}:${e.lineno}:${e.colno}` }, {});
+});
+window.addEventListener('unhandledrejection', e => {
+  const msg = String(e.reason?.message || e.reason).slice(0, 80);
+  if (Object.keys(_errReported).length >= 5 || _errReported[msg]) return;
+  _errReported[msg] = true;
+  reportClientError('unhandled_rejection', e.reason instanceof Error ? e.reason : new Error(msg), {});
+});
+
+// Fire-and-forget error telemetry so failures on the phone are debuggable
+function reportClientError(kind, err, extra) {
+  try {
+    const body = JSON.stringify({
+      kind, build: BUILD_ID,
+      message: String(err?.message || err).slice(0, 300),
+      name: err?.name, stack: String(err?.stack || '').slice(0, 500),
+      online: navigator.onLine, swController: !!navigator.serviceWorker?.controller,
+      ua: navigator.userAgent.slice(0, 120), ...extra,
+    });
+    // fetch first (carries the bearer token); beacon only if fetch can't run —
+    // a queued beacon that 401s server-side is silently lost
+    fetch('/api/debug/client', { method: 'POST', headers: authHeaders(), body, keepalive: true }).catch(() => {
+      try { navigator.sendBeacon?.('/api/debug/client', new Blob([body], { type: 'application/json' })); } catch(_) {}
+    });
+  } catch(_) {}
 }
 
 function renderBloodWorkPage() {
   const results = getBloodResults();
   const container = document.getElementById('bloodResultsList');
   if (!container) return;
+
+  // Upload card collapses behind the ＋ button once records exist
+  const up = document.getElementById('bloodUploadCard');
+  if (up && !up._userToggled) up.style.display = results.length ? 'none' : 'block';
 
   if (results.length === 0) {
     container.innerHTML = '<div class="empty-state">No blood work uploaded yet.<br>Upload your first lab report above.</div>';
@@ -9124,23 +9114,27 @@ function renderBloodWorkPage() {
   ).join('');
 
   container.innerHTML = `
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div class="card-label" style="color:#ef4444;margin:0;flex:1">📅 Lab Result</div>
-        <div style="display:flex;gap:6px">
-          <button id="bview-panels" class="bview-btn active" onclick="setBloodView('panels')">Panels</button>
-          <button id="bview-trends" class="bview-btn" onclick="setBloodView('trends')">Trends</button>
-          <button id="bview-table"  class="bview-btn" onclick="setBloodView('table')">Compare</button>
+    <div class="blood-header-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="card-label" style="color:#ef4444;margin:0">🩸 Blood Work</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="bview-seg">
+            <button id="bview-panels" class="bview-btn active" onclick="setBloodView('panels')">Panels</button>
+            <button id="bview-trends" class="bview-btn" onclick="setBloodView('trends')">Trends</button>
+            <button id="bview-table"  class="bview-btn" onclick="setBloodView('table')">Compare</button>
+          </div>
+          <button onclick="toggleBloodUpload()" title="Add report" style="width:30px;height:30px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);font-size:16px;font-weight:700;cursor:pointer;line-height:1">＋</button>
         </div>
       </div>
-      <select id="bloodDateSelect" onchange="renderBloodPanels(parseInt(this.value))"
-        style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit">
+      <select id="bloodDateSelect" class="blood-date-pill" onchange="renderBloodPanels(parseInt(this.value))">
         ${dateOptions}
       </select>
     </div>
-    <div id="bloodSummaryBar"></div>
-    <div id="bloodOOBStrip"></div>
-    <div id="bloodPanelsContainer"></div>
+    <div class="blood-flow" id="bloodFlow">
+      <div id="bloodSummaryBar"></div>
+      <div id="bloodOOBStrip"></div>
+      <div id="bloodPanelsContainer"></div>
+    </div>
     <div id="bloodTrendContainer" style="margin-top:4px"></div>
     <div id="bloodTableContainer" style="display:none"></div>
   `;
@@ -9236,33 +9230,20 @@ function renderBloodPanels(idx) {
   const alarmHigh = allStatuses5.filter(s => s === 'alarm_high').length;
   const totalM    = entry.markers.length;
   const summaryEl = document.getElementById('bloodSummaryBar');
-  if (summaryEl) summaryEl.innerHTML = `
-    <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;justify-content:center">
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmLow}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Low</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #60a5fa30">
-        <div class="blood-summary-num" style="color:#60a5fa;font-size:18px">${belowOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Below Opt</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #22c55e30">
-        <div class="blood-summary-num" style="color:#22c55e;font-size:18px">${optimal}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Optimal</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #f59e0b30">
-        <div class="blood-summary-num" style="color:#f59e0b;font-size:18px">${aboveOpt}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Above Opt</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid #ef444430">
-        <div class="blood-summary-num" style="color:#ef4444;font-size:18px">${alarmHigh}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">High</div>
-      </div>
-      <div class="blood-summary-tile" style="flex:1;min-width:55px;border:1.5px solid var(--border)">
-        <div class="blood-summary-num" style="color:var(--text);font-size:18px">${totalM}</div>
-        <div class="blood-summary-lbl" style="font-size:8px">Total</div>
-      </div>
-    </div>`;
+  if (summaryEl) {
+    const seg = (n, color) => n > 0 ? `<div style="flex:${n};background:${color}"></div>` : '';
+    const leg = (n, color, label) => n > 0 ? `<span><b style="color:${color}">${n}</b> ${label}</span>` : '';
+    summaryEl.innerHTML = `
+      <div class="blood-dist-wrap">
+        <div class="blood-dist-bar">
+          ${seg(alarmLow, '#ef4444')}${seg(belowOpt, '#60a5fa')}${seg(optimal, '#22c55e')}${seg(aboveOpt, '#f59e0b')}${seg(alarmHigh, '#dc2626')}
+        </div>
+        <div class="blood-dist-legend">
+          ${leg(alarmLow, '#ef4444', 'low')}${leg(belowOpt, '#60a5fa', 'below opt')}${leg(optimal, '#22c55e', 'optimal')}${leg(aboveOpt, '#f59e0b', 'above opt')}${leg(alarmHigh, '#ef4444', 'high')}
+          <span style="margin-left:auto;color:var(--text3)">${totalM} markers</span>
+        </div>
+      </div>`;
+  }
 
   // ── NEEDS ATTENTION (Collapsible) ────────────────────
   const oobEl = document.getElementById('bloodOOBStrip');
@@ -9312,24 +9293,24 @@ function renderBloodPanels(idx) {
     }).join('');
 
     oobEl.innerHTML = `
-      <div class="blood-attn-header expanded" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.classList.toggle('expanded',!open);el.querySelector('.blood-attn-chevron').classList.toggle('collapsed',open)})(this)">
-        <div class="blood-attn-header-left">
-          <span class="blood-attn-count">${flagged.length}</span>
-          <span class="blood-attn-title">Needs Attention</span>
+      <div class="blood-section">
+        <div class="blood-section-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-chev').classList.toggle('collapsed',open)})(this)">
+          <span class="blood-section-title" style="color:#f59e0b">⚠️ Needs Attention <span class="blood-sec-badge bad">${flagged.length}</span></span>
+          <span class="blood-chev">▼</span>
         </div>
-        <span class="blood-attn-chevron">▼</span>
-      </div>
-      <div class="blood-attn-body">${attnCards}</div>`;
+        <div class="blood-section-body">${attnCards}</div>
+      </div>`;
   } else if (oobEl) {
-    oobEl.innerHTML = `<div style="background:#0d2d1a;border:1px solid #22c55e30;border-radius:14px;padding:12px 16px;margin-bottom:12px;font-size:13px;font-weight:700;color:#22c55e;text-align:center">✅ All markers within optimal range</div>`;
+    oobEl.innerHTML = `<div class="blood-section"><div style="padding:12px 16px;font-size:12.5px;font-weight:700;color:#22c55e">✅ All markers within optimal range</div></div>`;
   }
 
   // ── PANELS VIEW ──────────────────────────────────────
   const panelsEl  = document.getElementById('bloodPanelsContainer');
   const trendsEl  = document.getElementById('bloodTrendContainer');
   const tableEl   = document.getElementById('bloodTableContainer');
+  const flowEl    = document.getElementById('bloodFlow');
 
-  panelsEl.style.display  = view === 'panels'  ? '' : 'none';
+  if (flowEl) flowEl.style.display = view === 'panels' ? '' : 'none';
   trendsEl.style.display  = view === 'trends'  ? '' : 'none';
   tableEl.style.display   = view === 'table'   ? '' : 'none';
 
@@ -9393,16 +9374,12 @@ function renderBloodPanels(idx) {
         </div>`;
       }).join('');
 
-      const panelId = 'bpanel_' + panel;
-      return `<div class="${panelClass}">
-        <div class="blood-panel-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-panel-chevron').classList.toggle('collapsed',open)})(this)">
-          <div class="blood-panel-header-left">
-            <span class="blood-panel-title">${PANEL_LABELS[panel] || '🔬 Other'}</span>
-            <span class="blood-panel-badge ${badgeClass}">${badgeText}</span>
-          </div>
-          <span class="blood-panel-chevron${startOpen ? '' : ' collapsed'}">▼</span>
+      return `<div class="blood-section">
+        <div class="blood-section-header" onclick="(function(el){var b=el.nextElementSibling;var open=b.style.display!=='none';b.style.display=open?'none':'';el.querySelector('.blood-chev').classList.toggle('collapsed',open)})(this)">
+          <span class="blood-section-title">${PANEL_LABELS[panel] || '🔬 Other'} <span class="blood-sec-badge ${badgeClass}">${badgeText}</span></span>
+          <span class="blood-chev${startOpen ? '' : ' collapsed'}">▼</span>
         </div>
-        <div class="blood-panel-body" style="${startOpen ? '' : 'display:none'}">
+        <div class="blood-section-body" style="${startOpen ? '' : 'display:none'}">
           ${rows}
         </div>
       </div>`;
@@ -9742,7 +9719,7 @@ async function generateBloodAIInsights(entry) {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-5',
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -9778,7 +9755,7 @@ async function analyzeBloodWithNutrition() {
 
   try {
     const data = await callClaudeAPI({
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-5',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -10055,14 +10032,45 @@ function _initApp() {
   safeCall(pruneOldData, 'pruneOldData');
   safeCall(syncAllLogs, 'syncAllLogs');
   safeCall(initPWA, 'initPWA');
+  // Self-heal stale bundles: if the server shipped a newer client, clear
+  // every cache + SW registration and reload (at most once per hour)
+  (async () => {
+    try {
+      const res = await fetch('/api/version', { cache: 'no-store' });
+      const v = await res.json();
+      let alreadyTried = false;
+      try { alreadyTried = sessionStorage.getItem('staleReloadTried') === '1'; } catch(_) {}
+      if (v.build && v.build !== BUILD_ID && !alreadyTried) {
+        try { sessionStorage.setItem('staleReloadTried', '1'); } catch(_) {}
+        reportClientError('stale_bundle', new Error('running ' + BUILD_ID + ', server has ' + v.build), {});
+        try {
+          const regs = await navigator.serviceWorker?.getRegistrations() || [];
+          for (const r of regs) await r.unregister();
+          for (const k of await caches.keys()) await caches.delete(k);
+        } catch(_) {}
+        location.reload();
+      }
+    } catch(_) {}
+  })();
+  setTimeout(() => safeCall(maybeSendUsageReport, 'usageReport'), 4000);
+  try {
+    if (Date.now() - getStorage('bootBeatSent', 0) > 86400000) {
+      setStorage('bootBeatSent', Date.now());
+      reportClientError('boot', new Error('ok'), { swController: !!navigator.serviceWorker?.controller });
+    }
+  } catch(_) {}
   safeCall(checkTPLifecycle, 'checkTPLifecycle');
+  safeCall(renderReadinessCard, 'renderReadinessCard');
+  safeCall(renderTodayTrendsStrip, 'renderTodayTrendsStrip');
   // Feature-flag gating (items 2–5)
   try {
     if (!FLAGS.voiceLog) document.getElementById('voiceLogBtn').style.display = 'none';
     if (!FLAGS.photoLog) document.getElementById('photoLogBtn').style.display = 'none';
   } catch(_) {}
   safeCall(migrateShoePhotos, 'migrateShoePhotos');
+  setTimeout(() => safeCall(recompressShoePhotos, 'recompressShoePhotos'), 1500);
   safeCall(migrateBloodKeys, 'migrateBloodKeys');
+  safeCall(dedupeBloodResults, 'dedupeBloodResults');
 
   // Migrate burnLog: old entries stored gross Strava calories; correct to net (×0.75)
   // Run once, marked with _netMigrated flag
@@ -10086,7 +10094,8 @@ function _initApp() {
   try {
     const burnLog = getStorage('burnLog', {});
     const burn = burnLog[todayKey()];
-    if (burn > 0) {
+    const planOn = typeof goalPlanActive === 'function' && goalPlanActive();   // plan.js restores its own target
+    if (burn > 0 && !planOn) {
       const base = getStorage('adaptiveMacros', null) || getStorage('userMacros', null) || MACROS;
       const extraCals  = Math.round(burn * 0.6);
       const extraCarbs = Math.round(extraCals * 0.65 / 4);
@@ -10149,7 +10158,6 @@ function _initApp() {
   safeCall(renderProteinPace, 'renderProteinPace');
   safeCall(renderWorkoutNutritionBanner, 'renderWorkoutNutritionBanner');
   setTimeout(() => safeCall(seedBloodResults, 'seedBloodResults'), 500);
-  setTimeout(() => safeCall(checkWhoopUpdateReminder, 'whoopReminder'), 3000);
 
   // Clear cached quote if it was stored while API was broken, or is flagged for retry
   const _qc = getStorage('dailyQuote', null);
@@ -10216,6 +10224,8 @@ document.addEventListener('visibilitychange', () => {
       if (dirty || Date.now() - lastOk > 5 * 60 * 1000) syncAllLogs();
       const fc = getStorage('favCache', null);
       if (FLAGS.quickAdd && (!fc || Date.now() - fc.fetched > 24 * 3600 * 1000)) renderFavChips(true);
+      const rt = getStorage('readinessToday', null);
+      if (FLAGS.readiness && (!rt || rt.date !== todayKey() || Date.now() - (rt.fetched || 0) > 30 * 60 * 1000)) renderReadinessCard();
     } catch(e) {}
   }
 });
@@ -10232,7 +10242,8 @@ document.addEventListener('visibilitychange', () => {
 (function() {
   // One-time cleanup of the retired Strava and Garmin integrations' storage
   ['stravaToken','stravaToday','stravaAutoAdjust','stravaAdjustedMacros',
-   'garminToken','garminCreds','garminReqToken','garminToday','garminAutoAdjust'].forEach(k => localStorage.removeItem(k));
+   'garminToken','garminCreds','garminReqToken','garminToday','garminAutoAdjust',
+   'whoopData','whoopReminderSnooze','whoopReminderFirstOpen'].forEach(k => localStorage.removeItem(k));
   const tpConn = getStorage('tpConnected', null);
 
   function shouldUseCached(cached) {
@@ -10477,7 +10488,7 @@ async function analyzeMealDescription() {
 
   try {
     const decompData = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 800,
       messages: [{ role: 'user', content: decompPrompt }]
     });
@@ -10529,7 +10540,7 @@ async function analyzeMealDescription() {
         'Ingredients: ' + notFound.map(r => r.ing.name + ' ' + r.ing.grams + 'g').join(', ');
       try {
         const estData = await callClaudeAPI({
-          model: 'claude-sonnet-4-6', max_tokens: 800,
+          model: 'claude-sonnet-5', max_tokens: 800,
           messages: [{ role: 'user', content: estimatePrompt }]
         });
         const estRaw = (estData.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
@@ -10784,6 +10795,15 @@ const CLAUDE_HISTORY_MAX = 20; // keep last 20 messages (10 exchanges)
 let claudeHistory = [];
 
 function getAppContext() {
+  try { return _getAppContextInner(); }
+  catch (e) {
+    reportClientError('app_context', e, {});
+    const m = getStorage('userMacros', MACROS);
+    return `You are Jeremy's personal AI fitness coach. (Context build failed: ${e.message}). Targets: ${m.calories} kcal, ${m.protein}g protein.`;
+  }
+}
+
+function _getAppContextInner() {
   const todayK = todayKey();
   const userMacros = getStorage('userMacros', MACROS);
   const tdee = getStorage('userTDEE', TDEE);
@@ -10891,7 +10911,6 @@ ${memory.length ? memory.join('\n') : 'Nothing stored yet'}
 === APP USAGE PATTERNS ===
 ${getUsageSummary()}
 
-${getWhoopContextFull()}
 
 You can remember things by saying "REMEMBER: [fact]" in your response and it will be saved for future conversations.
 Be concise, data-driven, and proactive. Reference specific numbers from Jeremy's actual data.`;
@@ -11079,6 +11098,30 @@ function renderEventList() {
 // ── End Events ──
 
 // ── Interaction Tracker ──
+// Weekly: upload a summarized usage profile so layout decisions use real data
+function maybeSendUsageReport() {
+  try {
+    const last = getStorage('usageReportSent', 0);
+    if (Date.now() - last < 7 * 86400000) return;
+    const log = getStorage('interactionLog', []);
+    if (log.length < 20) return;
+    const by = {};
+    for (const e of log) {
+      const k = e.type + (e.type === 'tab_visit' ? ':' + e.detail : '');
+      by[k] = (by[k] || 0) + 1;
+    }
+    const hours = {};
+    for (const e of log) hours[e.hour] = (hours[e.hour] || 0) + 1;
+    reportClientError('usage_report', new Error('ok'), {
+      events: log.length,
+      span_days: [...new Set(log.map(e => e.date))].length,
+      counts: Object.fromEntries(Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 20)),
+      peak_hours: Object.entries(hours).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([h, n]) => `${h}:00×${n}`),
+    });
+    setStorage('usageReportSent', Date.now());
+  } catch(_) {}
+}
+
 function logInteraction(type, detail) {
   try {
     const log = getStorage('interactionLog', []);
@@ -11230,37 +11273,70 @@ async function sendClaudeMessage() {
 
   document.getElementById('claudeSendBtn').disabled = true;
 
+  const body = JSON.stringify({
+    model: 'claude-opus-5',
+    max_tokens: 4096,  // opus-5 thinks adaptively; thinking tokens count against this
+    // cache_control: the big app context (30d history) is cached across turns
+    system: [{ type: 'text', text: getAppContext(), cache_control: { type: 'ephemeral' } }],
+    messages: claudeHistory
+  });
   try {
-    const resp = await fetch('/api/claude', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 1024,
-        system: getAppContext(),
-        messages: claudeHistory
-      })
-    });
-
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    const reply = data.content?.[0]?.text || 'Sorry, I had trouble responding.';
-
-    // Remove typing indicator
+    // Stream the response so text appears live instead of after a long pause
+    const resp = await fetch('/api/claude/stream', { method: 'POST', headers: authHeaders(), body });
+    if (!resp.ok || !resp.body) {
+      let em = 'HTTP ' + resp.status;
+      try { em = (await resp.json()).error?.message || em; } catch(_) {}
+      throw new Error(em);
+    }
     document.getElementById(typingId)?.remove();
 
-    claudeHistory.push({ role: 'assistant', content: reply });
-    // Cap history to prevent unbounded token growth
-    if (claudeHistory.length > CLAUDE_HISTORY_MAX) {
-      claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
+    // Live bubble that we grow as deltas arrive
+    const liveId = 'live_' + Date.now();
+    appendClaudeMessage('assistant', '', liveId);
+    const liveInner = document.querySelector('#' + liveId + ' [data-live]');
+    const container = document.getElementById('claudeChatMessages');
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', reply = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();  // keep partial line
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(payload);
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+            reply += ev.delta.text;
+            if (liveInner) {
+              liveInner.innerHTML = esc(reply.replace(/REMEMBER:\s*.+/gi, '')).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
+              container.scrollTop = container.scrollHeight;
+            }
+          } else if (ev.type === 'error') {
+            throw new Error(ev.error?.message || 'stream error');
+          }
+        } catch (pe) { if (pe.message !== 'stream error') continue; else throw pe; }
+      }
     }
+    if (!reply) reply = 'Sorry, I had trouble responding.';
+
+    claudeHistory.push({ role: 'assistant', content: reply });
+    if (claudeHistory.length > CLAUDE_HISTORY_MAX) claudeHistory = claudeHistory.slice(-CLAUDE_HISTORY_MAX);
     processClaudeMemory(reply);
+    // Final render with full markdown formatting, replacing the live bubble
     const displayReply = reply.replace(/REMEMBER:\s*.+/gi, '').trim();
+    document.getElementById(liveId)?.remove();
     appendClaudeMessage('assistant', displayReply);
 
   } catch(e) {
     document.getElementById(typingId)?.remove();
-    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error'));
+    reportClientError('claude_chat', e, {});
+    appendClaudeMessage('assistant', '❌ Error: ' + (e.message || 'Unknown error') + ' — reported for debugging');
   }
 
   document.getElementById('claudeSendBtn').disabled = false;
@@ -11302,6 +11378,7 @@ function appendClaudeMessage(role, text, id) {
     } else {
       // Simple response - styled bubble
       const inner = document.createElement('div');
+      inner.setAttribute('data-live', '1');
       inner.style.cssText = 'padding:11px 15px;border-radius:18px 18px 18px 4px;background:#111827;color:#e2e8f0;border:1px solid #1e293b';
       inner.innerHTML = esc(text).replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff">$1</strong>').replace(/\n/g, '<br>');
       bubble.appendChild(inner);
@@ -11319,78 +11396,36 @@ function appendClaudeMessage(role, text, id) {
 
 
 // ══════════════════════════════════════════════════════
-// FEATURE 2: SLEEP PANEL FROM WHOOP
+// SLEEP PANEL — Garmin data via the wellness ingest
 // ══════════════════════════════════════════════════════
 
-function renderSleepCard() {
+async function renderSleepCard() {
   const el = document.getElementById('sleepCard');
   if (!el) return;
-
-  const whoopIdx = getWhoopIndex ? getWhoopIndex() : {};
-  const today = todayKey();
-  // Also check yesterday since sleep logged for previous night
-  const yest = (() => { const d = nowEST(); d.setDate(d.getDate()-1); return dateToKey(d); })();
-  const w = whoopIdx[today] || whoopIdx[yest] || null;
-
-  if (!w || (!w.total_sleep_time && !w.sleep_performance_percentage)) {
-    el.innerHTML = `
-      <div class="card-label" style="color:#6366f1;margin-bottom:8px">😴 Sleep</div>
-      <div style="text-align:center;padding:12px;color:var(--text2);font-size:12px">
-        Connect WHOOP to see sleep data<br>
-        <span style="font-size:11px;opacity:0.6">Settings → WHOOP Integration</span>
-      </div>`;
-    return;
-  }
-
-  const totalMin  = Math.round((w.total_sleep_time || 0) / 60);
-  const lightMin  = Math.round((w.light_sleep_time || 0) / 60);
-  const deepMin   = Math.round((w.slow_wave_sleep_time || w.deep_sleep_time || 0) / 60);
-  const remMin    = Math.round((w.rem_sleep_time || 0) / 60);
-  const score     = Math.round(w.sleep_performance_percentage || 0);
-  const totalHrs  = (totalMin / 60).toFixed(1);
-  const debtMin   = Math.max(0, 480 - totalMin); // 8hr = 480 min target
-  const debtHrs   = (debtMin / 60).toFixed(1);
-
-  const scoreColor = score >= 85 ? '#16a34a' : score >= 70 ? '#d97706' : '#dc2626';
-  const scoreLabel = score >= 85 ? 'Great' : score >= 70 ? 'Fair' : 'Poor';
-
-  const stageBar = (label, min, color) => {
-    const pct = totalMin > 0 ? Math.round((min/totalMin)*100) : 0;
-    return `
-      <div style="margin-bottom:4px">
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2);margin-bottom:2px">
-          <span>${label}</span><span>${Math.floor(min/60)}h ${min%60}m (${pct}%)</span>
-        </div>
-        <div style="background:#1e293b;border-radius:4px;height:6px;overflow:hidden">
-          <div style="background:${color};height:100%;width:${pct}%;border-radius:4px;transition:width 0.5s"></div>
-        </div>
-      </div>`;
-  };
-
+  let row = null;
+  try {
+    const res = await fetch('/api/wellness?days=2', { headers: authHeaders() });
+    const d = await res.json();
+    row = (d.rows || []).find(r => r.sleep_total_hrs != null) || null;
+  } catch(_) {}
+  if (!row) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const hrs = row.sleep_total_hrs, deep = row.sleep_deep_hrs || 0, rem = row.sleep_rem_hrs || 0, light = row.sleep_light_hrs || 0, awake = row.sleep_awake_hrs || 0;
+  const debt = Math.max(0, 8 - hrs);
+  const col = hrs >= 7 ? '#16a34a' : hrs >= 6 ? '#d97706' : '#dc2626';
+  const seg = (v, c) => hrs > 0 ? `<div style="flex:${Math.max(v, 0.01)};background:${c};height:100%"></div>` : '';
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="card-label" style="color:#6366f1;margin-bottom:0">😴 Sleep</div>
-      <div style="font-size:11px;font-weight:700;color:${scoreColor};background:${scoreColor}22;padding:3px 10px;border-radius:20px">${scoreLabel} · ${score}%</div>
+    <div class="card-label" style="color:#6366f1;margin-bottom:8px">😴 Sleep <span style="font-size:10px;color:var(--text3);font-weight:600">· ${row.date}</span></div>
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+      <div style="font-size:26px;font-weight:800;color:${col}">${hrs.toFixed(1)}h</div>
+      <div style="font-size:11px;color:var(--text2)">${debt > 0.2 ? debt.toFixed(1) + 'h under 8h target' : 'target met ✓'}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
-      <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:28px;font-weight:800;color:#6366f1">${totalHrs}</div>
-        <div style="font-size:10px;color:var(--text2);font-weight:600">hrs slept</div>
-      </div>
-      <div style="flex:1">
-        ${stageBar('🌊 Deep', deepMin, '#6366f1')}
-        ${stageBar('💤 REM', remMin, '#8b5cf6')}
-        ${stageBar('💫 Light', lightMin, '#a78bfa')}
-      </div>
+    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px">
+      ${seg(deep, '#312e81')}${seg(rem, '#6366f1')}${seg(light, '#a5b4fc')}${seg(awake, '#334155')}
     </div>
-    ${debtMin > 0
-      ? `<div style="background:#1e293b;border-radius:10px;padding:8px 12px;font-size:11px;color:#f59e0b;font-weight:600">
-          ⚠️ Sleep debt: ${debtHrs}h vs 8hr target
-        </div>`
-      : `<div style="background:#0a2a1a;border-radius:10px;padding:8px 12px;font-size:11px;color:#16a34a;font-weight:600">
-          ✅ Full night's rest achieved
-        </div>`
-    }`;
+    <div style="display:flex;gap:12px;font-size:10px;color:var(--text3)">
+      <span>🟣 Deep ${deep.toFixed(1)}h</span><span>🔵 REM ${rem.toFixed(1)}h</span><span>⚪ Light ${light.toFixed(1)}h</span>${awake > 0.05 ? `<span>Awake ${awake.toFixed(1)}h</span>` : ''}
+    </div>`;
 }
 
 
@@ -11444,7 +11479,7 @@ async function generateWeeklyNarrative() {
   const burnLog    = getStorage('burnLog', {});
   const weightLog  = getStorage('weightLog', {});
   const moodLog    = getStorage('moodLog', {});
-  const whoopIdx   = getWhoopIndex ? getWhoopIndex() : {};
+
   const userMacros = getStorage('userMacros', null);
 
   const days = [];
@@ -11460,8 +11495,8 @@ async function generateWeeklyNarrative() {
       weight:   weightLog[key]          || null,
       mood:     moodLog[key]?.mood      || null,
       energy:   moodLog[key]?.energy    || null,
-      sleep:    whoopIdx[key] ? Math.round((whoopIdx[key].total_sleep_time||0)/3600*10)/10 : null,
-      recovery: whoopIdx[key]?.recovery_score || null,
+      sleep:    null,   // WHOOP removed; wellness sleep feeds the Trends tab instead
+      recovery: null,
     });
   }
 
@@ -11737,56 +11772,7 @@ function renderWater() {
   }
 }
 
-// ════════════════════════════════════════════════════════════════
-// FEATURE 2: SLEEP PANEL (from WHOOP data)
-// ════════════════════════════════════════════════════════════════
-function renderSleepPanel() {
-  const card = document.getElementById('sleepCard');
-  if (!card) return;
-  const whoopData = getWhoopData();
-  if (!whoopData || !whoopData.sleeps || whoopData.sleeps.length === 0) {
-    card.style.display = 'none';
-    return;
-  }
-  // Get most recent sleep record
-  const sleeps = [...whoopData.sleeps].sort((a, b) => new Date(b.date || b.end) - new Date(a.date || a.end));
-  const s = sleeps[0];
-  if (!s) { card.style.display = 'none'; return; }
 
-  card.style.display = 'block';
-
-  const fmtHr = mins => {
-    if (!mins && mins !== 0) return '—';
-    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
-    return h > 0 ? `${h}h${m > 0 ? ' '+m+'m' : ''}` : `${m}m`;
-  };
-
-  const totalMins = s.total_in_bed_time_milli ? s.total_in_bed_time_milli/60000 : (s.sleep_duration || s.total || 0);
-  const deepMins  = s.slow_wave_sleep_duration_milli ? s.slow_wave_sleep_duration_milli/60000 : (s.deep || 0);
-  const remMins   = s.rem_sleep_duration_milli ? s.rem_sleep_duration_milli/60000 : (s.rem || 0);
-  const debtMins  = s.sleep_debt ? s.sleep_debt * 60 : (s.debt_mins || 0);
-  const score     = s.sleep_performance_percentage ? Math.round(s.sleep_performance_percentage) : (s.score || null);
-
-  document.getElementById('sleepTotal').textContent = fmtHr(totalMins);
-  document.getElementById('sleepDeep').textContent  = fmtHr(deepMins);
-  document.getElementById('sleepREM').textContent   = fmtHr(remMins);
-  document.getElementById('sleepDebt').textContent  = debtMins > 0 ? fmtHr(debtMins) : '✓ None';
-
-  const badge = document.getElementById('sleepScoreBadge');
-  if (badge && score !== null) {
-    badge.textContent = `Score: ${score}%`;
-    badge.style.color = score >= 85 ? '#4ade80' : score >= 70 ? '#f59e0b' : '#f87171';
-  }
-
-  const debtFill = document.getElementById('sleepDebtFill');
-  const debtLabel = document.getElementById('sleepDebtLabel');
-  if (debtFill && debtMins > 0) {
-    debtFill.style.width = Math.min(100, Math.round((debtMins / 120) * 100)) + '%';
-    if (debtLabel) debtLabel.textContent = `${fmtHr(debtMins)} sleep debt`;
-  } else if (debtLabel) {
-    debtLabel.textContent = 'No sleep debt — great!';
-  }
-}
 
 // ════════════════════════════════════════════════════════════════
 // FEATURE 3: MOOD / ENERGY TRACKER
@@ -11800,7 +11786,7 @@ function saveMoodLog(log) { setStorage('moodLog', log); }
 const ENERGY_EMOJIS_MAP = ['😴','😕','😐','🙂','💪'];
 const MOOD_EMOJIS_MAP   = ['😣','😞','😐','😊','😄'];
 
-let _wmState = { energy: null, mood: null };
+let _wmState = { energy: null, mood: null, workedOut: null };
 
 function showWelcomeModal() {
   console.log('[checkin] showWelcomeModal called');
@@ -11816,15 +11802,13 @@ function showWelcomeModal() {
   if (greetEl) greetEl.textContent = greet + ', ' + name + ' 👋';
   if (dateEl)  dateEl.textContent  = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
 
-  // Pre-fill weight if logged recently
-  const weights = getStorage('weightLog', {});
-  const wKeys = Object.keys(weights).sort();
-  const lastW = wKeys.length ? weights[wKeys[wKeys.length-1]] : null;
-  const wmW = document.getElementById('wmWeight');
-  if (wmW && lastW) wmW.value = lastW;
+  // Weight comes from the Garmin scale now — show it read-only (1.5B)
+  safeCall(fillWelcomeWellnessContext, 'fillWelcomeWellnessContext');
 
   // Reset state
-  _wmState = { energy: null, mood: null };
+  _wmState = { energy: null, mood: null, workedOut: null };
+  const wb = document.getElementById('wmWorkoutBtns');
+  if (wb) wb.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
   ['wmEnergyBtns','wmMoodBtns'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
@@ -11846,6 +11830,15 @@ function closeWelcomeModal() {
   document.body.style.overflow = '';
 }
 
+function wmSetWorkout(val) {
+  _wmState.workedOut = val;
+  const wrap = document.getElementById('wmWorkoutBtns');
+  if (wrap) wrap.querySelectorAll('.mood-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.val === (val ? 'yes' : 'no')));
+  try { wmUpdateSubmitState(); } catch(_) {}
+  renderStreakCard && setTimeout(renderStreakCard, 100);
+}
+
 function wmSetMood(type, val) {
   _wmState[type] = val;
   const containerId = type === 'energy' ? 'wmEnergyBtns' : 'wmMoodBtns';
@@ -11855,36 +11848,40 @@ function wmSetMood(type, val) {
       b.classList.toggle('active', parseInt(b.dataset.val) === val);
     });
   }
-  // Enable submit once both are set (or at least one — be lenient)
+  wmUpdateSubmitState();
+}
+
+// Enable submit once anything is answered
+function wmUpdateSubmitState() {
   const btn = document.getElementById('wmSubmitBtn');
-  if (btn) {
-    const ready = _wmState.energy !== null || _wmState.mood !== null;
-    btn.disabled = !ready;
-    btn.style.opacity = ready ? '1' : '0.5';
-  }
+  if (!btn) return;
+  const ready = _wmState.energy !== null || _wmState.mood !== null || _wmState.workedOut !== null;
+  btn.disabled = !ready;
+  btn.style.opacity = ready ? '1' : '0.5';
 }
 
 function submitWelcomeCheckin() {
   const key = dateToKey(nowEST());
 
-  // Save mood/energy
-  if (_wmState.energy !== null || _wmState.mood !== null) {
+  // Save mood/energy/workout answer
+  if (_wmState.energy !== null || _wmState.mood !== null || _wmState.workedOut !== null) {
     const log = getMoodLog();
     if (!log[key]) log[key] = {};
     if (_wmState.energy !== null) log[key].energy = _wmState.energy;
     if (_wmState.mood   !== null) log[key].mood   = _wmState.mood;
+    if (_wmState.workedOut !== null) log[key].workedOut = _wmState.workedOut;
     saveMoodLog(log);
   }
 
-  // Save weight
-  const wmW = document.getElementById('wmWeight');
-  if (wmW && wmW.value) {
-    const w = parseFloat(wmW.value);
-    if (w > 50 && w < 500) {
-      const wLog = getStorage('weightLog', {});
-      wLog[key] = w;
-      setStorage('weightLog', wLog);
-    }
+  // Weight now arrives from the Garmin scale via wellness (Tier 1.5B).
+  // Notes ride along with the check-in sync.
+  const notesEl = document.getElementById('wmNotes');
+  if (notesEl && notesEl.value.trim()) {
+    const log = getMoodLog();
+    if (!log[key]) log[key] = {};
+    log[key].notes = notesEl.value.trim().slice(0, 500);
+    saveMoodLog(log);
+    notesEl.value = '';
   }
 
   // Mark today as checked in
@@ -11917,12 +11914,14 @@ function scheduleCheckinSync(delay) {
           date: key,
           energy: mood.energy || null,
           mood: mood.mood || null,
-          weight_lbs: wLog[key] || null,
+          // weight/sleep/steps come from the wellness ingest now (1.5B)
+          worked_out: mood.workedOut === true ? 1 : mood.workedOut === false ? 0 : null,
           water_oz: waterLog[key] || null,
           calories_consumed: totals.cal || null,
           protein_g: totals.p || null,
           carbs_g: totals.c || null,
           fat_g: totals.f || null,
+          notes: mood.notes || null,
         })
       });
     } catch(e) { console.warn('Checkin sync failed:', e); }
@@ -11936,15 +11935,20 @@ function skipWelcomeCheckin() {
 }
 
 function reopenCheckin() {
-  // Allow editing — clear the date lock and show modal with existing values
+  // Allow editing — show the modal pre-filled with today's existing answers
   const key = dateToKey(nowEST());
   const log = getMoodLog();
   const today = log[key] || {};
-  _wmState = { energy: today.energy || null, mood: today.mood || null };
+  _wmState = {
+    energy: today.energy || null,
+    mood: today.mood || null,
+    workedOut: (typeof today.workedOut === 'boolean') ? today.workedOut : null,
+  };
   showWelcomeModal();
   // Re-highlight existing selections
   if (_wmState.energy) wmSetMood('energy', _wmState.energy);
   if (_wmState.mood)   wmSetMood('mood',   _wmState.mood);
+  if (_wmState.workedOut !== null) wmSetWorkout(_wmState.workedOut);
 }
 
 function updateCheckinSummaryCard() {
@@ -11959,7 +11963,8 @@ function updateCheckinSummaryCard() {
     const mEmoji = today.mood   ? MOOD_EMOJIS_MAP[today.mood-1]     : '😐';
     const summaryEl = document.getElementById('moodSummaryText');
     const energyEl  = document.getElementById('moodSummaryEnergy');
-    if (summaryEl) summaryEl.textContent = `Energy ${eEmoji} ${today.energy || '–'}/5 · Mood ${mEmoji} ${today.mood || '–'}/5`;
+    const wk = today.workedOut === true ? ' · 💪 Worked out' : today.workedOut === false ? ' · 😴 Rest day' : ' · 💪 tap Edit to log workout';
+    if (summaryEl) summaryEl.textContent = `Energy ${eEmoji} ${today.energy || '–'}/5 · Mood ${mEmoji} ${today.mood || '–'}/5${wk}`;
     if (energyEl)  energyEl.textContent  = eEmoji;
     card.style.display = 'block';
   } else {
@@ -11970,6 +11975,26 @@ function updateCheckinSummaryCard() {
     if (energyEl) energyEl.textContent = '💜';
     card.style.display = 'block';
   }
+}
+
+async function fillWelcomeWellnessContext() {
+  const el = document.getElementById('wmWellnessContext');
+  if (!el || !FLAGS.wellness) return;
+  try {
+    const res = await fetch('/api/wellness/latest', { headers: authHeaders() });
+    const d = await res.json();
+    if (!d.ok) return;
+    const L = d.latest || {};
+    const bits = [];
+    if (L.weight_lbs) bits.push(`⚖️ ${L.weight_lbs.value} lbs`);
+    if (L.sleep_total_hrs) bits.push(`😴 ${L.sleep_total_hrs.value.toFixed(1)}h sleep`);
+    if (L.hrv_ms) bits.push(`🫀 HRV ${Math.round(L.hrv_ms.value)}`);
+    if (L.body_battery_wake) bits.push(`🔋 ${Math.round(L.body_battery_wake.value)}`);
+    if (bits.length) {
+      el.innerHTML = '<b style="color:var(--text)">From Garmin:</b> ' + bits.join(' · ');
+      el.style.display = 'block';
+    }
+  } catch(_) {}
 }
 
 function maybeShowWelcomeModal() {
@@ -12160,7 +12185,7 @@ ${JSON.stringify(days, null, 2)}
 Write a coach-style narrative. Reference actual numbers. Point out 1 win and 1 area to improve. Max 80 words.`;
 
   try {
-    const resp = await callClaudeAPI({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{role:'user',content:prompt}] });
+    const resp = await callClaudeAPI({ model:'claude-sonnet-5', max_tokens:200, messages:[{role:'user',content:prompt}] });
     el.textContent = resp?.content?.[0]?.text || 'Keep logging consistently for better insights!';
   } catch(e) {
     el.textContent = 'Unable to generate summary right now. Keep up the great work!';
@@ -12176,7 +12201,6 @@ function initNewFeatures() {
   setTimeout(maybeShowWelcomeModal, 400);
 
   renderWater();
-  renderSleepPanel();
   renderBPPanel();
   renderBodyCompPanel();
   renderSuppLog();
@@ -12228,7 +12252,7 @@ async function getMealSuggestions() {
 
   try {
     const resp = await callClaudeAPI({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 400,
       messages: [{
         role: 'user',

@@ -194,50 +194,6 @@ PROMISE ERROR:
     <button id="installBannerBtn" class="btn-green" style="width:auto;padding:6px 12px;font-size:11px">Install</button>
     <button onclick="dismissInstallBanner()" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer">✕</button>
   </div>
-  <div class="greeting-tile" id="greetingTile">
-    <div class="greeting-header">
-      <div>
-        <div class="greeting-hello" id="greetingHello">Good evening, Jeremy</div>
-        <div class="greeting-date" id="greetingDate"></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
-        <button onclick="toggleGreetingTile()" title="Minimize" class="greeting-minimize-btn">▲</button>
-      </div>
-    </div>
-    <!-- TP expired banner (item 10) -->
-    <div id="tpExpiredBannerBrief" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
-      ⚠️ TrainingPeaks disconnected — tap to reconnect
-    </div>
-    <!-- Coach note (item 6) — long-press to regenerate -->
-    <div class="greeting-section" id="greetingCoachSection" style="display:none">
-      <div class="greeting-section-label" style="display:flex;justify-content:space-between;align-items:center">
-        <span>🎯 Coach</span>
-        <span style="font-size:9px;color:var(--text3);font-weight:600" id="coachContextLabel">context: 14d</span>
-      </div>
-      <div id="coachNoteBody" style="font-size:12.5px;line-height:1.6;color:var(--text)"></div>
-    </div>
-    <!-- Calendar Section -->
-    <div class="greeting-section" id="greetingCalSection">
-      <div class="greeting-section-label greeting-cal-label">📅 Today's Schedule</div>
-      <div id="greetingCalList" class="greeting-loading">Loading calendar…</div>
-    </div>
-    <!-- Gmail Section -->
-    <div class="greeting-section" id="greetingMailSection">
-      <div class="greeting-section-label greeting-mail-label">📧 Emails Needing Attention</div>
-      <div id="greetingMailList" class="greeting-loading">Loading emails…</div>
-    </div>
-    <!-- Motivational Quote -->
-    <div class="greeting-section">
-      <div class="greeting-section-label greeting-quote-label">💬 Daily Motivation</div>
-      <div class="greeting-quote">
-        <div>
-          <div class="greeting-quote-text greeting-loading" id="dailyQuoteText">Loading…</div>
-          <div class="greeting-quote-author" id="dailyQuoteAuthor"></div>
-        </div>
-      </div>
-    </div>
-  </div>
   <div class="content">
 
     <!-- TODAY PAGE -->
@@ -252,23 +208,6 @@ PROMISE ERROR:
         </div>
         <button onclick="shiftSelectedDay(1)" id="nextDayBtn" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:2px 8px;border-radius:10px;transition:background 0.15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">›</button>
       </div>
-
-      <!-- 2. Week strip -->
-      <div class="week-strip" id="weekStrip"></div>
-
-      <!-- 3. Workout streak -->
-      <div id="streakCard" class="card" style="padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">
-        <div style="font-size:36px;line-height:1">🔥</div>
-        <div style="flex:1">
-          <div style="font-size:11px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Workout Streak</div>
-          <div style="font-size:22px;font-weight:800;color:var(--text);letter-spacing:-0.5px" id="streakCount">0</div>
-          <div style="font-size:11px;color:var(--text3);font-weight:500" id="streakSub">No workouts logged yet</div>
-        </div>
-        <div id="weekDotRow" style="display:flex;flex-direction:column;gap:5px;align-items:flex-end"></div>
-      </div>
-
-      <!-- Event Countdowns -->
-      <div id="eventCountdowns"></div>
 
       <!-- 4. Today's Nutrition -->
       <div class="card">
@@ -303,8 +242,8 @@ PROMISE ERROR:
             <div style="font-size:9px;color:var(--text3);font-weight:600;margin-top:1px">source</div>
           </div>
         </div>
-        <!-- WHOOP day badge -->
-        <div id="whoopDayBadge" style="display:none;margin-bottom:10px"></div>
+        <!-- Goal plan summary (rendered by plan.js) -->
+        <div id="goalPlanBanner" class="plan-banner" style="display:none"></div>
         <!-- Quick-add favorites carousel (item 8) -->
         <div id="favChipsWrap" style="display:none;margin-bottom:10px">
           <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">⚡ Quick add</div>
@@ -324,35 +263,92 @@ PROMISE ERROR:
             <span style="font-size:16px">🎤</span> Voice
           </button>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:11px;color:var(--text3);font-weight:600">OR ENTER MANUALLY</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <div class="macro-grid">
-          <input type="number" id="in-calories" placeholder="+ calories (kcal)" />
-          <input type="number" id="in-protein" placeholder="+ protein (g)" />
-          <input type="number" id="in-carbs" placeholder="+ carbs (g)" />
-          <input type="number" id="in-fat" placeholder="+ fat (g)" />
-        </div>
-        <button class="btn-green" style="margin-top:10px" onclick="logMacros()">LOG MEAL</button>
-        <div id="manualSaveSection" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-          <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💾 Save as Quick-Add Food</div>
-          <input type="text" id="manualFoodName" placeholder="Food name (e.g. Oatmeal with berries)" style="margin-bottom:8px"/>
-          <div class="time-slot-picker" id="manualTimeSlotPicker">
-            <button class="ts-btn" data-slot="breakfast" onclick="toggleTimeSlot(this,'manual')">🌅 Breakfast</button>
-            <button class="ts-btn" data-slot="morning" onclick="toggleTimeSlot(this,'manual')">☕ Morning Snack</button>
-            <button class="ts-btn" data-slot="lunch" onclick="toggleTimeSlot(this,'manual')">🥗 Lunch</button>
-            <button class="ts-btn" data-slot="afternoon" onclick="toggleTimeSlot(this,'manual')">🍎 Afternoon</button>
-            <button class="ts-btn" data-slot="dinner" onclick="toggleTimeSlot(this,'manual')">🍽️ Dinner</button>
-            <button class="ts-btn" data-slot="evening" onclick="toggleTimeSlot(this,'manual')">🌙 Evening</button>
-          </div>
-          <button class="btn-save-food" style="margin-top:10px;width:100%" onclick="saveManualFood()">Save Food</button>
-        </div>
-        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none;margin-top:12px">
-          📋 Copy Yesterday's Meals
-        </button>
       </div>
+
+      <!-- Body progress photo quick-capture (rendered by body.js) -->
+      <div class="card" id="bodyHomeCard" style="margin-bottom:14px"></div>
+
+  <!-- Tier 1.5: readiness + Garmin wellness card -->
+  <div class="card" id="readinessCard" style="display:none;cursor:pointer" onclick="toggleReadinessDetail()">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="text-align:center;min-width:64px">
+        <div id="rdScore" style="font-size:34px;font-weight:800;line-height:1">—</div>
+        <div id="rdBand" style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-top:2px">READINESS</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div id="rdNarrative" style="font-size:12px;color:var(--text);line-height:1.5"></div>
+        <div id="rdSparkline" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <div id="rdAnomalyBanner" style="display:none;margin-top:10px;background:#3d2e05;border:1px solid #92620d;border-radius:10px;padding:8px 12px;font-size:11.5px;color:#fbbf24"></div>
+    <div id="rdDetail" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px"></div>
+    <div id="wellnessRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px"></div>
+    <div style="text-align:right;margin-top:8px">
+      <button onclick="event.stopPropagation();openOverrideModal()" style="background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer">⚙️ fix a reading</button>
+    </div>
+  </div>
+
+    <!-- TP expired banner (item 10) -->
+    <div id="tpExpiredBannerBrief" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
+      ⚠️ TrainingPeaks disconnected — tap to reconnect
+    </div>
+  <div class="greeting-tile home-removed" id="greetingTile" style="border-radius:18px;border:1px solid var(--border);margin-bottom:14px">
+    <div class="greeting-header">
+      <div>
+        <div class="greeting-hello" id="greetingHello">Good evening, Jeremy</div>
+        <div class="greeting-date" id="greetingDate"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button onclick="refreshGreetingTile()" title="Refresh" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:4px;opacity:0.6">🔄</button>
+        <button onclick="toggleGreetingTile()" title="Minimize" class="greeting-minimize-btn">▲</button>
+      </div>
+    </div>
+    <!-- Coach note (item 6) — long-press to regenerate -->
+    <div class="greeting-section home-removed" id="greetingCoachSection" style="display:none">
+      <div class="greeting-section-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>🎯 Coach</span>
+        <span style="font-size:9px;color:var(--text3);font-weight:600" id="coachContextLabel">context: 14d</span>
+      </div>
+      <div id="coachNoteBody" style="font-size:12.5px;line-height:1.6;color:var(--text)"></div>
+    </div>
+    <!-- Calendar Section -->
+    <div class="greeting-section" id="greetingCalSection">
+      <div class="greeting-section-label greeting-cal-label">📅 Today's Schedule</div>
+      <div id="greetingCalList" class="greeting-loading">Loading calendar…</div>
+    </div>
+    <!-- Gmail Section -->
+    <div class="greeting-section" id="greetingMailSection">
+      <div class="greeting-section-label greeting-mail-label">📧 Emails Needing Attention</div>
+      <div id="greetingMailList" class="greeting-loading">Loading emails…</div>
+    </div>
+    <!-- Motivational Quote -->
+    <div class="greeting-section">
+      <div class="greeting-section-label greeting-quote-label">💬 Daily Motivation</div>
+      <div class="greeting-quote">
+        <div>
+          <div class="greeting-quote-text greeting-loading" id="dailyQuoteText">Loading…</div>
+          <div class="greeting-quote-author" id="dailyQuoteAuthor"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+      <!-- 2. Week strip -->
+      <div class="week-strip" id="weekStrip"></div>
+
+      <!-- 3. Workout streak -->
+      <div id="streakCard" class="card" style="padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">
+        <div style="font-size:36px;line-height:1">🔥</div>
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:700;color:#f59e0b;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Workout Streak</div>
+          <div style="font-size:22px;font-weight:800;color:var(--text);letter-spacing:-0.5px" id="streakCount">0</div>
+          <div style="font-size:11px;color:var(--text3);font-weight:500" id="streakSub">No workouts logged yet</div>
+        </div>
+        <div id="weekDotRow" style="display:flex;flex-direction:column;gap:5px;align-items:flex-end"></div>
+      </div>
+
+      <!-- Event Countdowns -->
+      <div id="eventCountdowns"></div>
 
       <!-- 5. Food recommendations -->
       <div id="quickRecsCard" class="card" style="display:none">
@@ -379,7 +375,7 @@ PROMISE ERROR:
       </div>
 
       <!-- 6. Protein pace bar -->
-      <div id="proteinPaceCard" class="card" style="padding:14px 18px;margin-bottom:14px">
+      <div id="proteinPaceCard" class="card home-removed" style="padding:14px 18px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div style="font-size:11px;font-weight:700;color:#4ade80;letter-spacing:1px;text-transform:uppercase">💪 Protein Pace</div>
           <div style="font-size:11px;color:var(--text3);font-weight:600" id="proteinPaceLabel">—</div>
@@ -433,6 +429,15 @@ PROMISE ERROR:
         <div class="weekly-summary-row" id="weeklySummaryRow"></div>
       </div>
 
+  <!-- 7-day trends strip (tap → full Trends tab) -->
+  <div class="card" id="todayTrendsStrip" style="display:none;cursor:pointer;padding:12px 14px" onclick="switchTab('history');switchHistoryTab('trends')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text3)">📈 7-Day Trends</div>
+      <div style="font-size:10px;color:var(--text3)">tap for detail ›</div>
+    </div>
+    <div id="trendsStripRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"></div>
+  </div>
+
       <!-- 9. Weight trend -->
       <div id="weightTrendCard" class="weight-card">
         <div class="weight-header">
@@ -465,7 +470,7 @@ PROMISE ERROR:
               <div id="moodSummaryText" style="font-size:11px;color:var(--text2);margin-top:1px">Logged</div>
             </div>
           </div>
-          <button onclick="reopenCheckin()" style="font-size:11px;color:var(--text3);background:none;border:none;cursor:pointer;font-family:inherit;padding:6px 10px;border-radius:8px;background:var(--surface2)">Edit</button>
+          <button onclick="reopenCheckin()" style="font-size:11px;font-weight:700;color:#f472b6;border:1px solid #f472b644;cursor:pointer;font-family:inherit;padding:6px 12px;border-radius:8px;background:var(--surface2)">✏️ Edit</button>
         </div>
       </div>
 
@@ -489,6 +494,10 @@ PROMISE ERROR:
         <div id="garminMacroBanner" class="macro-adj-banner" style="display:none">
           <span>🎯</span><span id="garminMacroText"></span>
         </div>
+        <div id="readinessDeficitBanner" class="macro-adj-banner" style="display:none;background:#2d1220;border-color:#7f1d4d">
+          <span>🛌</span><span id="readinessDeficitText" style="flex:1"></span>
+          <button onclick="undoReadinessDeficit()" style="background:#7f1d4d;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit">UNDO</button>
+        </div>
         <div id="fuelingBanner" class="macro-adj-banner" style="display:none;cursor:pointer;background:#0c2a3d;border-color:#1d4ed8" onclick="dismissFuelingBanner()" title="Tap to dismiss">
           <span>🍝</span><span id="fuelingBannerText"></span>
         </div>
@@ -500,7 +509,7 @@ PROMISE ERROR:
 
 
       <!-- 11b. Hydration Tracker -->
-      <div class="card" id="waterCard" style="padding:14px 16px;margin-bottom:14px">
+      <div class="card home-removed" id="waterCard" style="padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="card-label" style="color:#0d9488;margin-bottom:0">💧 Hydration</div>
           <div style="font-size:11px;font-weight:700;color:var(--text2)" id="waterGoalLabel">Goal: 100 oz</div>
@@ -562,7 +571,7 @@ PROMISE ERROR:
       </div>
 
       
-      <!-- FEATURE: Sleep Panel (from WHOOP data) -->
+      <!-- Sleep panel (Garmin via wellness ingest) -->
       <div id="sleepCard" style="display:none;background:linear-gradient(135deg,#0f1729,#1a1040);border:1.5px solid #312e81;border-radius:18px;padding:14px 16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="font-size:11px;font-weight:700;color:#818cf8;letter-spacing:1px;text-transform:uppercase">😴 Last Night's Sleep</div>
@@ -597,65 +606,37 @@ PROMISE ERROR:
         <div id="foodLogList"></div>
       </div>
 
+      <!-- Manual entry — moved below the log (quick methods live up top) -->
+      <div class="card">
+        <div class="card-label" style="color:#94a3b8">✍️ Manual Entry</div>
+        <div class="macro-grid">
+          <input type="number" id="in-calories" placeholder="+ calories (kcal)" />
+          <input type="number" id="in-protein" placeholder="+ protein (g)" />
+          <input type="number" id="in-carbs" placeholder="+ carbs (g)" />
+          <input type="number" id="in-fat" placeholder="+ fat (g)" />
+        </div>
+        <button class="btn-green" style="margin-top:10px" onclick="logMacros()">LOG MEAL</button>
+        <div id="manualSaveSection" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💾 Save as Quick-Add Food</div>
+          <input type="text" id="manualFoodName" placeholder="Food name (e.g. Oatmeal with berries)" style="margin-bottom:8px"/>
+          <div class="time-slot-picker" id="manualTimeSlotPicker">
+            <button class="ts-btn" data-slot="breakfast" onclick="toggleTimeSlot(this,'manual')">🌅 Breakfast</button>
+            <button class="ts-btn" data-slot="morning" onclick="toggleTimeSlot(this,'manual')">☕ Morning Snack</button>
+            <button class="ts-btn" data-slot="lunch" onclick="toggleTimeSlot(this,'manual')">🥗 Lunch</button>
+            <button class="ts-btn" data-slot="afternoon" onclick="toggleTimeSlot(this,'manual')">🍎 Afternoon</button>
+            <button class="ts-btn" data-slot="dinner" onclick="toggleTimeSlot(this,'manual')">🍽️ Dinner</button>
+            <button class="ts-btn" data-slot="evening" onclick="toggleTimeSlot(this,'manual')">🌙 Evening</button>
+          </div>
+          <button class="btn-save-food" style="margin-top:10px;width:100%" onclick="saveManualFood()">Save Food</button>
+        </div>
+        <button class="copy-yesterday-btn" id="copyYesterdayBtn" onclick="copyYesterdayMeals()" style="display:none;margin-top:12px">
+          📋 Copy Yesterday's Meals
+        </button>
+      </div>
+
     </div>
 
     <!-- WORKOUT PAGE -->
-    <div id="page-lift" class="page">
-      <!-- TP expired banner (item 10) -->
-      <div id="tpExpiredBannerLift" style="display:none;background:#3d2e05;border:1px solid #92620d;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#fbbf24;cursor:pointer" onclick="openSettings()">
-        ⚠️ TrainingPeaks disconnected — activity sync is paused. Tap to reconnect in Settings.
-      </div>
-      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
-      <div class="card" id="trainingLoadCard" style="display:none">
-        <div class="card-label" style="color:#60a5fa">Training Load</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="display:flex;gap:18px">
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
-            </div>
-            <div style="text-align:center">
-              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
-              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
-            </div>
-          </div>
-        </div>
-        <div id="tlSparkline" style="margin-bottom:6px"></div>
-        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
-      </div>
-
-      <!-- Live workout timer bar -->
-      <div class="workout-timer-bar" id="workoutTimerBar">
-        <div>
-          <div style="font-size:9px;color:#60a5fa;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px">Duration</div>
-          <div class="workout-timer-elapsed" id="workoutTimerDisplay">0:00</div>
-        </div>
-        <div class="workout-timer-stats">
-          <div class="workout-timer-stat">
-            <div class="workout-timer-stat-val" id="timerSetsCount">0</div>
-            <div class="workout-timer-stat-lbl">Sets</div>
-          </div>
-          <div class="workout-timer-stat">
-            <div class="workout-timer-stat-val" id="timerVolumeCount">0</div>
-            <div class="workout-timer-stat-lbl">Volume (lbs)</div>
-          </div>
-        </div>
-      </div>
-      <div class="session-tabs" id="sessionTabs"></div>
-      <div class="card" id="sessionHeader"></div>
-      <div id="exerciseList"></div>
-      <div class="card" style="padding:14px 18px;margin-bottom:14px" id="workoutNotesCard">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📝 Session Notes</div>
-        <textarea id="workoutNotesInput" placeholder="How did it feel? Any PRs, injuries, energy levels…" style="width:100%;min-height:72px;background:var(--surface2);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-family:inherit;font-size:13px;padding:10px 14px;resize:vertical;outline:none;line-height:1.6"></textarea>
-      </div>
-      <button class="btn-green" onclick="saveWorkout()">SAVE WORKOUT ✓</button>
-    </div>
-
-    <!-- PROGRAM PAGE -->
     <div id="page-program" class="page">
 
       <!-- Events Section -->
@@ -688,55 +669,14 @@ PROMISE ERROR:
         <button id="htab-blood"   class="htab-btn htab-active" onclick="switchHistoryTab('blood')">🩸 Blood</button>
         <button id="htab-nutr"    class="htab-btn"             onclick="switchHistoryTab('nutr')">🥗 Nutrition</button>
         <button id="htab-trends"  class="htab-btn"             onclick="switchHistoryTab('trends')">📈 Trends</button>
-        <button id="htab-lift"    class="htab-btn"             onclick="switchHistoryTab('lift')">🏋️ Lifts</button>
-        <button id="htab-whoop"   class="htab-btn"             onclick="switchHistoryTab('whoop')">💍 WHOOP</button>
+        <button id="htab-body"    class="htab-btn"             onclick="switchHistoryTab('body')">📸 Body</button>
       </div>
 
-      <!-- WHOOP DASHBOARD -->
-      <div id="historyTab-whoop" style="display:none">
-
-        <!-- Upload Card -->
-        <div id="whoopUploadCard" class="card" style="padding:16px 18px;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📁 Import WHOOP Data</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Export your data from WHOOP app → Account → Privacy → Export Data. Upload the ZIP file here.</div>
-          <label id="whoopDropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;background:#0f0d1a;border:2px dashed #4c1d95;border-radius:14px;cursor:pointer;min-height:80px;transition:border-color 0.2s">
-            <div style="font-size:28px">💍</div>
-            <div style="font-size:13px;font-weight:700;color:#a78bfa">Tap to upload WHOOP ZIP</div>
-            <div id="whoopUploadStatus" style="font-size:11px;color:var(--text3)">physiological_cycles.csv + sleeps.csv + workouts.csv</div>
-            <input type="file" accept=".zip" style="display:none" onchange="handleWhoopUpload(this)" />
-          </label>
-          <div id="whoopParseProgress" style="display:none;margin-top:10px;font-size:12px;color:var(--text2);text-align:center;padding:8px;background:var(--surface2);border-radius:10px"></div>
-        </div>
-
-        <!-- Summary row: shown after data loaded -->
-        <div id="whoopDashboard" style="display:none">
-          <!-- Today's Status -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopTodayCard"></div>
-
-          <!-- 7-day sparkline tiles -->
-          <div id="whoopSparkRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"></div>
-
-          <!-- Sleep breakdown -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopSleepCard"></div>
-
-          <!-- Workout activity breakdown -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopWorkoutCard"></div>
-
-          <!-- AI Insights -->
-          <div class="card" style="padding:14px 18px;margin-bottom:14px" id="whoopAICard">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <div style="font-size:12px;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase">🤖 AI Recovery Coach</div>
-              <button onclick="runWhoopAI()" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);border:none;border-radius:10px;padding:7px 14px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Analyze</button>
-            </div>
-            <div id="whoopAIResult" style="font-size:13px;color:var(--text2)">Tap Analyze to get personalized recovery and training insights based on your WHOOP data.</div>
-          </div>
-        </div>
-      </div>
+      <!-- BODY PROGRESS PHOTOS (rendered by body.js) -->
+      <div id="historyTab-body" style="display:none"><div id="bodyRoot"></div></div>
 
       <!-- LIFT HISTORY -->
-      <div id="historyTab-lift" style="display:none">
-        <div id="historyList"></div>
-      </div>
+      
 
       <!-- BLOOD WORK -->
       <div id="historyTab-blood">
@@ -806,7 +746,7 @@ PROMISE ERROR:
           <button onclick="saveBodyComp()" style="width:100%;padding:10px;background:#f97316;border:none;border-radius:12px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">Log Measurements</button>
         </div>
 
-        <div class="card" style="margin-top:14px">
+        <div class="card" id="bloodUploadCard" style="margin-top:14px">
           <div class="card-label" style="color:#ef4444">🩸 Upload Lab Results</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">Take a photo or scan of your lab report. AI will read all values automatically.</div>
           <div id="bloodUploadDrop" style="border:2px dashed #2a3040;border-radius:14px;padding:24px;text-align:center;cursor:pointer;transition:all 0.2s" onclick="document.getElementById('bloodFileInput').click()" ondragover="event.preventDefault();this.style.borderColor='#ef4444'" ondragleave="this.style.borderColor='#2a3040'" ondrop="event.preventDefault();handleBloodDrop(event)">
@@ -861,6 +801,28 @@ PROMISE ERROR:
 
       <!-- TRENDS TAB -->
       <div id="historyTab-trends" style="display:none">
+      <!-- Training load (CTL/ATL/TSB) from TrainingPeaks -->
+      <div class="card" id="trainingLoadCard" style="display:none">
+        <div class="card-label" style="color:#60a5fa">Training Load</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;gap:18px">
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#3b82f6" id="tlCtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">CTL · FITNESS</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800;color:#a78bfa" id="tlAtl">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">ATL · FATIGUE</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:18px;font-weight:800" id="tlTsb">—</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">TSB · FORM</div>
+            </div>
+          </div>
+        </div>
+        <div id="tlSparkline" style="margin-bottom:6px"></div>
+        <div id="tlInterpretation" style="font-size:12px;font-weight:600"></div>
+      </div>
         <!-- Item 5: server-side insights -->
         <div id="insightsSection" style="display:none">
           <div class="card" id="insightsSummaryCard" style="display:none">
@@ -887,6 +849,14 @@ PROMISE ERROR:
             <div id="insLoad"></div>
             <div style="font-size:10px;color:var(--text3);margin-top:4px">Bars: weekly TSS · line: CTL (fitness)</div>
           </div>
+          <div class="card" id="bodyCompCard">
+            <div class="section-title" style="margin-bottom:8px">🧬 Body Composition — Fat vs Lean</div>
+            <div id="bcChart1"></div>
+            <div style="font-size:10px;color:var(--text3);margin:4px 0 12px">Gray: weight · 🔴 fat mass · 🟢 lean mass (7d MA lines)</div>
+            <div id="bcChart2"></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">Weekly change: fat vs lean</div>
+            <div id="bcCallout" style="font-size:11.5px;margin-top:10px;line-height:1.6"></div>
+          </div>
           <div class="card">
             <div class="section-title" style="margin-bottom:8px">🥩 Protein Adherence — Last 90 Days</div>
             <div id="insProtein"></div>
@@ -902,11 +872,6 @@ PROMISE ERROR:
             <button class="chart-tab" data-metric="carbs" onclick="setTrendMetric('carbs',this)">Carbs</button>
             <button class="chart-tab" data-metric="fat" onclick="setTrendMetric('fat',this)">Fat</button>
             <button class="chart-tab" data-metric="weight" onclick="setTrendMetric('weight',this)">Weight</button>
-            <button class="chart-tab" data-metric="recovery" onclick="setTrendMetric('recovery',this)">💍 Recovery</button>
-            <button class="chart-tab" data-metric="hrv" onclick="setTrendMetric('hrv',this)">💍 HRV</button>
-            <button class="chart-tab" data-metric="rhr" onclick="setTrendMetric('rhr',this)">💍 RHR</button>
-            <button class="chart-tab" data-metric="strain" onclick="setTrendMetric('strain',this)">💍 Strain</button>
-            <button class="chart-tab" data-metric="sleepPerf" onclick="setTrendMetric('sleepPerf',this)">💍 Sleep</button>
           </div>
           <div class="chart-container" id="monthChartContainer"></div>
           <div id="trendSummaryRow" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap"></div>
@@ -1091,6 +1056,26 @@ PROMISE ERROR:
       <button class="btn-outline" onclick="closeQuickLogModal()">Cancel</button>
     </div>
     <button class="btn-outline" id="quickLogCancelOnly" onclick="closeQuickLogModal()" style="margin-top:6px">Close</button>
+  </div>
+</div>
+
+<!-- Wellness override (Tier 1.5B) -->
+<div class="modal-overlay" id="overrideModal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">⚙️ Fix a Reading</div>
+    <div class="modal-sub">Overrides sit on top of Garmin data — the original is kept</div>
+    <input type="date" id="ovDate" class="big-input" style="margin-bottom:10px" />
+    <select id="ovField" class="big-input" style="margin-bottom:10px">
+      <option value="weight_lbs">Weight (lbs)</option>
+      <option value="sleep_total_hrs">Sleep (hours)</option>
+      <option value="hrv_ms">HRV (ms)</option>
+      <option value="resting_hr_bpm">Resting HR (bpm)</option>
+      <option value="body_fat_pct">Body fat (%)</option>
+    </select>
+    <input type="number" id="ovValue" class="big-input" step="0.1" placeholder="Corrected value (blank = remove override)" style="margin-bottom:16px" />
+    <button class="btn-green" onclick="saveOverride()">Save Override</button>
+    <button class="btn-outline" onclick="document.getElementById('overrideModal').classList.remove('open')">Cancel</button>
   </div>
 </div>
 
@@ -1401,6 +1386,16 @@ PROMISE ERROR:
           <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">g</div>
         </div>
       </div>
+      <div class="settings-row" style="margin-top:8px">
+        <div>
+          <div class="settings-row-label">Eat back run calories</div>
+          <div class="settings-row-sub">How much of a run's net burn raises the day's targets</div>
+        </div>
+        <div style="display:flex;background:var(--surface2);border-radius:14px;padding:3px;border:1px solid var(--border)">
+          <button id="eatback60" onclick="setEatBack(0.6,this)" style="padding:5px 12px;border-radius:11px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:var(--green);color:#fff">60%</button>
+          <button id="eatback100" onclick="setEatBack(1.0,this)" style="padding:5px 12px;border-radius:11px;border:none;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;background:transparent;color:var(--text3)">100%</button>
+        </div>
+      </div>
       <button class="btn-green" onclick="saveGoalSettings()">💾 Save Goals &amp; Macros</button>
     </div>
 
@@ -1481,6 +1476,7 @@ PROMISE ERROR:
         <button class="btn-green" style="width:auto;padding:8px 14px" onclick="syncAllLogs()">Sync now</button>
       </div>
       <button class="btn-green" style="margin-top:10px;background:#334155" onclick="forceBackfillSync()">⬆️ Force full backfill (local → server)</button>
+      <button class="btn-green" style="margin-top:10px;background:#334155" onclick="freeUpSpace()">🧹 Free up device storage</button>
       <div class="settings-row" style="margin-top:10px">
         <div>
           <div class="settings-row-label">🗄️ Backups <span id="backupDot" style="font-size:10px">⚪</span></div>
@@ -1639,13 +1635,14 @@ PROMISE ERROR:
   <button class="tab-btn active" onclick="switchTab('today',this)"><span class="tab-icon">🏠</span>Today</button>
   <button class="tab-btn" onclick="switchTab('recipes',this)"><span class="tab-icon">🍽️</span>Recipes</button>
   <button class="tab-btn" onclick="switchTab('shoes',this)"><span class="tab-icon">👟</span>Shoes</button>
-  <button class="tab-btn" onclick="switchTab('lift',this)"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" onclick="switchTab('program',this)"><span class="tab-icon">📋</span>Program</button>
   <button class="tab-btn" onclick="switchTab('history',this)"><span class="tab-icon">🗓️</span>History</button>
   <button class="tab-btn" onclick="switchTab('claude',this)"><span class="tab-icon">🤖</span>AI</button>
 </div>
 
-<script src="/app.js" defer></script>
+<script src="/app.js?v=goalplan1" defer></script>
+<script src="/body.js?v=goalplan1" defer></script>
+<script src="/plan.js?v=goalplan1" defer></script>
 <!-- Recipe Builder Modal -->
 <div class="modal-overlay" id="newRecipeModal">
   <div class="modal-sheet">
@@ -1833,15 +1830,8 @@ PROMISE ERROR:
       <div id="wmGreeting" style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px">Good morning, Jeremy 👋</div>
       <div id="wmDate" style="font-size:13px;color:var(--text2);margin-bottom:20px"></div>
 
-      <!-- Weight -->
-      <div style="margin-bottom:16px">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">⚖️ Weight today</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input id="wmWeight" type="number" step="0.1" placeholder="lbs" inputmode="decimal"
-            style="flex:1;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:16px;font-family:inherit;outline:none;-webkit-appearance:none">
-          <span style="font-size:13px;color:var(--text2);white-space:nowrap">lbs</span>
-        </div>
-      </div>
+      <!-- Garmin already sent these (Tier 1.5B) -->
+      <div id="wmWellnessContext" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.7"></div>
 
       <!-- Energy row -->
       <div class="wm-mood-row">
@@ -1866,6 +1856,19 @@ PROMISE ERROR:
           <button onclick="wmSetMood('mood',5)" data-val="5" class="mood-btn" title="Great">😄</button>
         </div>
       </div>
+
+      <!-- Workout yes/no (feeds the workout streak) -->
+      <div class="wm-mood-row">
+        <div class="wm-mood-label">💪 Worked out today?</div>
+        <div class="wm-btns" id="wmWorkoutBtns">
+          <button onclick="wmSetWorkout(true)" data-val="yes" class="mood-btn" title="Yes" style="font-size:14px;font-weight:800">YES</button>
+          <button onclick="wmSetWorkout(false)" data-val="no" class="mood-btn" title="No" style="font-size:14px;font-weight:800">NO</button>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <input id="wmNotes" type="text" placeholder="Notes (optional)" autocomplete="off"
+        style="width:100%;background:var(--surface2);border:1.5px solid var(--border2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-top:4px;margin-bottom:4px" />
 
       <!-- Submit -->
       <button id="wmSubmitBtn" onclick="submitWelcomeCheckin()"
