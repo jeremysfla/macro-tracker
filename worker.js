@@ -1,4 +1,5 @@
 import { handleBody } from "./body.js";
+import { handleGarmin } from "./garmin.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -1116,6 +1117,13 @@ Rules: urgent_emails max 3, skip promos/newsletters; health_note use actual numb
       const bodyUser = await getSessionUser(env.DB, req);
       if (!bodyUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
       return handleBody(req, env, ctx, bodyUser, u);
+    }
+
+    // ── Garmin Connect Personal API — see garmin.js ──
+    if (u.pathname.startsWith("/api/garmin/")) {
+      const garminUser = await getSessionUser(env.DB, req);
+      if (!garminUser) return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401, headers: CORS });
+      return handleGarmin(req, env, ctx, garminUser, u);
     }
 
     // ── Async Claude proxy: submit → poll (mobile-safe for long analyses) ──
